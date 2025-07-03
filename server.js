@@ -32,7 +32,8 @@ app.use(cors({
     'https://nyumbasync.co.ke', 
     'http://localhost:3000', // For local dev
     'https://app.nyumbasync.co.ke'
-  ]
+  ],
+ credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
