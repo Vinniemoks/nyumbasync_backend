@@ -1,23 +1,27 @@
 const router = require('express').Router();
 const authController = require('../../controllers/auth.controller');
-const { validateKenyanPhone } = require('../../middleware/validation');
+const { 
+  validatePhoneRegistration,
+  validateVerificationCode 
+} = require('../../middlewares/validation');
+const { authenticate } = require('../../middlewares/auth.middleware');
 
 // M-Pesa phone registration
-router.post('/auth/register', 
-  validateKenyanPhone,
+router.post('/register', 
+  validatePhoneRegistration,
   authController.registerWithPhone
 );
 
 // OTP verification
-router.post('/auth/verify', 
-  validateKenyanPhone,
+router.post('/verify', 
+  validateVerificationCode,
   authController.verifyCode
 );
 
-// Profile management
-router.get('/auth/profile',
-  authenticate,
-  authController.getProfile
+// Profile management - THIS IS LINE 22 THAT'S CAUSING THE ERROR
+router.get('/profile',
+  authenticate(),
+  authController.getProfile // Make sure this exists in your controller
 );
 
 module.exports = router;

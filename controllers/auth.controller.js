@@ -1,76 +1,194 @@
 const User = require('../models/user.model');
 const { mpesaSTKPush } = require('../services/mpesa.service');
-const { generateJWT } = require('../utils/auth');
+const { generateJWT, validateKenyanPhone } = require('../utils/auth');
+const logger = require('../utils/logger');
 
-// Kenyan phone registration
+// Enhanced Kenyan phone registration with M-Pesa verification
 exports.registerWithPhone = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { phone, role = 'tenant' } = req.body;
 
-    // Validate Kenyan format
-    if (!/^254[17]\d{8}$/.test(phone)) {
-      return res.status(400).json({ error: 'Invalid Kenyan phone format' });
+    // Validate Kenyan phone format
+    if (!validateKenyanPhone(phone)) {
+      return res.status(400).json({ 
+        error: 'Invalid Kenyan phone. Use 2547... or 2541... format',
+        example: '254712345678'
+      });
     }
 
-    // M-Pesa STK push for verification
-    const verificationCode = Math.floor(1000 + Math.random() * 9000);
-    await mpesaSTKPush(phone, 1, `NyumbaSync verification code: ${verificationCode}`);
+    // Check if phone already registered
+    const existingUser = await User.findOne({ phone });
+    if (existingUser?.mpesaVerified) {
+      return res.status(409).json({
+        error: 'Phone number already registered',
+        action: 'Login instead or use different number'
+      });
+    }
 
-    // Save user with temp code (expires in 10 mins)
+    // Generate 4-digit verification code
+    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const amount = 1; // KES 1 for verification
+
+    // Send STK push via M-Pesa
+    await mpesaSTKPush(
+      phone, 
+      amount,
+      `NyumbaSync Verification: ${verificationCode}`
+    );
+
+    // Create/update user record
     const user = await User.findOneAndUpdate(
       { phone },
       { 
+        phone,
+        role,
         verificationCode,
-        codeExpires: new Date(Date.now() + 600000) // 10 minutes
+        codeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        mpesaVerified: false
       },
-      { upsert: true, new: true }
+      { 
+        upsert: true, 
+        new: true,
+        setDefaultsOnInsert: true 
+      }
     );
 
+    logger.info(`Verification code sent to ${phone}`);
+
     res.status(202).json({
-      message: 'Verification code sent via M-Pesa',
-      tempId: user._id
+      success: true,
+      message: 'MPesa payment request sent for verification',
+      tempUserId: user._id,
+      expiresIn: '10 minutes',
+      notice: 'Enter the 4-digit code from your payment confirmation message'
     });
+
   } catch (err) {
+    logger.error(`Registration error for ${req.body.phone}: ${err.message}`);
+    
     res.status(500).json({ 
-      error: 'Failed to initiate registration',
-      localAction: 'Retry or use USSD *544#' 
+      error: 'Kuna tatuko kwenye usajili',
+      actions: [
+        'Tafadhali jaribu tena baada ya dakika chache',
+        'Piga *544# kwa msaada wa M-Pesa'
+      ],
+      contact: '0700NYUMBA'
     });
   }
 };
 
-// Verify code and issue JWT
+// Enhanced code verification with JWT issuance
 exports.verifyCode = async (req, res) => {
-  const { phone, code } = req.body;
+  try {
+    const { phone, code } = req.body;
 
-  const user = await User.findOne({
-    phone,
-    codeExpires: { $gt: new Date() }
-  });
+    // Find unexpired code record
+    const user = await User.findOne({
+      phone,
+      codeExpires: { $gt: new Date() }
+    });
 
-  if (!user || user.verificationCode !== code) {
-    return res.status(400).json({ 
-      error: 'Invalid or expired code',
-      solution: 'Request new code via M-Pesa'
+    if (!user || user.verificationCode !== code) {
+      return res.status(400).json({ 
+        error: 'Namba ya uthibitisho si sahihi au imeisha',
+        solutions: [
+          'Hakikisha umeingiza namba kwa usahihi',
+          'Omba namba mpya kupitia M-Pesa'
+        ]
+      });
+    }
+
+    // Mark as verified
+    user.mpesaVerified = true;
+    user.verificationCode = undefined;
+    user.codeExpires = undefined;
+    await user.save();
+
+    // Generate JWT token
+    const token = generateJWT({
+      id: user._id,
+      phone: user.phone,
+      role: user.role
+    });
+
+    logger.info(`User ${phone} successfully verified`);
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        role: user.role,
+        kraPin: user.kraPin || null,
+        phone: user.phone
+      },
+      mpesaVerified: true
+    });
+
+  } catch (err) {
+    logger.error(`Verification error for ${req.body.phone}: ${err.message}`);
+    
+    res.status(500).json({
+      error: 'Samahani, kuna tatuko kwenye uthibitisho',
+      immediateActions: [
+        'Jaribu tena baada ya dakika chache',
+        'Wasiliana na 0700NYUMBA kwa msaada'
+      ]
     });
   }
+};
 
-  // Mark as verified and generate token
-  user.mpesaVerified = true;
-  user.verificationCode = undefined;
-  await user.save();
+// User profile endpoint
+exports.getProfile = async (req, res) => {
+  try {
+    // Get user details from database (excluding sensitive info)
+    const user = await User.findById(req.user._id)
+      .select('-password -verificationCode -codeExpires -resetToken -resetTokenExpiry')
+      .lean();
 
-  const token = generateJWT({
-    id: user._id,
-    phone: user.phone,
-    role: user.role
-  });
-
-  res.json({ 
-    token,
-    user: {
-      id: user._id,
-      role: user.role,
-      kraPin: user.kraPin // For landlord tax reporting
+    if (!user) {
+      return res.status(404).json({ 
+        error: 'User profile not found',
+        solution: 'Try logging in again'
+      });
     }
-  });
+
+    // Format profile response
+    const profile = {
+      id: user._id,
+      phone: user.phone,
+      role: user.role,
+      isVerified: user.mpesaVerified,
+      profileComplete: user.profileComplete || false,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    };
+
+    // Add role-specific fields
+    if (user.role === 'landlord') {
+      profile.kraPin = user.kraPin || null;
+      profile.propertiesCount = user.properties?.length || 0;
+    } else if (user.role === 'tenant') {
+      profile.leasesCount = user.leases?.length || 0;
+    }
+
+    logger.info(`Profile accessed for user ${user._id}`);
+    res.status(200).json(profile);
+
+  } catch (error) {
+    logger.error(`Profile error for user ${req.user?._id}: ${error.message}`);
+    res.status(500).json({
+      error: 'Failed to fetch profile',
+      contact: '0700NYUMBA for assistance'
+    });
+  }
+};
+
+// Additional authentication methods
+exports.requestNewCode = async (req, res) => {
+  // Implementation for requesting new verification code
+};
+
+exports.validateKRA = async (req, res) => {
+  // KRA validation for landlords
 };

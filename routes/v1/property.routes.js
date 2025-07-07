@@ -1,26 +1,33 @@
 const router = require('express').Router();
 const propertyController = require('../../controllers/property.controller');
-const { authenticate, validateNairobiLocation } = require('../../middleware');
+const { authenticate, authorizeOwnership } = require('../../middlewares/auth.middleware');
 
-// Property listings
+// Public routes
 router.get('/', propertyController.searchProperties);
+router.get('/:id', propertyController.getProperty);
 
-// Landlord-only routes
-router.use(authenticate('landlord'));
-
+// Landlord-protected routes
 router.post('/',
-  validateNairobiLocation,
+  authenticate('landlord'),
   propertyController.createProperty
 );
 
+router.patch('/:id',
+  authenticate('landlord'),
+  authorizeOwnership('property'),
+  propertyController.updateProperty
+);
+
 router.patch('/:id/rent',
+  authenticate('landlord'),
+  authorizeOwnership('property'),
   propertyController.updateRent
 );
 
-// Public property details
-router.get('/:id', 
-  authenticate('any'), 
-  propertyController.getProperty
+router.delete('/:id',
+  authenticate('landlord'),
+  authorizeOwnership('property'),
+  propertyController.deleteProperty
 );
 
 module.exports = router;

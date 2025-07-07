@@ -1,7 +1,53 @@
 const Property = require('../models/property.model');
 const { validateRentIncrease } = require('../utils/kenyanValidators');
 
-// Add property with Nairobi validation
+// Get all available properties
+exports.searchProperties = async (req, res) => {
+  try {
+    const { lng, lat, maxDistance = 5000 } = req.query; // meters
+    
+    const properties = await Property.find({
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(lng), parseFloat(lat)]
+          },
+          $maxDistance: parseInt(maxDistance)
+        }
+      },
+      status: 'available'
+    });
+
+    res.json(properties);
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Search failed',
+      alternative: 'Browse by subcounty instead' 
+    });
+  }
+};
+
+// Get single property details
+exports.getProperty = async (req, res) => {
+  try {
+    const property = await Property.findById(req.params.id)
+      .populate('landlord', 'name phone');
+    
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    res.json(property);
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Failed to fetch property',
+      contact: '0700NYUMBA for assistance'
+    });
+  }
+};
+
+// Create new property listing
 exports.createProperty = async (req, res) => {
   try {
     const { location, rent, deposit } = req.body;
@@ -28,7 +74,29 @@ exports.createProperty = async (req, res) => {
   }
 };
 
-// Update rent with 7% cap
+// Update property details
+exports.updateProperty = async (req, res) => {
+  try {
+    const updated = await Property.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Update failed',
+      details: err.message 
+    });
+  }
+};
+
+// Update rent amount
 exports.updateRent = async (req, res) => {
   try {
     const property = await Property.findById(req.params.id);
@@ -56,29 +124,23 @@ exports.updateRent = async (req, res) => {
   }
 };
 
-// Nairobi geo-search
-exports.searchProperties = async (req, res) => {
+// Delete property listing
+exports.deleteProperty = async (req, res) => {
   try {
-    const { lng, lat, maxDistance = 5000 } = req.query; // meters
-    
-    const properties = await Property.find({
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(lng), parseFloat(lat)]
-          },
-          $maxDistance: parseInt(maxDistance)
-        }
-      },
-      status: 'available'
-    });
+    const property = await Property.findByIdAndDelete(req.params.id);
 
-    res.json(properties);
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    res.json({ 
+      message: 'Property listing removed',
+      refundNotice: 'Any deposits must be refunded within 14 days' 
+    });
   } catch (err) {
     res.status(500).json({ 
-      error: 'Search failed',
-      alternative: 'Browse by subcounty instead' 
+      error: 'Failed to delete property',
+      legalContact: 'contact@nyumbasync.co.ke' 
     });
   }
 };

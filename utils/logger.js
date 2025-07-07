@@ -1,16 +1,15 @@
 const winston = require('winston');
-const { createLogger, transports, format } = require('winston');
 const { formatKenyanDate } = require('./formatters');
 
 // Nairobi timezone-aware formatter
-const kenyaTimestamp = format.printf(({ level, message, timestamp }) => {
+const kenyaTimestamp = winston.format.printf(({ level, message, timestamp }) => {
   return `[${timestamp}] ${level}: ${message}`;
 });
 
 const logger = winston.createLogger({
   level: 'info',
-  format: format.combine(
-    format.timestamp({
+  format: winston.format.combine(
+    winston.format.timestamp({
       format: () => formatKenyanDate(new Date())
     }),
     kenyaTimestamp
@@ -19,17 +18,16 @@ const logger = winston.createLogger({
     new winston.transports.File({ 
       filename: 'logs/error.log',
       level: 'error',
-      format: format.json()
+      format: winston.format.json()
     }),
     new winston.transports.File({ 
       filename: 'logs/combined.log',
-      format: format.json()
+      format: winston.format.json()
     }),
-    // Console with Swahili translations
     new winston.transports.Console({
-      format: format.combine(
-        format.colorize(),
-        format.printf(({ level, message }) => {
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(({ level, message }) => {
           const translations = {
             error: 'Kosa',
             warn: 'Onyo',
@@ -44,7 +42,7 @@ const logger = winston.createLogger({
 });
 
 // M-Pesa transaction logger
-exports.logTransaction = (type, data) => {
+const logTransaction = (type, data) => {
   logger.info(`[MPESA] ${type}`, {
     ...data,
     location: 'Nairobi',
@@ -52,4 +50,14 @@ exports.logTransaction = (type, data) => {
   });
 };
 
-module.exports = logger;
+// Authentication attempt logger
+const logAuthAttempt = (identifier, action, details = '') => {
+  logger.warn(`[AUTH] ${identifier} – ${action} ${details}`);
+};
+
+// Explicit named exports
+module.exports = {
+  logger,
+  logTransaction,
+  logAuthAttempt
+};
