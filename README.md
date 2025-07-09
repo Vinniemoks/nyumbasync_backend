@@ -9,6 +9,7 @@
   - [Prerequisites](#prerequisites)
 - [Installation](#installation)
   - [Clone the Repository](#clone-the-repository)
+- [Install Dependencies](#install-dependencies)
 - [or](#or)
 - [Configuration](#configuration)
   - [Environment Variables](#environment-variables)
@@ -16,6 +17,7 @@
 - [Running the Application](#running-the-application)
   - [Development Mode](#development-mode)
   - [Production Mode](#production-mode)
+- [API Reference](#api-reference)
 - [Authentication:](#authentication)
 - [Project Structure](#project-structure)
 - [Contributing](#contributing)
@@ -56,22 +58,25 @@ NyumbaSync Backend is the server-side component of the NyumbaSync platform. It m
 
 ``` bash
 git clone https://github.com/Vinniemoks/nyumbasync_backend
-cd nyumbasync_backend
-Install Dependencies
+cd nyumbasync_backend ```
+
+# Install Dependencies
 
 ``` bash
-npm install
+npm install ```
+
 # or
-``` yarn install
+``` yarn install ```
 
 # Configuration
 
 ## Environment Variables
 
-- Copy the example environment file and update values as needed:
+- Copy the environment file and update values as needed:
 
 ``` bash
-cp .env.example .env
+cp .env ``` 
+
 Edit .env to set your database URI, port, and other secrets.
 
 # Database Setup
@@ -83,14 +88,14 @@ Ensure MongoDB is running and accessible with the credentials provided in your .
 ## Development Mode
 
 ``` bash
-npm run dev
+npm run dev ```
 
 ## Production Mode
 
 ``` bash
-npm start
-API Reference
-Note: This is a sample. Replace with actual endpoints and descriptions as implemented in your project.
+npm start ```
+
+# API Reference
 
 | Method | Endpoint          | Description                | Auth Required |
 | ------ | ----------------- | --------------------------| ------------- |
@@ -124,7 +129,8 @@ We welcome contributions from the community! To contribute:
 Fork the repository and create your branch:
 
 ``` bash
-git checkout -b feature/your-feature-name
+git checkout -b feature/your-feature-name ```
+
 Write clear, well-documented code and include tests if applicable.
 
 Follow the existing code style and naming conventions please.
