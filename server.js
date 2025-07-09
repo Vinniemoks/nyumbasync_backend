@@ -55,15 +55,6 @@ const connectWithRetry = () => {
     });
 };
 
-app.get('/', (req, res) => {
-  console.log('Root route handler executing'); // Add this for debugging
-  res.status(200).json({
-    status: 'active',
-    message: 'NyumbaSync Super API is running',
-    timestamp: new Date().toISOString()
-  });
-});
-
 // Middleware
 app.use(cors({
   origin: [
@@ -105,7 +96,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root Route
+// Root Route - Single definition with commit info
 app.get('/', (req, res) => {
   res.status(200).json({
     status: '🟢 Running',
@@ -113,7 +104,9 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     time: res.locals.currentTime,
     environment: process.env.NODE_ENV || 'development',
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    commit: process.env.RENDER_GIT_COMMIT || 'unknown',
+    branch: process.env.RENDER_GIT_BRANCH || 'unknown'
   });
 });
 
@@ -179,6 +172,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
   logger.info(`⏰ Current EAT: ${currentTime}`);
   logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
+  logger.info(`🔗 Commit: ${process.env.RENDER_GIT_COMMIT || 'unknown'}`);
+  logger.info(`🌿 Branch: ${process.env.RENDER_GIT_BRANCH || 'unknown'}`);
 });
 
 // Graceful Shutdown
