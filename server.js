@@ -130,8 +130,6 @@ app.use((req, res, next) => {
 
 // Root Route - This should be the FIRST route defined
 app.get('/', (req, res) => {
-  logger.info('🏠 Root route accessed');
-  
   try {
     const response = {
       status: '🟢 Running',
@@ -140,8 +138,6 @@ app.get('/', (req, res) => {
       time: res.locals.currentTime,
       environment: process.env.NODE_ENV || 'development',
       database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-      commit: process.env.RENDER_GIT_COMMIT || 'unknown',
-      branch: process.env.RENDER_GIT_BRANCH || 'unknown',
       port: PORT,
       uptime: process.uptime()
     };
@@ -181,6 +177,27 @@ if (mpesaRoutes) {
 if (propertyRoutes) {
   app.use('/api/v1/properties', propertyRoutes);
   logger.info('✅ Property routes registered');
+}
+
+// Route Debugging Middleware (Development only)
+if (process.env.NODE_ENV === 'development') {
+  app.use('/api/debug/routes', (req, res) => {
+    const routes = app._router.stack
+      .filter(layer => layer.route)
+      .map(layer => ({
+        path: layer.route.path,
+        methods: Object.keys(layer.route.methods),
+        middleware: layer.route.stack.length
+      }));
+    
+    res.json({
+      system: 'NyumbaSync API',
+      timestamp: new Date(),
+      routeCount: routes.length,
+      routes
+    });
+  });
+  logger.info('✅ Route debugger available at /api/debug/routes');
 }
 
 // Static Files
