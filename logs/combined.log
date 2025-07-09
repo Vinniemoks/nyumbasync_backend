@@ -692,3 +692,16 @@
 {"level":"info","message":"✅ Connected to MongoDB","timestamp":"2025-07-09 23:16:23"}
 {"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-09 23:31:15"}
 {"level":"info","message":"HTTP server closed","timestamp":"2025-07-09 23:31:15"}
+{"level":"info","message":"Attempting MongoDB connection to: ***URI loaded***","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"🚀 Server running on port 10000","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"🌍 Environment: development","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"💳 M-Pesa Mode: sandbox","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"⏰ Current EAT: 09/07/2025, 11:34:16 pm","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"🔗 Commit: unknown","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"🌿 Branch: unknown","timestamp":"2025-07-09 23:34:16"}
+{"level":"info","message":"✅ Connected to MongoDB","timestamp":"2025-07-09 23:34:17"}
+{"level":"info","message":"GET /","timestamp":"2025-07-09 23:34:36"}
+{"level":"info","message":"GET /favicon.ico","timestamp":"2025-07-09 23:34:36"}
+{"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-09 23:43:28"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-07-09 23:43:28"}

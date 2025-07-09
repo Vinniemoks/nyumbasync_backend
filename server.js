@@ -5,12 +5,15 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { createLogger, format, transports } = require('winston');
-const mpesaRoutes = require('./routes/v1/mpesa.routes');
-const propertyRoutes = require('./routes/v1/property.routes');
-const authRoutes = require('./routes/v1/auth.routes');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Winston Logger Configuration
 const logger = createLogger({
@@ -35,11 +38,39 @@ const logger = createLogger({
   ]
 });
 
+// Try to import routes with error handling
+let mpesaRoutes, propertyRoutes, authRoutes;
+
+try {
+  mpesaRoutes = require('./routes/v1/mpesa.routes');
+  logger.info('✅ M-Pesa routes loaded');
+} catch (err) {
+  logger.warn('⚠️ M-Pesa routes not found, skipping...', err.message);
+}
+
+try {
+  propertyRoutes = require('./routes/v1/property.routes');
+  logger.info('✅ Property routes loaded');
+} catch (err) {
+  logger.warn('⚠️ Property routes not found, skipping...', err.message);
+}
+
+try {
+  authRoutes = require('./routes/v1/auth.routes');
+  logger.info('✅ Auth routes loaded');
+} catch (err) {
+  logger.warn('⚠️ Auth routes not found, skipping...', err.message);
+}
+
 // Database Connection with Retry
 const connectWithRetry = () => {
-  mongoose.set('strictQuery', false);
+  if (!process.env.MONGODB_URI) {
+    logger.error('❌ MONGODB_URI environment variable is not set!');
+    return;
+  }
 
-  logger.info(`Attempting MongoDB connection to: ${process.env.MONGODB_URI ? '***URI loaded***' : 'MISSING URI!'}`);
+  mongoose.set('strictQuery', false);
+  logger.info('🔄 Attempting MongoDB connection...');
 
   mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
@@ -55,7 +86,11 @@ const connectWithRetry = () => {
     });
 };
 
-// Middleware
+// Basic middleware first
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// CORS Configuration
 app.use(cors({
   origin: [
     'https://mokuavinnie.tech',
@@ -68,9 +103,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Timezone Middleware
 app.use((req, res, next) => {
@@ -92,35 +124,83 @@ app.use((req, res, next) => {
 
 // Request Logging
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.originalUrl}`);
+  logger.info(`${req.method} ${req.originalUrl} - ${req.ip}`);
   next();
 });
 
-// Root Route - Single definition with commit info
+// Root Route - This should be the FIRST route defined
 app.get('/', (req, res) => {
+  logger.info('🏠 Root route accessed');
+  
+  try {
+    const response = {
+      status: '🟢 Running',
+      service: 'NyumbaSync Backend API',
+      version: '1.0.0',
+      time: res.locals.currentTime,
+      environment: process.env.NODE_ENV || 'development',
+      database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+      commit: process.env.RENDER_GIT_COMMIT || 'unknown',
+      branch: process.env.RENDER_GIT_BRANCH || 'unknown',
+      port: PORT,
+      uptime: process.uptime()
+    };
+    
+    logger.info('✅ Root route response sent');
+    res.status(200).json(response);
+  } catch (error) {
+    logger.error('❌ Root route error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message,
+      timestamp: res.locals.currentTime
+    });
+  }
+});
+
+// Health check route
+app.get('/health', (req, res) => {
   res.status(200).json({
-    status: '🟢 Running',
-    service: 'NyumbaSync Backend API',
-    version: '1.0.0',
-    time: res.locals.currentTime,
-    environment: process.env.NODE_ENV || 'development',
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-    commit: process.env.RENDER_GIT_COMMIT || 'unknown',
-    branch: process.env.RENDER_GIT_BRANCH || 'unknown'
+    status: 'healthy',
+    timestamp: res.locals.currentTime,
+    uptime: process.uptime()
   });
 });
 
-// API Routes
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/mpesa', mpesaRoutes);
-app.use('/api/v1/properties', propertyRoutes);
+// API Routes (only if they exist)
+if (authRoutes) {
+  app.use('/api/v1/auth', authRoutes);
+  logger.info('✅ Auth routes registered');
+}
 
-// Static Files with Existence Check
-app.use('/public', express.static(path.join(__dirname, 'public')), (req, res, next) => {
-  if (!fs.existsSync(path.join(__dirname, 'public'))) {
-    logger.warn('⚠️ Public directory not found!');
-  }
-  next();
+if (mpesaRoutes) {
+  app.use('/api/v1/mpesa', mpesaRoutes);
+  logger.info('✅ M-Pesa routes registered');
+}
+
+if (propertyRoutes) {
+  app.use('/api/v1/properties', propertyRoutes);
+  logger.info('✅ Property routes registered');
+}
+
+// Static Files
+const publicDir = path.join(__dirname, 'public');
+if (fs.existsSync(publicDir)) {
+  app.use('/public', express.static(publicDir));
+  logger.info('✅ Static files served from /public');
+} else {
+  logger.warn('⚠️ Public directory not found, static files not served');
+}
+
+// 404 Handler
+app.use('*', (req, res) => {
+  logger.warn(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.originalUrl,
+    method: req.method,
+    timestamp: res.locals.currentTime
+  });
 });
 
 // Error Handling
@@ -152,9 +232,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start Server after DB connection
-connectWithRetry(); // Initialize DB connection
+// Initialize Database Connection
+connectWithRetry();
 
+// Start Server
 const server = app.listen(PORT, '0.0.0.0', () => {
   const currentTime = new Date().toLocaleString('en-KE', {
     timeZone: 'Africa/Nairobi',
@@ -167,13 +248,14 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     second: '2-digit'
   });
 
-  logger.info(`🚀 Server running on port ${PORT}`);
+  logger.info(`🚀 Server successfully started on port ${PORT}`);
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
   logger.info(`⏰ Current EAT: ${currentTime}`);
   logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
   logger.info(`🔗 Commit: ${process.env.RENDER_GIT_COMMIT || 'unknown'}`);
   logger.info(`🌿 Branch: ${process.env.RENDER_GIT_BRANCH || 'unknown'}`);
+  logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
 });
 
 // Graceful Shutdown
