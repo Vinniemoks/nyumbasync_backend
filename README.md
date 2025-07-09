@@ -1,30 +1,29 @@
 # NyumbaSync Backend Documentation
 ## Table of Contents
-- Project Overview
 
-- Features
+- [NyumbaSync Backend Documentation](#nyumbasync-backend-documentation)
+  - [Table of Contents](#table-of-contents)
+- [Project Overview](#project-overview)
+- [Features](#features)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+- [Installation](#installation)
+  - [Clone the Repository](#clone-the-repository)
+- [or](#or)
+- [Configuration](#configuration)
+  - [Environment Variables](#environment-variables)
+- [Database Setup](#database-setup)
+- [Running the Application](#running-the-application)
+  - [Development Mode](#development-mode)
+  - [Production Mode](#production-mode)
+- [Authentication:](#authentication)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+  - [Contribution Guidelines:](#contribution-guidelines)
+- [Reporting Issues](#reporting-issues)
+- [License](#license)
+- [Contact](#contact)
 
-- Getting Started
-
-- Prerequisites
-
-- Installation
-
-- Configuration
-
-- Running the Application
-
-- API Reference
-
-- Project Structure
-
-- Contributing
-
-- Reporting Issues
-
-- License
-
-- Contact
 
 # Project Overview
 NyumbaSync Backend is the server-side component of the NyumbaSync platform. It manages data, handles business logic, and exposes APIs for frontend clients and third-party integrations. The backend is designed to be robust, scalable, and easy to contribute to for both new and experienced developers.
