@@ -55,6 +55,15 @@ const connectWithRetry = () => {
     });
 };
 
+app.get('/', (req, res) => {
+  console.log('Root route handler executing'); // Add this for debugging
+  res.status(200).json({
+    status: 'active',
+    message: 'NyumbaSync Super API is running',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Middleware
 app.use(cors({
   origin: [

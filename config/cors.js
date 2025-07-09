@@ -1,5 +1,6 @@
 // Whitelist Kenyan common domains and mobile apps
 const allowedOrigins = [
+  'https://mokuavinnie.tech',
   'https://nyumbasync.com',
   'https://app.nyumbasync.com',
   'capacitor://localhost', // For mobile apps
