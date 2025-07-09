@@ -786,3 +786,69 @@
 {"level":"info","message":"✅ Root route response sent","timestamp":"2025-07-10 00:13:45"}
 {"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-10 00:41:55"}
 {"level":"info","message":"HTTP server closed","timestamp":"2025-07-10 00:41:55"}
+{"level":"info","message":"✅ M-Pesa routes loaded","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ Property routes loaded","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ Auth routes loaded","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ Auth routes registered","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ M-Pesa routes registered","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ Property routes registered","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ Route debugger available at /api/debug/routes","timestamp":"2025-07-10 00:42:04"}
+{"level":"warn","message":"⚠️ Public directory not found, static files not served","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"🔄 Attempting MongoDB connection...","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"🚀 Server successfully started on port 10000","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"🌍 Environment: development","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"💳 M-Pesa Mode: sandbox","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"⏰ Current EAT: 10/07/2025, 12:42:04 am","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"🔗 Commit: unknown","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"🌿 Branch: unknown","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"🔗 Server running at: http://0.0.0.0:10000","timestamp":"2025-07-10 00:42:04"}
+{"level":"info","message":"✅ Connected to MongoDB","timestamp":"2025-07-10 00:42:07"}
+{"level":"info","message":"GET / - 127.0.0.1","timestamp":"2025-07-10 00:46:21"}
+{"level":"info","message":"Root route accessed","timestamp":"2025-07-10 00:46:21"}
+{"level":"info","message":"GET / - 127.0.0.1","timestamp":"2025-07-10 00:53:15"}
+{"level":"info","message":"Root route accessed","timestamp":"2025-07-10 00:53:15"}
+{"level":"info","message":"GET / - 127.0.0.1","timestamp":"2025-07-10 00:53:59"}
+{"level":"info","message":"Root route accessed","timestamp":"2025-07-10 00:53:59"}
+{"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-10 00:57:17"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-07-10 00:57:17"}
+{"level":"info","message":"✅ M-Pesa routes loaded","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ Property routes loaded","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ Auth routes loaded","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ Auth routes registered","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ M-Pesa routes registered","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ Property routes registered","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ Route debugger available at /api/debug/routes","timestamp":"2025-07-10 01:07:08"}
+{"level":"warn","message":"⚠️ Public directory not found, static files not served","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"🔄 Attempting MongoDB connection...","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"🚀 Server successfully started on port 10000","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"🌍 Environment: development","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"💳 M-Pesa Mode: sandbox","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"⏰ Current EAT: 10/07/2025, 01:07:08 am","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"🔗 Commit: unknown","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"🌿 Branch: unknown","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"🔗 Server running at: http://0.0.0.0:10000","timestamp":"2025-07-10 01:07:08"}
+{"level":"info","message":"✅ Connected to MongoDB","timestamp":"2025-07-10 01:07:12"}
+{"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-10 01:13:14"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-07-10 01:13:14"}
+{"level":"info","message":"✅ M-Pesa routes loaded","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ Property routes loaded","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ Auth routes loaded","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ Auth routes registered","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ M-Pesa routes registered","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ Property routes registered","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ Route debugger available at /api/debug/routes","timestamp":"2025-07-10 01:16:54"}
+{"level":"warn","message":"⚠️ Public directory not found, static files not served","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"🔄 Attempting MongoDB connection...","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"🚀 Server successfully started on port 10000","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"🌍 Environment: development","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"💳 M-Pesa Mode: sandbox","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"⏰ Current EAT: 10/07/2025, 01:16:54 am","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"🔗 Commit: unknown","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"🌿 Branch: unknown","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"🔗 Server running at: http://0.0.0.0:10000","timestamp":"2025-07-10 01:16:54"}
+{"level":"info","message":"✅ Connected to MongoDB","timestamp":"2025-07-10 01:16:57"}
+{"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-10 01:22:40"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-07-10 01:22:40"}

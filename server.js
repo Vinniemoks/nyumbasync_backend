@@ -98,12 +98,12 @@ app.use(cors({
     'https://nyumbasync.co.ke',
     'http://localhost:3000',
     'https://app.nyumbasync.co.ke',
-    'https://sandbox.safaricom.co.ke'
-  ],
-  ...(process.env.NODE_ENV === 'development' ? [
+    'https://sandbox.safaricom.co.ke',
+    ...(process.env.NODE_ENV === 'development' ? [
       'http://localhost:3000',
       'http://127.0.0.1:3000'
-    ] : []),
+    ] : [])
+  ],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -283,6 +283,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🔗 Commit: ${process.env.RENDER_GIT_COMMIT || 'unknown'}`);
   logger.info(`🌿 Branch: ${process.env.RENDER_GIT_BRANCH || 'unknown'}`);
   logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
+}).on('error', (err) => {
+  logger.error('Server failed to start:', err);
 });
 
 // Graceful Shutdown
