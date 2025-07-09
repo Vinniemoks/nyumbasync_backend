@@ -581,3 +581,11 @@
 {"level":"info","message":"HTTP server closed","timestamp":"2025-07-09 21:39:54"}
 {"level":"info","message":"Connected to MongoDB","timestamp":"2025-07-09 21:39:55"}
 {"level":"info","message":"MongoDB connection closed","timestamp":"2025-07-09 21:39:55"}
+{"level":"info","message":"🚀 Server running on port 10000","timestamp":"2025-07-09 21:40:05"}
+{"level":"info","message":"🌍 Environment: development","timestamp":"2025-07-09 21:40:05"}
+{"level":"info","message":"💳 M-Pesa Mode: sandbox","timestamp":"2025-07-09 21:40:05"}
+{"level":"info","message":"⏰ Current EAT: 09/07/2025, 09:40:05 pm","timestamp":"2025-07-09 21:40:05"}
+{"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-09 21:40:05"}
+{"level":"info","message":"Connected to MongoDB","timestamp":"2025-07-09 21:40:06"}
+{"level":"info","message":"SIGINT received. Shutting down gracefully...","timestamp":"2025-07-09 21:52:38"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-07-09 21:52:38"}
