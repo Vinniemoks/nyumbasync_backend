@@ -59,7 +59,7 @@ NyumbaSync Backend is the server-side component of the NyumbaSync platform. It m
 
 ```bash
 git clone https://github.com/Vinniemoks/nyumbasync_backend
-cd nyumbasync_backend```
+cd nyumbasync_backend
 
 # Install Dependencies
 
