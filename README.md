@@ -54,6 +54,7 @@ NyumbaSync Backend is the server-side component of the NyumbaSync platform. It m
 - .env file with required environment variables
 
 # Installation
+
 ## Clone the Repository
 
 ``` bash
@@ -66,7 +67,8 @@ cd nyumbasync_backend ```
 npm install ```
 
 # or
-``` yarn install ```
+``` bash
+yarn install ```
 
 # Configuration
 
@@ -108,6 +110,7 @@ npm start ```
 
 
 # Authentication: 
+
 JWT-based authentication is used for protected endpoints. Include the token in the Authorization header as Bearer <token>.
 
 # Project Structure
@@ -125,10 +128,12 @@ nyumbasync_backend/
 └── README.md         # Project documentation
 
 # Contributing
+
 We welcome contributions from the community! To contribute:
 Fork the repository and create your branch:
 
-``` bash
+``` bash 
+
 git checkout -b feature/your-feature-name ```
 
 Write clear, well-documented code and include tests if applicable.
@@ -145,11 +150,14 @@ Check for an existing CONTRIBUTING.md file or instructions in the README.
 Open an issue for major changes before starting work.
 
 # Reporting Issues
+
 Use the Issues tab to report bugs, request features, or ask questions.
 Provide as much detail as possible, including steps to reproduce, expected behavior, and screenshots if relevant.
 
 # License
+
 This project is licensed under the MIT License. See the LICENSE file for details.
 
 # Contact
+
 For questions, feedback, or support, open an issue on GitHub or contact the project maintainer via the repository profile.
