@@ -10,7 +10,7 @@ const authRoutes = require('./routes/v1/auth.routes');
 
 // Initialize Express
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 
 // 0. Enhanced Winston Logger Configuration
 const logger = createLogger({
@@ -142,7 +142,7 @@ app.use((err, req, res, next) => {
 });
 
 // 7. Server Startup with Cluster Support
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   const currentTime = new Date().toLocaleString('en-KE', {
     timeZone: 'Africa/Nairobi',
     hour12: true,
