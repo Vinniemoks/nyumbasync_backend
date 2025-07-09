@@ -57,6 +57,7 @@ connectWithRetry();
 // 2. Middleware Configuration
 app.use(cors({
   origin: [
+    'https://mokuavinnie.tech/',
     'https://nyumbasync.co.ke', 
     'http://localhost:3000',
     'https://app.nyumbasync.co.ke',
