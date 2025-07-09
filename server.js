@@ -115,6 +115,10 @@ app.use('/public', express.static(path.join(__dirname, 'public'), {
   }
 }));
 
+app.get('/', (req, res) => {
+  res.status(200).send('NyumbaSync Backend is running 🚀');
+});
+
 // Error Handling
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;

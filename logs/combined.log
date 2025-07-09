@@ -570,3 +570,14 @@
 {"level":"info","message":"⏰ Current EAT: 09/07/2025, 09:11:34 pm","timestamp":"2025-07-09 21:11:34"}
 {"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-09 21:11:34"}
 {"level":"info","message":"Connected to MongoDB","timestamp":"2025-07-09 21:11:35"}
+{"level":"info","message":"🚀 Server running on port 10000","timestamp":"2025-07-09 21:24:18"}
+{"level":"info","message":"🌍 Environment: development","timestamp":"2025-07-09 21:24:18"}
+{"level":"info","message":"💳 M-Pesa Mode: sandbox","timestamp":"2025-07-09 21:24:18"}
+{"level":"info","message":"⏰ Current EAT: 09/07/2025, 09:24:17 pm","timestamp":"2025-07-09 21:24:18"}
+{"level":"info","message":"📁 Logs directory: C:\\Users\\USER\\NyumbaSync\\nyumbasync_backend\\logs","timestamp":"2025-07-09 21:24:18"}
+{"level":"info","message":"Connected to MongoDB","timestamp":"2025-07-09 21:24:18"}
+{"address":"0.0.0.0","code":"EADDRINUSE","errno":-4091,"level":"error","message":"Uncaught Exception: listen EADDRINUSE: address already in use 0.0.0.0:10000","port":10000,"stack":"Error: listen EADDRINUSE: address already in use 0.0.0.0:10000\n    at Server.setupListenHandle [as _listen2] (node:net:1940:16)\n    at listenInCluster (node:net:1997:12)\n    at node:net:2206:7\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)","syscall":"listen","timestamp":"2025-07-09 21:39:54"}
+{"level":"info","message":"uncaughtException received. Shutting down gracefully...","timestamp":"2025-07-09 21:39:54"}
+{"level":"info","message":"HTTP server closed","timestamp":"2025-07-09 21:39:54"}
+{"level":"info","message":"Connected to MongoDB","timestamp":"2025-07-09 21:39:55"}
+{"level":"info","message":"MongoDB connection closed","timestamp":"2025-07-09 21:39:55"}
