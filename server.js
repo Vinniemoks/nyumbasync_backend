@@ -3,16 +3,15 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
-const { createLogger, format, transports } = require('winston'); // Winston logger
+const { createLogger, format, transports } = require('winston');
 const mpesaRoutes = require('./routes/v1/mpesa.routes');
 const propertyRoutes = require('./routes/v1/property.routes');
 const authRoutes = require('./routes/v1/auth.routes');
 
-// Initialize Express
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// 0. Enhanced Winston Logger Configuration
+// Winston Logger
 const logger = createLogger({
   level: 'info',
   format: format.combine(
@@ -35,30 +34,30 @@ const logger = createLogger({
   ]
 });
 
-// 1. Database Connection with Retry Logic
+// Database Connection with Retry
 const connectWithRetry = () => {
   mongoose.set('strictQuery', false);
-  
+
   mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 30000
   })
-  .then(() => logger.info('Connected to MongoDB'))
-  .catch(err => {
-    logger.error(`MongoDB connection failed: ${err.message}`);
-    logger.info('Retrying connection in 5 seconds...');
-    setTimeout(connectWithRetry, 5000);
-  });
+    .then(() => logger.info('Connected to MongoDB'))
+    .catch(err => {
+      logger.error(`MongoDB connection failed: ${err.message}`);
+      logger.info('Retrying connection in 5 seconds...');
+      setTimeout(connectWithRetry, 5000);
+    });
 };
 connectWithRetry();
 
-// 2. Middleware Configuration
+// Middleware
 app.use(cors({
   origin: [
     'https://mokuavinnie.tech/',
-    'https://nyumbasync.co.ke', 
+    'https://nyumbasync.co.ke',
     'http://localhost:3000',
     'https://app.nyumbasync.co.ke',
     'https://sandbox.safaricom.co.ke'
@@ -67,11 +66,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 3. Enhanced Timezone Middleware
+// Timezone Middleware
 app.use((req, res, next) => {
   const now = new Date();
   res.locals.timezone = 'Africa/Nairobi';
@@ -89,29 +87,35 @@ app.use((req, res, next) => {
   next();
 });
 
-// 4. API Routes with Logging Middleware
+// Log Requests
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.originalUrl}`);
   next();
 });
 
+// ✅ Default root route to fix "Cannot GET /"
+app.get('/', (req, res) => {
+  res.send('🟢 Backend API is running. Welcome to NyumbaSync!');
+});
+
+// Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/mpesa', mpesaRoutes);
 app.use('/api/v1/properties', propertyRoutes);
 
-// 5. Static Files with Enhanced Caching
+// Static Files
 app.use('/public', express.static(path.join(__dirname, 'public'), {
   maxAge: '1d',
-  setHeaders: (res, path) => {
-    if (path.endsWith('.mpesa')) {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.mpesa')) {
       res.set('Cache-Control', 'no-store');
-    } else if (path.match(/\.(jpg|jpeg|png|gif|ico|css|js)$/)) {
+    } else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|css|js)$/)) {
       res.set('Cache-Control', 'public, max-age=86400');
     }
   }
 }));
 
-// 6. Enhanced Error Handling
+// Error Handling
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Samahani, kuna tatuko kwenye server';
@@ -134,14 +138,14 @@ app.use((err, req, res, next) => {
     });
   }
 
-  res.status(statusCode).json({ 
+  res.status(statusCode).json({
     error: message,
     timestamp: res.locals.currentTime,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
 
-// 7. Server Startup with Cluster Support
+// Start Server
 const server = app.listen(PORT, '0.0.0.0', () => {
   const currentTime = new Date().toLocaleString('en-KE', {
     timeZone: 'Africa/Nairobi',
@@ -153,7 +157,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     minute: '2-digit',
     second: '2-digit'
   });
-  
+
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
@@ -161,7 +165,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
 });
 
-// Process termination handlers with cleanup
+// Shutdown Cleanup
 const shutdown = (signal) => {
   logger.info(`${signal} received. Shutting down gracefully...`);
   server.close(() => {
@@ -175,13 +179,10 @@ const shutdown = (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-
-// Handle uncaught exceptions and rejections
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught Exception:', err);
   shutdown('uncaughtException');
 });
-
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
