@@ -93,16 +93,30 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // CORS Configuration
 app.use(cors({
   origin: [
+    'https://nyumbasync-backend.onrender.com',
     'https://mokuavinnie.tech',
     'https://nyumbasync.co.ke',
     'http://localhost:3000',
     'https://app.nyumbasync.co.ke',
     'https://sandbox.safaricom.co.ke'
   ],
+  ...(process.env.NODE_ENV === 'development' ? [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ] : []),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+// Render Proxy Middleware
+app.use((req, res, next) => {
+  if (process.env.RENDER) {
+    res.set('X-Render-Host', req.hostname);
+    res.set('X-Render-Instance', process.env.RENDER_INSTANCE_ID || 'unknown');
+  }
+  next();
+});
 
 // Timezone Middleware
 app.use((req, res, next) => {
@@ -130,28 +144,18 @@ app.use((req, res, next) => {
 
 // Root Route - This should be the FIRST route defined
 app.get('/', (req, res) => {
-  try {
-    const response = {
-      status: '🟢 Running',
-      service: 'NyumbaSync Backend API',
-      version: '1.0.0',
-      time: res.locals.currentTime,
-      environment: process.env.NODE_ENV || 'development',
-      database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-      port: PORT,
-      uptime: process.uptime()
-    };
-    
-    logger.info('✅ Root route response sent');
-    res.status(200).json(response);
-  } catch (error) {
-    logger.error('❌ Root route error:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error.message,
-      timestamp: res.locals.currentTime
-    });
-  }
+  logger.info('Root route accessed');
+  res.set('Content-Type', 'application/json');
+  res.status(200).json({
+    status: 'running',
+    service: 'NyumbaSync API',
+    version: '1.0',
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    environment: process.env.NODE_ENV || 'development',
+    renderInstance: process.env.RENDER_INSTANCE_ID || 'local',
+    documentation: 'https://docs.nyumbasync.com'
+  });
 });
 
 // Health check route
@@ -159,7 +163,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     timestamp: res.locals.currentTime,
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
@@ -216,7 +221,12 @@ app.use('*', (req, res) => {
     error: 'Route not found',
     path: req.originalUrl,
     method: req.method,
-    timestamp: res.locals.currentTime
+    timestamp: res.locals.currentTime,
+    suggestedRoutes: [
+      '/api/v1/auth',
+      '/api/v1/mpesa',
+      '/api/v1/properties'
+    ]
   });
 });
 
