@@ -80,7 +80,8 @@ yarn install
 - Copy the environment file and update values as needed:
 
 ``` bash
-cp .env ``` 
+cp .env 
+``` 
 
 Edit .env to set your database URI, port, and other secrets.
 
@@ -93,12 +94,14 @@ Ensure MongoDB is running and accessible with the credentials provided in your .
 ## Development Mode
 
 ``` bash
-npm run dev ```
+npm run dev 
+```
 
 ## Production Mode
 
 ``` bash
-npm start ```
+npm start 
+```
 
 # API Reference
 
@@ -137,7 +140,8 @@ Fork the repository and create your branch:
 
 ``` bash 
 
-git checkout -b feature/your-feature-name ```
+git checkout -b feature/your-feature-name 
+```
 
 Write clear, well-documented code and include tests if applicable.
 
