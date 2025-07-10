@@ -120,7 +120,7 @@ npm start
 JWT-based authentication is used for protected endpoints. Include the token in the Authorization header as Bearer <token>.
 
 # Project Structure
-
+```
 nyumbasync_backend/
 ├── controllers/      # Route handlers and business logic
 ├── models/           # Database schemas/models
@@ -132,6 +132,7 @@ nyumbasync_backend/
 ├── .env.example      # Example environment variables
 ├── package.json      # Project metadata and scripts
 └── README.md         # Project documentation
+```
 
 # Contributing
 
