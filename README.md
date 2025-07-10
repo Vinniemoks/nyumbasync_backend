@@ -144,13 +144,13 @@ Fork the repository and create your branch:
 git checkout -b feature/your-feature-name 
 ```
 
-Write clear, well-documented code and include tests if applicable.
+- Write clear, well-documented code and include tests if applicable.
 
-Follow the existing code style and naming conventions please.
+- Follow the existing code style and naming conventions please.
 
-Commit your changes with descriptive messages.
+- Commit your changes with descriptive messages.
 
-Push to your fork and submit a Pull Request with a detailed description.
+- Push to your fork and submit a Pull Request with a detailed description.
 
 ## Contribution Guidelines:
 
