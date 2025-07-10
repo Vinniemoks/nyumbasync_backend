@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
-const { validatePhone } = require('../utils/kenyanValidators');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const { validatePhone, validateKRA, validateIDNumber } = require('../utils/kenyanValidators');
 
 const UserSchema = new mongoose.Schema({
   // Kenyan phone as primary ID
@@ -7,73 +9,54 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Phone number is required'],
     unique: true,
+    trim: true,
     validate: {
       validator: validatePhone,
       message: 'Invalid Kenyan phone (must start with 2547 or 2541)'
     }
   },
 
-  // M-Pesa verification fields
-  mpesaVerified: {
-    type: Boolean,
-    default: false
-  },
-  verificationCode: String,
-  codeExpires: Date,
-
-  // Role-based access control
-  role: {
+  // Profile information
+  firstName: {
     type: String,
-    enum: ['tenant', 'landlord', 'manager', 'vendor'],
-    required: [true, 'User role is required'],
-    default: 'tenant'
+    required: [true, 'First name is required'],
+    trim: true,
+    maxlength: [50, 'First name cannot exceed 50 characters']
   },
-
-  // Security fields
-  password: {
+  lastName: {
     type: String,
-    required: [true, 'Password is required'],
-    select: false,
-    minlength: 8
+    required: [true, 'Last name is required'],
+    trim: true,
+    maxlength: [50, 'Last name cannot exceed 50 characters']
   },
-  passwordChangedAt: Date,
-  passwordResetToken: String,
-  passwordResetExpires: Date,
+  email: {
+    type: String,
+    unique: true,
+    lowercase: true,
+    trim: true,
+    validate: {
+      validator: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+      message: 'Invalid email address'
+    }
+  },
 
   // Nairobi-specific identification
   idNumber: {
     type: String,
     validate: {
-      validator: function(v) {
-        return /^\d{8}$/.test(v); // Standard Kenyan ID format
-      },
-      message: 'Invalid Kenyan ID number (must be 8 digits)'
+      validator: validateIDNumber,
+      message: 'Invalid Kenyan ID number'
     }
   },
   kraPin: {
     type: String,
     validate: {
-      validator: function(v) {
-        return /^[A-Z]\d{9}[A-Z]$/.test(v); // KRA PIN format
-      },
+      validator: validateKRA,
       message: 'Invalid KRA PIN format'
     }
   },
 
-  // Profile information
-  firstName: String,
-  lastName: String,
-  email: {
-    type: String,
-    validate: {
-      validator: function(v) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-      },
-      message: 'Invalid email address'
-    }
-  },
-
-  // Nairobi location reference
+  // Location reference
   subcounty: {
     type: String,
     enum: [
@@ -82,56 +65,135 @@ const UserSchema = new mongoose.Schema({
     ]
   },
 
-  // Timestamps with Nairobi timezone
-  createdAt: {
-    type: Date,
-    default: () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
+  // Role-based access control
+  role: {
+    type: String,
+    enum: ['tenant', 'landlord', 'manager', 'vendor', 'admin'],
+    required: true,
+    default: 'tenant'
   },
-  updatedAt: {
-    type: Date,
-    default: () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Nairobi' }))
-  }
+
+  // Security fields
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    select: false,
+    minlength: 8,
+    maxlength: 128
+  },
+  passwordChangedAt: Date,
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+
+  // Verification status
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationCode: String,
+  codeExpires: Date,
+
+  // Account status
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'suspended'],
+    default: 'active'
+  },
+  lastLogin: Date,
+  loginAttempts: {
+    type: Number,
+    default: 0
+  },
+  lockedUntil: Date
 }, { 
-  versionKey: false,
-  timestamps: false // We're handling timestamps manually for timezone
+  timestamps: {
+    createdAt: 'joinedAt',
+    updatedAt: 'lastUpdated'
+  },
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Password hashing middleware
+// Virtuals
+UserSchema.virtual('fullName').get(function() {
+  return `${this.firstName} ${this.lastName}`;
+});
+
+// Indexes
+UserSchema.index({ phone: 1 }, { unique: true });
+UserSchema.index({ email: 1 }, { unique: true, sparse: true });
+UserSchema.index({ role: 1 });
+UserSchema.index({ status: 1 });
+UserSchema.index({ subcounty: 1 });
+
+// Middleware
 UserSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   
   try {
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
-    this.passwordChangedAt = Date.now() - 1000; // Ensures token created after
+    this.passwordChangedAt = Date.now() - 1000;
     next();
   } catch (err) {
     next(err);
   }
 });
 
-// Method to check password
-UserSchema.methods.correctPassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+// Instance methods
+UserSchema.methods = {
+  correctPassword: async function(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+  },
+
+  changedPasswordAfter: function(JWTTimestamp) {
+    if (this.passwordChangedAt) {
+      const changedTimestamp = parseInt(
+        this.passwordChangedAt.getTime() / 1000,
+        10
+      );
+      return JWTTimestamp < changedTimestamp;
+    }
+    return false;
+  },
+
+  createPasswordResetToken: function() {
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    this.passwordResetToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+    
+    this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    
+    return resetToken;
+  },
+
+  createVerificationCode: function() {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    this.verificationCode = crypto
+      .createHash('sha256')
+      .update(code)
+      .digest('hex');
+    
+    this.codeExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    
+    return code;
+  }
 };
 
-// Method to create password reset token
-UserSchema.methods.createPasswordResetToken = function() {
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  
-  this.passwordResetToken = crypto
-    .createHash('sha256')
-    .update(resetToken)
-    .digest('hex');
-  
-  this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-  
-  return resetToken;
+// Static methods
+UserSchema.statics = {
+  findByIdentifier: function(identifier) {
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+    return this.findOne(
+      isEmail 
+        ? { email: identifier.toLowerCase() }
+        : { phone: identifier }
+    );
+  }
 };
-
-// Indexes for performance
-UserSchema.index({ phone: 1 }, { unique: true });
-UserSchema.index({ idNumber: 1 }, { sparse: true });
-UserSchema.index({ kraPin: 1 }, { sparse: true });
 
 module.exports = mongoose.model('User', UserSchema);
