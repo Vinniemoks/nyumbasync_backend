@@ -4,7 +4,7 @@ const mpesaController = require('../../controllers/mpesa.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
 /**
- * @swagger
+ * @swagger ⚠️ mpesa routes not found at C:\Users\USER\NyumbaSync\nyumbasync_backend\routes\v1\mpesa.routes.js. Error: Invalid validator. Received (undefined) undefined. See https://mongoosejs.com/docs/api/schematype.html#schematype_SchemaType-validate
  * tags:
  *   name: M-Pesa
  *   description: M-Pesa payment processing

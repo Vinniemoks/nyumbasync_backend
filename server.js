@@ -38,29 +38,23 @@ const logger = createLogger({
   ]
 });
 
-// Try to import routes with error handling
-let mpesaRoutes, propertyRoutes, authRoutes;
+// Improved Route Loader Function
+const loadRoute = (routeName) => {
+  const routePath = path.join(__dirname, 'routes', 'v1', `${routeName}.routes.js`);
+  try {
+    const route = require(routePath);
+    logger.info(`✅ ${routeName} routes loaded from: ${routePath}`);
+    return route;
+  } catch (err) {
+    logger.warn(`⚠️ ${routeName} routes not found at ${routePath}. Error: ${err.message}`);
+    return null;
+  }
+};
 
-try {
-  mpesaRoutes = require('./routes/v1/mpesa.routes');
-  logger.info('✅ M-Pesa routes loaded');
-} catch (err) {
-  logger.warn('⚠️ M-Pesa routes not found, skipping...', err.message);
-}
-
-try {
-  propertyRoutes = require('./routes/v1/property.routes');
-  logger.info('✅ Property routes loaded');
-} catch (err) {
-  logger.warn('⚠️ Property routes not found, skipping...', err.message);
-}
-
-try {
-  authRoutes = require('./routes/v1/auth.routes');
-  logger.info('✅ Auth routes loaded');
-} catch (err) {
-  logger.warn('⚠️ Auth routes not found, skipping...', err.message);
-}
+// Load all routes
+const mpesaRoutes = loadRoute('mpesa');
+const propertyRoutes = loadRoute('property');
+const authRoutes = loadRoute('auth');
 
 // Database Connection with Retry
 const connectWithRetry = () => {
@@ -95,13 +89,13 @@ app.use(cors({
   origin: [
     'https://nyumbasync-backend.onrender.com',
     'https://mokuavinnie.tech',
-    'https://nyumbasync.co.ke',
-    'http://localhost:3000',
+    /* 'https://nyumbasync.co.ke',
+    'http://localhost:10000',
     'https://app.nyumbasync.co.ke',
-    'https://sandbox.safaricom.co.ke',
+    'https://sandbox.safaricom.co.ke', */
     ...(process.env.NODE_ENV === 'development' ? [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000'
+      'http://localhost:10000',
+      'http://127.0.0.1:10000'
     ] : [])
   ],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -142,7 +136,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root Route - This should be the FIRST route defined
+// Root Route
 app.get('/', (req, res) => {
   logger.info('Root route accessed');
   res.set('Content-Type', 'application/json');
