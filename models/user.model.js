@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { validatePhone, validateKRA, validateIDNumber } = require('../utils/kenyanValidators');
+const {
+  validatePhone,
+  validateKRAPin: validateKRA,
+  validateNationalID: validateIDNumber
+} = require('../utils/kenyanValidators');
+
 
 const UserSchema = new mongoose.Schema({
   // Kenyan phone as primary ID

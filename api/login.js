@@ -1,24 +1,24 @@
-// ./api/login.js
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
-const User = require('../models/User'); 
-const { createLogger } = require('winston');
+const User = require('../models/User.model');
+const winston = require('winston');
+require('dotenv').config();
 
 const router = express.Router();
 
-// Logger (use your existing logger configuration)
-const logger = createLogger({
+// Logger configuration
+const logger = winston.createLogger({
   level: 'info',
-  format: require('winston').format.combine(
-    require('winston').format.timestamp(),
-    require('winston').format.json()
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
   ),
   transports: [
-    new require('winston').transports.Console(),
-    new require('winston').transports.File({ filename: 'logs/auth.log' })
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'logs/auth.log' })
   ]
 });
 
@@ -53,24 +53,22 @@ const validateLogin = [
     .custom((value) => {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-      
       if (!emailRegex.test(value) && !phoneRegex.test(value)) {
         throw new Error('Please provide a valid email or phone number');
       }
       return true;
     }),
-  
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long')
     .notEmpty()
     .withMessage('Password is required'),
-  
   body('remember')
     .optional()
     .isBoolean()
     .withMessage('Remember me must be a boolean value')
 ];
+
 
 // Helper function to determine if identifier is email or phone
 const determineIdentifierType = (identifier) => {
