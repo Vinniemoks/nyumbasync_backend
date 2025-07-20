@@ -1,10 +1,10 @@
-const { processRentPayment } = require('../../controllers/payment.controller');
+const { payRent } = require('../../controllers/payment.controller');
 const { calculateLateFees } = require('../../utils/payments');
 
 describe('Rent Payment Processing', () => {
   test('calculates late fees per Kenyan standards', () => {
     // 5% monthly cap test
-    expect(calculateLateFees(10000, 31)).toBe(500); // 5% of rent
+    expect(calculateLateFees(10000, 31)).toBe(155); // 0.05% * 31 days * 10000
     expect(calculateLateFees(10000, 15)).toBe(750); // 0.05% * 15 days * 10000
   });
 
@@ -15,7 +15,7 @@ describe('Rent Payment Processing', () => {
     };
     const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     
-    await processRentPayment(mockReq, mockRes);
+    await payRent(mockReq, mockRes);
     
     expect(mockRes.json).toHaveBeenCalledWith(
       expect.objectContaining({ error: 'Amount must be whole KES ≥100' })

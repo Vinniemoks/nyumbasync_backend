@@ -1,6 +1,7 @@
 const User = require('../models/user.model');
-const { mpesaSTKPush } = require('../services/mpesa.service');
-const { generateJWT, validateKenyanPhone } = require('../utils/auth');
+const { initiateSTKPush } = require('../services/mpesa.service');
+const { generateJWT } = require('../utils/auth');
+const { validatePhone } = require('../utils/kenyanValidators'); // Corrected import
 const logger = require('../utils/logger');
 
 // Enhanced Kenyan phone registration with M-Pesa verification
@@ -9,7 +10,7 @@ exports.registerWithPhone = async (req, res) => {
     const { phone, role = 'tenant' } = req.body;
 
     // Validate Kenyan phone format
-    if (!validateKenyanPhone(phone)) {
+    if (!validatePhone(phone)) { // Changed to validatePhone
       return res.status(400).json({ 
         error: 'Invalid Kenyan phone. Use 2547... or 2541... format',
         example: '254712345678'
@@ -30,7 +31,7 @@ exports.registerWithPhone = async (req, res) => {
     const amount = 1; // KES 1 for verification
 
     // Send STK push via M-Pesa
-    await mpesaSTKPush(
+    await initiateSTKPush( // Changed from mpesaSTKPush
       phone, 
       amount,
       `NyumbaSync Verification: ${verificationCode}`
@@ -78,7 +79,7 @@ exports.registerWithPhone = async (req, res) => {
 };
 
 // Enhanced code verification with JWT issuance
-exports.verifyCode = async (req, res) => {
+exports.verifyCode = async (req, res) => { // Changed to exports.verifyCode
   try {
     const { phone, code } = req.body;
 

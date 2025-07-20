@@ -1,5 +1,6 @@
-const { validatePhone, verifyMpesaCode } = require('../../controllers/auth.controller');
+const { validatePhone, validateNationalID, validateRentIncrease, validateKRAPin, validateLeaseDuration, validateMpesaAmount, validateCoordinates, validatePostalCode } = require('../../utils/kenyanValidators');
 const { formatKenyanPhone } = require('../../utils/formatters');
+const { verifyCode } = require('../../controllers/auth.controller'); // Corrected import
 
 describe('Kenyan Phone Authentication', () => {
   // Test valid Kenyan numbers
@@ -22,11 +23,11 @@ describe('Kenyan Phone Authentication', () => {
     const mockReq = { body: { phone: '254712345678', code: '1234' } };
     const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     
-    await verifyMpesaCode(mockReq, mockRes);
+    await verifyCode(mockReq, mockRes); // Changed to verifyCode
     
     expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(mockRes.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: 'Invalid or expired code' })
+      expect.objectContaining({ error: 'Namba ya uthibitisho si sahihi au imeisha' }) // Updated error message
     );
   });
 });

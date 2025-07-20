@@ -35,8 +35,8 @@ exports.validateMpesaCallback = (callbackData) => {
  */
 exports.calculateLateFees = (rentAmount, daysLate) => {
   const dailyPenalty = rentAmount * 0.0005; // 0.05% per day
-  return Math.min(
-    dailyPenalty * daysLate,
-    rentAmount * 0.05 // Cap at 5%
-  );
+  const monthlyCap = rentAmount * 0.05; // 5% per month cap
+  const totalDailyPenalty = dailyPenalty * daysLate;
+
+  return Math.min(totalDailyPenalty, monthlyCap);
 };
