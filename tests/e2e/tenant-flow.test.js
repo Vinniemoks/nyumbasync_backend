@@ -1,5 +1,5 @@
 const request = require('supertest');
-const app = require('../../server'); // Corrected path
+const app = require('../app');
 const { createTestTenant } = require('../helpers');
 
 describe('Tenant User Journey (Nairobi)', () => {
