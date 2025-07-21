@@ -1192,7 +1192,3 @@
 {"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-10 23:18:35"}
 {"level":"info","message":"HTTP server closed","timestamp":"2025-07-10 23:18:35"}
 {"level":"info","message":"\nSIGINT received. Shutting down gracefully...","timestamp":"2025-07-10 23:18:36"}
-{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"21 July 2025"}
-{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"21 July 2025"}
-{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"21 July 2025"}
-{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"21 July 2025"}
