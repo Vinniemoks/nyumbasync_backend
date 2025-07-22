@@ -70,6 +70,11 @@ const propertyRoutes = loadRoute('property');
 const authRoutes = loadRoute('auth');
 const uploadRoutes = loadRoute('upload');
 const userRoutes = loadRoute('user');
+const adminRoutes = loadRoute('admin');
+const maintenanceRoutes = loadRoute('maintenance');
+const paymentRoutes= loadRoute('payment');
+const transactionRoutes = loadRoute('transaction');
+
 
 // JWT Authentication middleware
 const authenticateToken = (req, res, next) => {
