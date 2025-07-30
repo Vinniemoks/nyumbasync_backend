@@ -1,12 +1,18 @@
+require('dotenv').config();
+console.log(process.env.JWT_SECRET);
 const request = require('supertest');
-const app = require('../../server');
+let app;
 const { createTestTenant } = require('../helpers');
 
 describe('Tenant User Journey (Nairobi)', () => {
   let tenantToken;
-  const testPhone = `2547${Math.floor(10000000 + Math.random() * 90000000)}`;
+  // Define testPhone here or within a beforeAll/beforeEach
+  const testPhone = '254712345678'; // Example test phone number
 
   beforeAll(async () => {
+    process.env.JWT_SECRET = '12345678'
+    app = require('../../app'); // Corrected import path
+
     // Register test tenant
     await request(app)
       .post('/api/v1/auth/register')
@@ -20,7 +26,8 @@ describe('Tenant User Journey (Nairobi)', () => {
     tenantToken = res.body.token;
   });
 
-  test('complete rent payment flow', async () => {
+  // Place your test cases inside this describe block
+  test('should complete rent payment flow', async () => {
     // 1. Search for properties
     const searchRes = await request(app)
       .get('/api/v1/properties?lng=36.8&lat=-1.3&maxRent=50000')

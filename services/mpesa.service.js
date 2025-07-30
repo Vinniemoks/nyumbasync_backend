@@ -13,6 +13,9 @@ class MpesaService {
       return this.authToken;
     }
 
+    console.log('MPESA_CONSUMER_KEY:', process.env.MPESA_CONSUMER_KEY);
+    console.log('MPESA_CONSUMER_SECRET:', process.env.MPESA_CONSUMER_SECRET);
+
     const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
     
     try {
@@ -28,6 +31,7 @@ class MpesaService {
       this.tokenExpiry = new Date(Date.now() + (response.data.expires_in * 1000));
       return this.authToken;
     } catch (error) {
+      console.error('Error in _getAuthToken:', error.message);
       logTransaction('MPESA_AUTH_FAIL', error.response?.data);
       throw new Error('MPESA_AUTH_FAILED');
     }
@@ -65,7 +69,7 @@ class MpesaService {
 
       logTransaction('MPESA_STK_PUSH', {
         reference,
-        phone: phone.replace(/(\d{4})(\d{3})(\d{3})/, '*******$3') // Mask phone
+        phone: phone.replace(/(d{4})(d{3})(d{3})/, '*******$3') // Mask phone
       });
 
       return response.data;

@@ -1,11 +1,20 @@
 const mpesaService = require('../../services/mpesa.service');
 const nock = require('nock');
 
+process.env.MPESA_CONSUMER_KEY = 'mock_key';
+process.env.MPESA_CONSUMER_SECRET = 'mock_secret';
+
+nock.disableNetConnect();
+
 describe('M-Pesa API Integration', () => {
   beforeEach(() => {
     // Mock Safaricom auth endpoint
-    nock('https://sandbox.safaricom.co.ke')
-      .post('/oauth/v1/generate?grant_type=client_credentials')
+    nock('https://sandbox.safaricom.co.ke', {
+      reqheaders: {
+        'Authorization': 'Basic bW9ja19rZXk6bW9ja19zZWNyZXQ='
+      }
+    })
+      .get('/oauth/v1/generate?grant_type=client_credentials')
       .reply(200, { access_token: 'test_token', expires_in: 3600 });
   });
 

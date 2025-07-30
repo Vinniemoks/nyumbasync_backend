@@ -2,9 +2,11 @@ const { formatCurrency } = require('./formatters');
 
 // Late fee constants for clarity and easy modification
 const LATE_FEE_CONFIG = {
-  MAX_MONTHLY_PERCENTAGE: 0.05, // 5% max per month
-  DAYS_IN_MONTH: 30,
-  GRACE_PERIOD_DAYS: 3, // Optional: no fees for first 3 days
+  // MAX_MONTHLY_PERCENTAGE: 0.05, // 5% max per month - Not used with new logic
+  // DAYS_IN_MONTH: 30, // Not used with new logic
+  // GRACE_PERIOD_DAYS: 3, // Optional: no fees for first 3 days - Not used with new logic
+  LATE_FEE_PERCENTAGE: 0.10, // 10% fixed late fee
+  DUE_DAY_THRESHOLD: 10, // Day of the month payment is due
 };
 
 /**
@@ -43,61 +45,37 @@ exports.validateMpesaCallback = (callbackData) => {
 };
 
 /**
- * Calculates late fees according to Kenyan rental law
- * Maximum 5% of rent amount per month, prorated daily
+ * Calculates late fees based on a fixed 10% charge if paid after the 10th
  * 
  * @param {number} rentAmount - Monthly rent amount
- * @param {number} daysLate - Number of days payment is late
- * @param {Object} options - Optional configuration
- * @param {number} options.gracePeriod - Days before late fees start (default: 0)
- * @param {number} options.maxMonthlyRate - Max monthly late fee rate (default: 0.05)
+ * @param {number} daysLate - Number of days payment is late (relative to due date, e.g., > 0 means after due date)
  * @returns {Object} - Late fee calculation details
  */
-exports.calculateLateFees = (rentAmount, daysLate, options = {}) => {
+exports.calculateLateFees = (rentAmount, daysLate) => {
   // Input validation
   if (!rentAmount || rentAmount <= 0) {
     return { amount: 0, error: 'Invalid rent amount' };
   }
   
-  if (!daysLate || daysLate <= 0) {
-    return { amount: 0, daysLate: 0, gracePeriod: true };
-  }
-  
-  // Configuration with defaults
-  const config = {
-    gracePeriod: options.gracePeriod || 0,
-    maxMonthlyRate: options.maxMonthlyRate || LATE_FEE_CONFIG.MAX_MONTHLY_PERCENTAGE,
-    daysInMonth: LATE_FEE_CONFIG.DAYS_IN_MONTH,
-  };
-  
-  // Apply grace period
-  const chargeableDays = Math.max(0, daysLate - config.gracePeriod);
-  
-  if (chargeableDays <= 0) {
-    return { 
-      amount: 0, 
-      daysLate, 
-      chargeableDays: 0, 
-      gracePeriod: true 
+  // If payment is on or before the 10th day, no late fee
+  if (daysLate <= LATE_FEE_CONFIG.DUE_DAY_THRESHOLD) {
+    return {
+      amount: 0,
+      daysLate,
+      chargeableDays: 0,
+      gracePeriod: true, // Indicates no late fee was applied
     };
   }
-  
-  // Calculate daily rate based on monthly cap
-  const maxMonthlyFee = rentAmount * config.maxMonthlyRate;
-  const dailyRate = maxMonthlyFee / config.daysInMonth;
-  
-  // Calculate total fee with monthly cap
-  const calculatedFee = dailyRate * chargeableDays;
-  const cappedFee = Math.min(calculatedFee, maxMonthlyFee);
-  
+
+  // If payment is after the 10th day, apply 10% fixed fee
+  const lateFee = rentAmount * LATE_FEE_CONFIG.LATE_FEE_PERCENTAGE;
+
   return {
-    amount: Math.round(cappedFee), // Round to nearest KES
+    amount: Math.round(lateFee), // Round to nearest KES
     daysLate,
-    chargeableDays,
-    dailyRate: Math.round(dailyRate * 100) / 100, // Round to 2 decimal places
-    maxMonthlyFee,
+    chargeableDays: daysLate - LATE_FEE_CONFIG.DUE_DAY_THRESHOLD, // Days exceeding the threshold
     gracePeriod: false,
-    capped: calculatedFee > maxMonthlyFee,
+    capped: false, // No capping with this logic
   };
 };
 

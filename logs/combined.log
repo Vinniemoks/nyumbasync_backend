@@ -1202,3 +1202,39 @@
 {"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
 {"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
 {"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_AUTH_FAIL","timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_PUSH","phone":"254712345678","reference":"RENT_JAN_2024","timestamp":"30 July 2025"}
+{"error":"Request failed with status code 503","level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_FAIL","payload":{"AccountReference":"RENT_JAN_2024","Amount":5000,"CallBackURL":"undefined/api/v1/mpesa-callback","PartyA":"254712345678","Password":"7ff85b4a4666cefb07bf26907d757c3766791b448695c8cee939f4f6a84c6aa7","PhoneNumber":"254712345678","TransactionDesc":"NyumbaSync Rent Payment","TransactionType":"CustomerPayBillOnline"},"timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_PUSH","phone":"254712345678","reference":"RENT_JAN_2024","timestamp":"30 July 2025"}
+{"error":"Request failed with status code 503","level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_FAIL","payload":{"AccountReference":"RENT_JAN_2024","Amount":5000,"CallBackURL":"undefined/api/v1/mpesa-callback","PartyA":"254712345678","Password":"87f8e187aef7c644679ca01dc6969c0da9c6ff5209e6d4e5de5090b17031eef6","PhoneNumber":"254712345678","TransactionDesc":"NyumbaSync Rent Payment","TransactionType":"CustomerPayBillOnline"},"timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_PUSH","phone":"254712345678","reference":"RENT_JAN_2024","timestamp":"30 July 2025"}
+{"error":"Request failed with status code 503","level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_FAIL","payload":{"AccountReference":"RENT_JAN_2024","Amount":5000,"CallBackURL":"undefined/api/v1/mpesa-callback","PartyA":"254712345678","Password":"3be9726adb00ef5e453c6772cb61b64496f52b8811a8a698b291b211b8508cbd","PhoneNumber":"254712345678","TransactionDesc":"NyumbaSync Rent Payment","TransactionType":"CustomerPayBillOnline"},"timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_PUSH","phone":"254712345678","reference":"RENT_JAN_2024","timestamp":"30 July 2025"}
+{"error":"Request failed with status code 503","level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_FAIL","payload":{"AccountReference":"RENT_JAN_2024","Amount":5000,"CallBackURL":"undefined/api/v1/mpesa-callback","PartyA":"254712345678","Password":"598a82355af7f990f14687c904aa7029f5ef881913f2f0a3e91f1d7aca317893","PhoneNumber":"254712345678","TransactionDesc":"NyumbaSync Rent Payment","TransactionType":"CustomerPayBillOnline"},"timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_PUSH","phone":"254712345678","reference":"RENT_JAN_2024","timestamp":"30 July 2025"}
+{"error":"Request failed with status code 503","level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_FAIL","payload":{"AccountReference":"RENT_JAN_2024","Amount":5000,"CallBackURL":"undefined/api/v1/mpesa-callback","PartyA":"254712345678","Password":"c84df59634b47254f670acd852ef9f638412acabda641666dadedc64f2a35ec8","PhoneNumber":"254712345678","TransactionDesc":"NyumbaSync Rent Payment","TransactionType":"CustomerPayBillOnline"},"timestamp":"30 July 2025"}
+{"level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_PUSH","phone":"254712345678","reference":"RENT_JAN_2024","timestamp":"31 July 2025"}
+{"error":"Request failed with status code 503","level":"info","location":"Nairobi","message":"[MPESA] MPESA_STK_FAIL","payload":{"AccountReference":"RENT_JAN_2024","Amount":5000,"CallBackURL":"undefined/api/v1/mpesa-callback","PartyA":"254712345678","Password":"eeba63c83e53bdb2fd8256fa9922887a4719193fb3505b309e9e7417490df691","PhoneNumber":"254712345678","TransactionDesc":"NyumbaSync Rent Payment","TransactionType":"CustomerPayBillOnline"},"timestamp":"31 July 2025"}
