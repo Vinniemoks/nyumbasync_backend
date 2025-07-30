@@ -4,8 +4,8 @@ const { calculateLateFees } = require('../../utils/payments');
 describe('Rent Payment Processing', () => {
   test('calculates late fees per Kenyan standards', () => {
     // 5% monthly cap test
-    expect(calculateLateFees(10000, 31)).toBe(155); // 0.05% * 31 days * 10000
-    expect(calculateLateFees(10000, 15)).toBe(750); // 0.05% * 15 days * 10000
+    expect(calculateLateFees(10000, 31)).toBe(155); // 0.005 * 31 days * 10000
+    expect(calculateLateFees(10000, 15)).toBe(750); // 0.005 * 15 days * 10000
   });
 
   test('rejects payments under KES 100', async () => {

@@ -1,6 +1,6 @@
 const { validatePhone, validateNationalID, validateRentIncrease, validateKRAPin, validateLeaseDuration, validateMpesaAmount, validateCoordinates, validatePostalCode } = require('../../utils/kenyanValidators');
 const { formatKenyanPhone } = require('../../utils/formatters');
-const { verifyCode } = require('../../controllers/auth.controller'); // Corrected import
+const { verifyCode } = require('../../controllers/auth.controller'); 
 
 describe('Kenyan Phone Authentication', () => {
   // Test valid Kenyan numbers

@@ -1,5 +1,5 @@
 const request = require('supertest');
-const app = require('../app');
+const app = require('../../server');
 const { createTestTenant } = require('../helpers');
 
 describe('Tenant User Journey (Nairobi)', () => {
