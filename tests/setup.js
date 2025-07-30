@@ -30,6 +30,7 @@ module.exports = async () => {
   await mongoose.connect(mongoUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
   });
   console.log('✓ MongoDB in-memory server started');
 

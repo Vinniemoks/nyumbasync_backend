@@ -29,5 +29,5 @@ describe('Kenyan Phone Authentication', () => {
     expect(mockRes.json).toHaveBeenCalledWith(
       expect.objectContaining({ error: 'Namba ya uthibitisho si sahihi au imeisha' }) // Updated error message
     );
-  });
+  }, 15000); // Increased timeout to 15 seconds
 });

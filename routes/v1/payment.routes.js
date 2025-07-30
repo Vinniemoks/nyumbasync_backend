@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const paymentController = require('../../controllers/payment.controller');
-const { authenticate } = require('../../middlewares'); // Corrected import path
+const { authenticate } = require('../../middlewares/auth.middleware'); // Corrected import path
 
 // Tenant payment routes
 router.use(authenticate('tenant'));

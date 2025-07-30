@@ -5,7 +5,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { expressjwt: jwt } = require('express-jwt');
-const winston = require('winston');
+// const winston = require('winston'); // Remove this line
+const logger = require('./utils/logger'); // Import shared logger
 
 // Initialize Express
 const app = express();
@@ -28,15 +29,15 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // ========================
-// 2. LOGGING (Winston + Morgan)
+// 2. LOGGING (Morgan with shared logger)
 // ========================
-const logger = winston.createLogger({
-  transports: [new winston.transports.Console()],
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  )
-});
+// const logger = winston.createLogger({ // Remove this block
+//   transports: [new winston.transports.Console()],
+//   format: winston.format.combine(
+//     winston.format.timestamp(),
+//     winston.format.json()
+//   )
+// });
 
 app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
 
@@ -56,9 +57,10 @@ app.use(
     credentialsRequired: false // Allow public routes
   }).unless({
     path: [
-      '/api/auth/login',
-      '/api/auth/register',
-      '/api/mpesa/callback' // M-Pesa IPNs are public
+      '/api/v1/auth/login',
+      '/api/v1/auth/register',
+      '/api/v1/auth/verify',
+      '/api/v1/mpesa/callback' // M-Pesa IPNs are public
     ]
   })
 );
@@ -75,9 +77,9 @@ app.use((req, res, next) => {
 });
 
 // API Routes
-app.use('/api/auth', require('./routes/v1/auth.routes'));
-app.use('/api/mpesa', require('./routes/v1/mpesa.routes'));
-app.use('/api/rent', require('./routes/v1/payment.routes'));
+app.use('/api/v1/auth', require('./routes/v1/auth.routes'));
+app.use('/api/v1/mpesa', require('./routes/v1/mpesa.routes'));
+app.use('/api/v1/rent', require('./routes/v1/payment.routes'));
 
 // ========================
 // 6. ERROR HANDLING
@@ -92,7 +94,7 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  logger.error(err.stack);
+  logger.error(err.stack); // Use shared logger
   
   // M-Pesa API errors
   if (err.message.includes('MPESA_')) {

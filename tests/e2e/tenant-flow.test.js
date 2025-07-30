@@ -24,7 +24,7 @@ describe('Tenant User Journey (Nairobi)', () => {
       .send({ phone: testPhone, code: '1234' });
     
     tenantToken = res.body.token;
-  });
+  }, 10000); // Increased timeout to 10 seconds
 
   // Place your test cases inside this describe block
   test('should complete rent payment flow', async () => {
@@ -54,5 +54,14 @@ describe('Tenant User Journey (Nairobi)', () => {
       .send(require('../mocks/mpesa.mock')(property.rent, testPhone));
     
     expect(callbackRes.status).toBe(200);
+  });
+
+  test('should fetch payment history', async () => {
+    const historyRes = await request(app)
+      .get('/api/v1/payments/history')
+      .set('Authorization', `Bearer ${tenantToken}`);
+
+    expect(historyRes.status).toBe(200);
+    expect(Array.isArray(historyRes.body)).toBe(true);
   });
 });

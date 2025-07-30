@@ -1,8 +1,8 @@
 const User = require('../models/user.model');
 const { initiateSTKPush } = require('../services/mpesa.service');
 const { generateJWT } = require('../utils/auth');
-const { validatePhone } = require('../utils/kenyanValidators'); // Corrected import
-const logger = require('../utils/logger');
+const { validatePhone } = require('../utils/kenyanValidators');
+const logger = require('../utils/logger'); // Import shared logger
 
 // Enhanced Kenyan phone registration with M-Pesa verification
 exports.registerWithPhone = async (req, res) => {
@@ -10,7 +10,7 @@ exports.registerWithPhone = async (req, res) => {
     const { phone, role = 'tenant' } = req.body;
 
     // Validate Kenyan phone format
-    if (!validatePhone(phone)) { // Changed to validatePhone
+    if (!validatePhone(phone)) {
       return res.status(400).json({ 
         error: 'Invalid Kenyan phone. Use 2547... or 2541... format',
         example: '254712345678'
@@ -31,7 +31,7 @@ exports.registerWithPhone = async (req, res) => {
     const amount = 1; // KES 1 for verification
 
     // Send STK push via M-Pesa
-    await initiateSTKPush( // Changed from mpesaSTKPush
+    await initiateSTKPush(
       phone, 
       amount,
       `NyumbaSync Verification: ${verificationCode}`
@@ -65,7 +65,7 @@ exports.registerWithPhone = async (req, res) => {
     });
 
   } catch (err) {
-    logger.error(`Registration error for ${req.body.phone}: ${err.message}`);
+    logger.error(`Registration error for ${req.body.phone}: ${err.message}`); // Use shared logger
     
     res.status(500).json({ 
       error: 'Kuna tatuko kwenye usajili',
@@ -79,7 +79,7 @@ exports.registerWithPhone = async (req, res) => {
 };
 
 // Enhanced code verification with JWT issuance
-exports.verifyCode = async (req, res) => { // Changed to exports.verifyCode
+exports.verifyCode = async (req, res) => {
   try {
     const { phone, code } = req.body;
 
@@ -112,7 +112,7 @@ exports.verifyCode = async (req, res) => { // Changed to exports.verifyCode
       role: user.role
     });
 
-    logger.info(`User ${phone} successfully verified`);
+    logger.info(`User ${phone} successfully verified`); // Use shared logger
 
     res.status(200).json({
       success: true,
@@ -127,7 +127,7 @@ exports.verifyCode = async (req, res) => { // Changed to exports.verifyCode
     });
 
   } catch (err) {
-    logger.error(`Verification error for ${req.body.phone}: ${err.message}`);
+    logger.error(`Verification error for ${req.body.phone}: ${err.message}`); // Use shared logger
     
     res.status(500).json({
       error: 'Samahani, kuna tatuko kwenye uthibitisho',
@@ -169,15 +169,13 @@ exports.getProfile = async (req, res) => {
     if (user.role === 'landlord') {
       profile.kraPin = user.kraPin || null;
       profile.propertiesCount = user.properties?.length || 0;
-    } else if (user.role === 'tenant') {
-      profile.leasesCount = user.leases?.length || 0;
     }
 
-    logger.info(`Profile accessed for user ${user._id}`);
+    logger.info(`Profile accessed for user ${user._id}`); // Use shared logger
     res.status(200).json(profile);
 
   } catch (error) {
-    logger.error(`Profile error for user ${req.user?._id}: ${error.message}`);
+    logger.error(`Profile error for user ${req.user?._id}: ${error.message}`); // Use shared logger
     res.status(500).json({
       error: 'Failed to fetch profile',
       contact: '0700NYUMBA for assistance'

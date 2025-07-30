@@ -79,3 +79,18 @@ exports.mpesaCallback = async (req, res) => {
     res.status(500).end();
   }
 };
+
+// Get payment history
+exports.paymentHistory = async (req, res) => {
+  try {
+    const payments = await Payment.find({ tenant: req.user.id }).sort({ createdAt: -1 });
+    res.status(200).json(payments);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch payment history' });
+  }
+};
+
+// Placeholder for reconcilePayments
+exports.reconcilePayments = (req, res) => {
+  res.status(501).json({ message: 'Not implemented' });
+};
