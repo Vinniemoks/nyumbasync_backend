@@ -24,7 +24,7 @@ describe('Tenant User Journey (Nairobi)', () => {
       .send({ phone: testPhone, role: 'tenant' });
     
     // Assuming the registration response includes the user ID or phone to find the user
-    const user = await User.findOne({ phone: testPhone });
+    const user = await User.findOne({ phone: testPhone }).maxTimeMS(20000); // Increased timeout to 20 seconds
     testUserId = user._id; // Store user ID for teardown
 
     // Assuming the verification code is available in the response or database
