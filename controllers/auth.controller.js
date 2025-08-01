@@ -270,6 +270,53 @@ exports.completeProfile = async (req, res) => {
   }
 };
 
+// Profile update endpoint
+exports.updateProfile = async (req, res) => {
+  try {
+    const updates = req.body;
+    const userId = req.user._id;
+
+    // Find and update user profile
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updates }, // Use $set to update only provided fields
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
+
+    logger.info(`Profile updated for user ${userId}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        profileComplete: user.profileComplete
+      }
+    });
+
+  } catch (error) {
+    console.error('Profile update error details:', error);
+    logger.error(`Profile update error for user ${req.user?._id}: ${error.message}`);
+
+    res.status(500).json({
+      error: 'Failed to update profile',
+      contact: '0700NYUMBA for assistance'
+    });
+  }
+};
+
+
 // Additional authentication methods
 exports.requestNewCode = async (req, res) => {
   // Implementation for requesting new verification code
