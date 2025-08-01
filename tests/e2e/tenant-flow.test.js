@@ -43,10 +43,17 @@ describe('Tenant User Journey (Nairobi)', () => {
   }, 120000); // Increased beforeAll timeout to 120 seconds
 
   afterAll(async () => {
-    // Clean up the test tenant
+    // Clean up the test tenant by ID or phone
     if (testUserId) {
       await User.findByIdAndDelete(testUserId);
       console.log(`Test tenant with ID ${testUserId} deleted.`);
+    } else {
+      // If user ID was not set (e.g., registration failed), try deleting by phone
+      const userToDelete = await User.findOne({ phone: testPhone });
+      if (userToDelete) {
+        await User.findByIdAndDelete(userToDelete._id);
+        console.log(`Test tenant with phone ${testPhone} deleted.`);
+      }
     }
   });
 
