@@ -1,12 +1,12 @@
 const Property = require('../models/property.model');
 const { validateRentIncrease } = require('../utils/kenyanValidators');
 
-// Get all available properties
+// Get all available properties with optional filters
 exports.searchProperties = async (req, res) => {
   try {
-    const { lng, lat, maxDistance = 5000 } = req.query; // meters
+    const { lng, lat, maxDistance = 5000, maxRent } = req.query; // Added maxRent
     
-    const properties = await Property.find({
+    const query = {
       location: {
         $near: {
           $geometry: {
@@ -17,13 +17,20 @@ exports.searchProperties = async (req, res) => {
         }
       },
       status: 'available'
-    });
+    };
+
+    // Add maxRent filter if provided
+    if (maxRent) {
+      query.rent = { $lte: parseInt(maxRent) };
+    }
+
+    const properties = await Property.find(query); // Use the constructed query
 
     res.json(properties);
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Search failed',
-      alternative: 'Browse by subcounty instead' 
+      alternative: 'Browse by subcounty instead'
     });
   }
 };
