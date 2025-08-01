@@ -40,10 +40,10 @@ const verifyToken = (token) => {
  * @returns {boolean} True if valid Kenyan number in 254 format
  */
 const validateKenyanPhone = (phone) => {
-  console.log('Validating phone:', phone); // Added logging
+  console.log('Validating phone:', phone);
   const regex = /^254[17]d{8}$/; // Corrected regex with escaped backslash
   const isValid = regex.test(phone);
-  console.log('Validation result:', isValid); // Added logging
+  console.log('Validation result:', isValid);
   return isValid;
 };
 
