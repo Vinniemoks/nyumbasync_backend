@@ -40,7 +40,11 @@ const verifyToken = (token) => {
  * @returns {boolean} True if valid Kenyan number in 254 format
  */
 const validateKenyanPhone = (phone) => {
-  return /^254[17]d{8}$/.test(phone); // Corrected regex
+  console.log('Validating phone:', phone); // Added logging
+  const regex = /^254[17]d{8}$/; // Corrected regex with escaped backslash
+  const isValid = regex.test(phone);
+  console.log('Validation result:', isValid); // Added logging
+  return isValid;
 };
 
 /**
@@ -50,7 +54,7 @@ const validateKenyanPhone = (phone) => {
  */
 const formatToStrictKenyan = (phone) => {
   // First check if already in correct format
-  if (/^254[17]d{8}$/.test(phone)) return phone; // Corrected regex
+  if (/^254[17]d{8}$/.test(phone)) return phone; // Corrected regex with escaped backslash
 
   // Convert from other Kenyan formats
   const cleaned = phone.replace(/D/g, ''); 
