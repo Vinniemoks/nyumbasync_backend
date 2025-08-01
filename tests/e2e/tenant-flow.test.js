@@ -4,6 +4,7 @@ const request = require('supertest');
 let app;
 const { createTestTenant, deleteTestTenant } = require('../helpers'); // Assuming you have a helper for deletion
 const User = require('../../models/user.model'); // Import User model for teardown
+const mongoose = require('mongoose'); // Import mongoose
 
 describe('Tenant User Journey (Nairobi)', () => {
   let tenantToken;
@@ -16,6 +17,15 @@ describe('Tenant User Journey (Nairobi)', () => {
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_secret'; 
     console.log('JWT_SECRET in beforeAll:', process.env.JWT_SECRET);
     console.log('MONGODB_URI in beforeAll:', process.env.MONGODB_URI); // Log MONGODB_URI
+
+    // Connect to MongoDB
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log('MongoDB connected for tests.');
+
+
     app = require('../../app'); // Corrected import path
 
     // Register test tenant and get verification code
@@ -58,6 +68,11 @@ describe('Tenant User Journey (Nairobi)', () => {
         console.log(`Test tenant with phone ${testPhone} deleted.`);
       }
     }
+
+    // Disconnect Mongoose after tests
+    await mongoose.disconnect();
+    console.log('MongoDB disconnected after tests.');
+
   }, 60000); // Increased afterAll timeout to 60 seconds
 
   // Place your test cases inside this describe block
