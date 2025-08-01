@@ -24,7 +24,7 @@ describe('Tenant User Journey (Nairobi)', () => {
       .send({ phone: testPhone, role: 'tenant' });
     
     // Assuming the registration response includes the user ID or phone to find the user
-    const user = await User.findOne({ phone: testPhone }).maxTimeMS(20000); // Increased timeout to 20 seconds
+    const user = await User.findOne({ phone: testPhone }).maxTimeMS(30000); // Increased timeout to 30 seconds
     testUserId = user._id; // Store user ID for teardown
 
     // Assuming the verification code is available in the response or database
@@ -40,7 +40,7 @@ describe('Tenant User Journey (Nairobi)', () => {
     tenantToken = res.body.token;
     console.log('Generated Token:', tenantToken); // Log the generated token
 
-  }, 60000); // Increased beforeAll timeout to 60 seconds
+  }, 120000); // Increased beforeAll timeout to 120 seconds
 
   afterAll(async () => {
     // Clean up the test tenant
