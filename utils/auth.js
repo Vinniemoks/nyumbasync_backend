@@ -41,7 +41,7 @@ const verifyToken = (token) => {
  */
 const validateKenyanPhone = (phone) => {
   console.log('Validating phone:', phone);
-  const regex = /^254[17]d{8}$/; // Corrected regex with escaped backslash
+  const regex = /^254[17][0-9]{8}$/; // Modified regex using [0-9]
   const isValid = regex.test(phone);
   console.log('Validation result:', isValid);
   return isValid;
@@ -54,12 +54,12 @@ const validateKenyanPhone = (phone) => {
  */
 const formatToStrictKenyan = (phone) => {
   // First check if already in correct format
-  if (/^254[17]d{8}$/.test(phone)) return phone; // Corrected regex with escaped backslash
+  if (/^254[17][0-9]{8}$/.test(phone)) return phone; // Modified regex using [0-9]
 
   // Convert from other Kenyan formats
   const cleaned = phone.replace(/D/g, ''); 
-  if (/^0[17]d{8}$/.test(cleaned)) return `254${cleaned.substring(1)}`; 
-  if (/^[17]d{8}$/.test(cleaned)) return `254${cleaned}`;
+  if (/^0[17][0-9]{8}$/.test(cleaned)) return `254${cleaned.substring(1)}`; 
+  if (/^[17][0-9]{8}$/.test(cleaned)) return `254${cleaned}`;
 
   return null; // Invalid format
 };
