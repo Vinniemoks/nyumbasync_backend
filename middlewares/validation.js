@@ -13,7 +13,8 @@ exports.validatePhoneRegistration = [
       return true;
     })
     .custom(async phone => {
-      const existingUser = await User.findOne({ phone, mpesaVerified: true });
+      // Increased timeout for this query
+      const existingUser = await User.findOne({ phone, mpesaVerified: true }).maxTimeMS(20000);
       if (existingUser) {
         throw new Error('Phone number already registered');
       }
