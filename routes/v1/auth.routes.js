@@ -4,8 +4,8 @@ const {
   validatePhoneRegistration,
   validateVerificationCode 
 } = require('../../middlewares/validation');
-const { authenticate } = require('../../middlewares/auth.middleware');
-const authenticateToken = require('../../middlewares/auth.middleware'); 
+const { authenticate } = require('../../middlewares/auth.middleware'); // Import authenticate specifically
+
 
 // M-Pesa phone registration
 router.post('/register', 
@@ -25,7 +25,8 @@ router.get('/profile',
   authController.getProfile // Make sure this exists in your controller
 );
 
-router.put('/profile/complete', authenticateToken, authController.completeProfile);
-router.put('/profile/update', authenticateToken, authController.updateProfile);
+// Use authenticate middleware directly
+router.put('/profile/complete', authenticate(), authController.completeProfile);
+router.put('/profile/update', authenticate(), authController.updateProfile);
 
 module.exports = router;
