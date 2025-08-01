@@ -5,8 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { expressjwt: jwt } = require('express-jwt');
-// const winston = require('winston'); // Remove this line
-const logger = require('./utils/logger'); // Import shared logger
+const { logger } = require('./utils/logger'); // Import shared logger instance
 
 // Initialize Express
 const app = express();
@@ -31,14 +30,6 @@ app.use('/api/', apiLimiter);
 // ========================
 // 2. LOGGING (Morgan with shared logger)
 // ========================
-// const logger = winston.createLogger({ // Remove this block
-//   transports: [new winston.transports.Console()],
-//   format: winston.format.combine(
-//     winston.format.timestamp(),
-//     winston.format.json()
-//   )
-// });
-
 app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
 
 // ========================
@@ -70,8 +61,10 @@ app.use(
 // ========================
 // Kenyan phone validation middleware
 app.use((req, res, next) => {
-  if (req.body.phone) {
+  if (req.body && req.body.phone) { // Added check for req.body
+    console.log('Phone before formatting middleware:', req.body.phone); // Added console log
     req.body.phone = req.body.phone.replace(/^0/, '254'); // Convert 07... to 2547...
+    console.log('Phone after formatting middleware:', req.body.phone); // Added console log
   }
   next();
 });
@@ -88,7 +81,7 @@ app.use('/api/v1/rent', require('./routes/v1/payment.routes'));
 app.use((req, res) => {
   res.status(404).json({ 
     error: 'Hakuna kitu hapa! (Nothing here!)',
-    swahiliHint: 'Unaenda wapi? (Where are your going?)'
+    swahiliHint: 'Unaenda wapi? (Where do you go?)'
   });
 });
 

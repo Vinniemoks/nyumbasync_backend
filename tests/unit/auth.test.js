@@ -2,6 +2,16 @@ const { validatePhone, validateNationalID, validateRentIncrease, validateKRA_PIN
 const { formatKenyanPhone } = require('../../utils/formatters');
 const { verifyCode } = require('../../controllers/auth.controller'); 
 
+// Mock the logger module
+jest.mock('../../utils/logger', () => ({
+  info: jest.fn(), // Mock logger.info
+  error: jest.fn(), // Mock logger.error
+  logTransaction: jest.fn(), // Mock logTransaction if it's used in auth controller (though it shouldn't be)
+}));
+
+// Require the mocked logger after mocking
+const logger = require('../../utils/logger');
+
 describe('Kenyan Phone Authentication', () => {
   // Test valid Kenyan numbers
   test.each([
@@ -23,11 +33,17 @@ describe('Kenyan Phone Authentication', () => {
     const mockReq = { body: { phone: '254712345678', code: '1234' } };
     const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     
+    // Mock User.findOne to return null, simulating invalid code or expired code
+    jest.spyOn(require('../../models/user.model'), 'findOne').mockResolvedValue(null);
+
     await verifyCode(mockReq, mockRes); // Changed to verifyCode
     
     expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(mockRes.json).toHaveBeenCalledWith(
       expect.objectContaining({ error: 'Namba ya uthibitisho si sahihi au imeisha' }) // Updated error message
     );
+    // Ensure logger.error was NOT called for this expected error case
+    expect(logger.error).not.toHaveBeenCalled();
+
   }, 15000); // Increased timeout to 15 seconds
 });

@@ -12,7 +12,7 @@ const config = {
 
 const connectWithRetry = async () => {
   const connectionString = process.env.MONGODB_URI || 
-    'mongodb://localhost:27017/nyumbasync';
+    'mongodb+srv://nyachekisuppliers:KWTm8HHLgftzdnE7@nyumbasync.ytts2nv.mongodb.net/?retryWrites=true&w=majority&appName=nyumbasync';
 
   try {
     await mongoose.connect(connectionString, {
