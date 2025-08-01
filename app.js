@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { expressjwt: jwt } = require('express-jwt');
-const { logger } = require('./utils/logger'); // Import shared logger instance
+const logger = require('./utils/logger');
 
 // Initialize Express
 const app = express();

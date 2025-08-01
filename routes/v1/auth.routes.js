@@ -5,6 +5,7 @@ const {
   validateVerificationCode 
 } = require('../../middlewares/validation');
 const { authenticate } = require('../../middlewares/auth.middleware');
+const authenticateToken = require('../../middlewares/auth.middleware'); 
 
 // M-Pesa phone registration
 router.post('/register', 
@@ -23,5 +24,8 @@ router.get('/profile',
   authenticate(),
   authController.getProfile // Make sure this exists in your controller
 );
+
+router.put('/profile/complete', authenticateToken, authController.completeProfile);
+router.put('/profile/update', authenticateToken, authController.updateProfile);
 
 module.exports = router;

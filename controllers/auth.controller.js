@@ -40,7 +40,7 @@ exports.registerWithPhone = async (req, res) => {
     //   `NyumbaSync Verification: ${verificationCode}`
     // );
 
-    // Create/update user record
+    // Create/update user record with temporary placeholder names
     const user = await User.findOneAndUpdate(
       { phone },
       { 
@@ -48,7 +48,11 @@ exports.registerWithPhone = async (req, res) => {
         role,
         verificationCode,
         codeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-        mpesaVerified: false
+        mpesaVerified: false,
+        // Add temporary values for required fields
+        firstName: 'Pending', // Temporary - user will update during profile completion
+        lastName: 'Verification', // Temporary - user will update during profile completion
+        profileComplete: false // Flag to indicate profile needs completion
       },
       { 
         upsert: true, 
@@ -75,6 +79,7 @@ exports.registerWithPhone = async (req, res) => {
     res.status(202).json(responseBody);
 
   } catch (err) {
+    console.error('Registration error details:', err); // Add detailed error logging
     logger.error(`Registration error for ${req.body.phone}: ${err.message}`); // Use shared logger
     
     res.status(500).json({ 
@@ -137,6 +142,7 @@ exports.verifyCode = async (req, res) => {
     });
 
   } catch (err) {
+    console.error('Verification error details:', err); // Add detailed error logging
     logger.error(`Verification error for ${req.body.phone}: ${err.message}`); // Use shared logger
     
     res.status(500).json({
@@ -181,13 +187,84 @@ exports.getProfile = async (req, res) => {
       profile.propertiesCount = user.properties?.length || 0;
     }
 
+    // Add name fields if not placeholder values
+    if (user.firstName && user.firstName !== 'Pending') {
+      profile.firstName = user.firstName;
+    }
+    if (user.lastName && user.lastName !== 'Verification') {
+      profile.lastName = user.lastName;
+    }
+
     logger.info(`Profile accessed for user ${user._id}`); // Use shared logger
     res.status(200).json(profile);
 
   } catch (error) {
+    console.error('Profile error details:', error); // Add detailed error logging
     logger.error(`Profile error for user ${req.user?._id}: ${error.message}`); // Use shared logger
     res.status(500).json({
       error: 'Failed to fetch profile',
+      contact: '0700NYUMBA for assistance'
+    });
+  }
+};
+
+// Profile completion endpoint
+exports.completeProfile = async (req, res) => {
+  try {
+    const { firstName, lastName, email } = req.body;
+    const userId = req.user._id;
+
+    // Validate required fields
+    if (!firstName || !lastName) {
+      return res.status(400).json({
+        error: 'First name and last name are required',
+        missingFields: {
+          firstName: !firstName,
+          lastName: !lastName
+        }
+      });
+    }
+
+    // Update user profile
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        firstName,
+        lastName,
+        email: email || undefined, // Optional field
+        profileComplete: true
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
+
+    logger.info(`Profile completed for user ${userId}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile completed successfully',
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        profileComplete: user.profileComplete
+      }
+    });
+
+  } catch (error) {
+    console.error('Profile completion error details:', error);
+    logger.error(`Profile completion error for user ${req.user?._id}: ${error.message}`);
+    
+    res.status(500).json({
+      error: 'Failed to complete profile',
       contact: '0700NYUMBA for assistance'
     });
   }

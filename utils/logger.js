@@ -17,4 +17,6 @@ const logTransaction = (type, data) => {
   logger.info(`TRANSACTION_TYPE: ${type}, DATA: ${JSON.stringify(data)}`);
 };
 
-module.exports = { logger, logTransaction };
+// Export logger as default and also export logTransaction
+module.exports = logger;
+module.exports.logTransaction = logTransaction;
