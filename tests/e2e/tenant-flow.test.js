@@ -22,6 +22,9 @@ describe('Tenant User Journey (Nairobi)', () => {
     const regRes = await request(app)
       .post('/api/v1/auth/register')
       .send({ phone: testPhone, role: 'tenant' });
+
+    console.log('Registration Response Status:', regRes.status); // Log the status
+    console.log('Registration Response Body:', regRes.body); // Log the response body
     
     // Assuming the registration response includes the user ID or phone to find the user
     const user = await User.findOne({ phone: testPhone }).maxTimeMS(30000); // Increased timeout to 30 seconds
