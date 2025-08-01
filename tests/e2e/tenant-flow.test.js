@@ -55,7 +55,7 @@ describe('Tenant User Journey (Nairobi)', () => {
         console.log(`Test tenant with phone ${testPhone} deleted.`);
       }
     }
-  });
+  }, 60000); // Increased afterAll timeout to 60 seconds
 
   // Place your test cases inside this describe block
   test('should complete rent payment flow', async () => {
