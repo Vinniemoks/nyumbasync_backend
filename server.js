@@ -499,57 +499,49 @@ app.get('/api/v1/admin/stats', authenticateToken, authorize('admin'), (req, res)
   });
 });
 
-// Route Debugging Middleware (Development only) 
+// REPLACE the entire Route Debugging Middleware section with this simplified version:
+
+// Route Debugging Middleware (Development only) - FIXED
 if (process.env.NODE_ENV === 'development') {
-  app.use('/api/debug/routes', (req, res) => {
-    const routes = [];
-    
-    function extractRoutes(stack, prefix = '') {
-      stack.forEach(layer => {
-        if (layer.route) {
-          routes.push({
-            path: prefix + layer.route.path,
-            methods: Object.keys(layer.route.methods),
-            middleware: layer.route.stack.length
-          });
-        } else if (layer.regexp && layer.regexp.source && layer.handle && layer.handle.stack) {
-          // Fixed regex - removed the problematic match line
-          // Instead, check if this is a router middleware
-          if (layer.name === 'router') {
-            // Extract the mount path from the regexp source
-            let mountPath = '';
-            const regexpStr = layer.regexp.source;
-            
-            // Simple extraction of the path from common patterns
-            if (regexpStr.includes('\\/api\\/')) {
-              // Extract API paths
-              mountPath = regexpStr.replace(/\\/g, '/')
-                .replace(/[\^$?().*+[\]{}|]/g, '')
-                .replace(/\/\//g, '/')
-                .trim();
-              
-              if (mountPath && mountPath !== '/') {
-                extractRoutes(layer.handle.stack, mountPath);
-              }
-            } else {
-              // For other patterns, just continue without prefix
-              extractRoutes(layer.handle.stack, prefix);
-            }
-          }
-        }
-      });
-    }
-    
-    extractRoutes(app._router.stack);
-    
-    res.json({
+  app.get('/api/debug/routes', (req, res) => {
+    // Simplified route listing without problematic regex operations
+    const routeSummary = {
       system: 'NyumbaSync API',
-      timestamp: new Date(),
-      routeCount: routes.length,
-      routes
-    });
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      loadedRoutes: {
+        auth: authRoutes ? 'loaded' : 'not found',
+        mpesa: mpesaRoutes ? 'loaded' : 'not found',
+        property: propertyRoutes ? 'loaded' : 'not found',
+        upload: uploadRoutes ? 'loaded' : 'not found',
+        payment: paymentRoutes ? 'loaded' : 'not found',
+        user: userRoutes ? 'loaded' : 'not found',
+        admin: adminRoutes ? 'loaded' : 'not found',
+        maintenance: maintenanceRoutes ? 'loaded' : 'not found',
+        transaction: transactionRoutes ? 'loaded' : 'not found'
+      },
+      availableEndpoints: [
+        'GET /',
+        'GET /health',
+        'GET /api/status',
+        'GET /api/docs',
+        'POST /api/v1/auth/register',
+        'POST /api/v1/auth/login',
+        'GET /api/v1/auth/profile',
+        'GET /api/v1/properties',
+        'POST /api/v1/properties',
+        'POST /api/v1/mpesa/stkpush',
+        'POST /api/v1/upload/images',
+        'POST /api/v1/upload/documents',
+        'GET /api/v1/upload/user'
+      ],
+      note: 'Detailed route inspection disabled to prevent regex parsing errors'
+    };
+    
+    res.json(routeSummary);
   });
-  logger.info('✅ Route debugger available at /api/debug/routes');
+  
+  logger.info('✅ Simplified route debugger available at /api/debug/routes');
 }
 
 // Static Files
