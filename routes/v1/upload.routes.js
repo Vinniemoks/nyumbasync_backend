@@ -205,10 +205,65 @@ router.post('/:type/multiple', ensureUploadDir, upload.array('files', 10), proce
   }
 });
 
-// Get user's uploaded files
-router.get('/user/:userId?', async (req, res) => {
+// FIXED: Split the optional parameter route into two separate routes
+// Get current user's uploaded files
+router.get('/user', async (req, res) => {
   try {
-    const userId = req.params.userId || req.user.id;
+    const userId = req.user.id;
+    
+    const uploadsDir = 'uploads';
+    const files = [];
+    
+    // Read all subdirectories
+    const subdirs = await fs.readdir(uploadsDir);
+    
+    for (const subdir of subdirs) {
+      const subdirPath = path.join(uploadsDir, subdir);
+      const stat = await fs.stat(subdirPath);
+      
+      if (stat.isDirectory()) {
+        const dirFiles = await fs.readdir(subdirPath);
+        
+        for (const filename of dirFiles) {
+          if (filename.startsWith(userId) && !filename.includes('-thumb')) {
+            const filePath = path.join(subdirPath, filename);
+            const fileStats = await fs.stat(filePath);
+            const baseUrl = `${req.protocol}://${req.get('host')}`;
+            
+            files.push({
+              id: filename,
+              filename: filename,
+              size: fileStats.size,
+              uploadType: subdir,
+              url: `${baseUrl}/${filePath.replace(/\\/g, '/')}`,
+              uploadedAt: fileStats.birthtime.toISOString(),
+              lastModified: fileStats.mtime.toISOString()
+            });
+          }
+        }
+      }
+    }
+
+    res.status(200).json({
+      message: 'Files retrieved successfully',
+      files,
+      count: files.length,
+      totalSize: files.reduce((sum, file) => sum + file.size, 0),
+      timestamp: res.locals.currentTime
+    });
+  } catch (error) {
+    logger.error('Error retrieving user files:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve files',
+      timestamp: res.locals.currentTime
+    });
+  }
+});
+
+// Get specific user's uploaded files (admin only)
+router.get('/user/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
     
     // Only allow users to view their own files unless they're admin
     if (userId !== req.user.id && req.user.role !== 'admin') {
