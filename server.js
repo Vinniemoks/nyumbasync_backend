@@ -512,11 +512,29 @@ if (process.env.NODE_ENV === 'development') {
             methods: Object.keys(layer.route.methods),
             middleware: layer.route.stack.length
           });
-        } else if (layer.regexp && layer.regexp.source && layer.handle.stack) {
-          const match = layer.regexp.source.match(/^\\?\^\(\?\:\\\/)?\?\(\?\:\(\.\*\)\)\?\\\?\$\$/);
-          if (match) {
-            const routePath = layer.regexp.source.replace(/\\\//g, '/');
-            extractRoutes(layer.handle.stack, routePath);
+        } else if (layer.regexp && layer.regexp.source && layer.handle && layer.handle.stack) {
+          // Fixed regex - removed the problematic match line
+          // Instead, check if this is a router middleware
+          if (layer.name === 'router') {
+            // Extract the mount path from the regexp source
+            let mountPath = '';
+            const regexpStr = layer.regexp.source;
+            
+            // Simple extraction of the path from common patterns
+            if (regexpStr.includes('\\/api\\/')) {
+              // Extract API paths
+              mountPath = regexpStr.replace(/\\/g, '/')
+                .replace(/[\^$?().*+[\]{}|]/g, '')
+                .replace(/\/\//g, '/')
+                .trim();
+              
+              if (mountPath && mountPath !== '/') {
+                extractRoutes(layer.handle.stack, mountPath);
+              }
+            } else {
+              // For other patterns, just continue without prefix
+              extractRoutes(layer.handle.stack, prefix);
+            }
           }
         }
       });
