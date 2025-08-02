@@ -499,7 +499,7 @@ app.get('/api/v1/admin/stats', authenticateToken, authorize('admin'), (req, res)
   });
 });
 
-// Route Debugging Middleware (Development only)
+// Route Debugging Middleware (Development only) 
 if (process.env.NODE_ENV === 'development') {
   app.use('/api/debug/routes', (req, res) => {
     const routes = [];
