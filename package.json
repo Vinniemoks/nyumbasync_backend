@@ -9,7 +9,12 @@
     "test": "jest",
     "build": "npm install"
   },
-  "keywords": ["nyumbasync", "backend", "api", "property-management"],
+  "keywords": [
+    "nyumbasync",
+    "backend",
+    "api",
+    "property-management"
+  ],
   "author": "NyumbaSync Team",
   "license": "ISC",
   "engines": {
@@ -37,6 +42,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^7.0.5",
     "rate-limiter-flexible": "^7.1.1",
+    "sharp": "^0.34.3",
     "twilio": "^5.7.2",
     "winston": "^3.17.0",
     "xss-clean": "^0.1.4"

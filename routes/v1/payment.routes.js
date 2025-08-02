@@ -1,27 +1,27 @@
-const router = require('express').Router();
+const express = require('express');
+const router = express.Router();
 const paymentController = require('../../controllers/payment.controller');
-const { authenticate } = require('../../middlewares/auth.middleware'); // Corrected import path
+const { authenticate } = require('../../middlewares/auth.middleware');
 
-// Tenant payment routes
-router.use(authenticate('tenant'));
-
-router.post('/mpesa',
-  paymentController.payRent
-);
-
-router.get('/history',
-  paymentController.paymentHistory
-);
-
-// M-Pesa callback (no auth)
+// M-Pesa callback (no auth required) - Place this FIRST
 router.post('/mpesa-callback',
   paymentController.mpesaCallback
 );
 
-// Admin reconciliation
-router.use(authenticate('admin'));
+// Tenant payment routes
+router.post('/mpesa',
+  authenticate('tenant'),
+  paymentController.payRent
+);
 
+router.get('/history',
+  authenticate('tenant'),
+  paymentController.paymentHistory
+);
+
+// Admin reconciliation
 router.get('/reconcile',
+  authenticate('admin'),
   paymentController.reconcilePayments
 );
 
