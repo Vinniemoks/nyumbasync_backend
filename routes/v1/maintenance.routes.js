@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const maintenanceController = require('../../controllers/maintenance.controller');
-const { authenticate } = require('../../middleware');
+const { authenticate } = require('../../middlewares/auth.middleware');
 
 // Tenant routes
 router.post('/',

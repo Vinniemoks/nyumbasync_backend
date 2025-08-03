@@ -44,6 +44,17 @@ const UserSchema = new mongoose.Schema({
       message: 'Invalid email address'
     }
   },
+  //Mpesa
+  mpesaVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationCode: String,
+  verificationCodeExpiry: Date,
+  isActive: {
+    type: Boolean,
+    default: true
+  },
 
   // Nairobi-specific identification
   idNumber: {

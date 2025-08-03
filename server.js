@@ -628,7 +628,7 @@ app.use((err, req, res, next) => {
     statusCode = 400;
     message = Object.values(err.errors).map(val => val.message).join(', ');
   } else if (err.name === 'CastError') {
-    statusCode = 400;
+    statusCode = 400
     message = `Invalid ${err.path}: ${err.value}`;
   } else if (err.code === 11000) {
     statusCode = 400;

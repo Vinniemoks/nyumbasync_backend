@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const adminController = require('../../controllers/admin.controller');
-const { authenticate } = require('../../middleware');
+const { authenticate } = require('../../middlewares/auth.middleware');
 
 // Admin-only access
 router.use(authenticate('admin'));
