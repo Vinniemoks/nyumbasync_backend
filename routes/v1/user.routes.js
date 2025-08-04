@@ -1,46 +1,52 @@
 const express = require('express');
 const router = express.Router();
+const asyncHandler = require('express-async-handler');
 const userController = require('../../controllers/user.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { validateUpdateUser } = require('../../middlewares/validation');
 
-// User profile routes
+// All routes wrapped in asyncHandler
 router.get('/profile', 
   authenticate, 
-  userController.getUserProfile
+  asyncHandler(userController.getUserProfile)
 );
 
 router.put('/profile',
   authenticate,
   validateUpdateUser,
-  userController.updateProfile
+  asyncHandler(userController.updateProfile)
 );
 
-// Admin-only user management
 router.get('/',
   authenticate('admin'),
-  userController.listUsers
+  asyncHandler(userController.listUsers)
 );
 
-router.get('/:userId',
+// Simplified parameter name from :userId to :id
+router.get('/:id',
   authenticate('admin'),
-  userController.getUserById
+  asyncHandler(userController.getUserById)
 );
 
-router.patch('/:userId/status',
+router.patch('/:id/status',
   authenticate('admin'),
-  userController.updateUserStatus
+  asyncHandler(userController.updateUserStatus)
 );
 
-// Phone verification
 router.post('/verify-phone',
   authenticate,
-  userController.initiatePhoneVerification
+  asyncHandler(userController.initiatePhoneVerification)
 );
 
 router.post('/confirm-verification',
   authenticate,
-  userController.confirmVerificationCode
+  asyncHandler(userController.confirmVerificationCode)
 );
+
+// Error handling middleware
+router.use((err, req, res, next) => {
+  console.error('User route error:', err);
+  res.status(500).json({ error: 'User operation failed' });
+});
 
 module.exports = router;

@@ -1,61 +1,63 @@
 const express = require('express');
 const router = express.Router();
+const asyncHandler = require('express-async-handler'); // Add this
 const transactionController = require('../../controllers/transaction.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { validateMpesaPayment } = require('../../middlewares/validation');
 
-// M-Pesa Payment Processing
+// Modified dynamic routes to use simpler parameter names
 router.post('/mpesa/stk-push',
   authenticate('tenant'),
   validateMpesaPayment,
-  transactionController.initiateMpesaPayment
+  asyncHandler(transactionController.initiateMpesaPayment) // Wrapped in asyncHandler
 );
 
-// M-Pesa Callback (no auth - Safaricom servers call this)
 router.post('/mpesa/callback',
-  transactionController.handleMpesaCallback
+  asyncHandler(transactionController.handleMpesaCallback)
 );
 
-// Transaction History
+// Changed parameter format
 router.get('/history',
   authenticate,
-  transactionController.getTransactionHistory
+  asyncHandler(transactionController.getTransactionHistory)
 );
 
-// Landlord Payment Records
-router.get('/property/:propertyId',
+// Simplified parameter name from :propertyId to :id
+router.get('/property/:id',
   authenticate('landlord'),
-  transactionController.getPropertyTransactions
+  asyncHandler(transactionController.getPropertyTransactions)
 );
 
-// Admin Reconciliation
 router.get('/reconcile',
   authenticate('admin'),
-  transactionController.reconcileTransactions
+  asyncHandler(transactionController.reconcileTransactions)
 );
 
-// Transaction Details
-router.get('/:transactionId',
+// Simplified parameter name from :transactionId to :id
+router.get('/:id',
   authenticate,
-  transactionController.getTransactionDetails
+  asyncHandler(transactionController.getTransactionDetails)
 );
 
-// Resend Transaction Receipt
-router.post('/:transactionId/resend-receipt',
+router.post('/:id/resend-receipt',
   authenticate,
-  transactionController.resendTransactionReceipt
+  asyncHandler(transactionController.resendTransactionReceipt)
 );
 
-// Failed Transaction Retry
-router.post('/:transactionId/retry',
+router.post('/:id/retry',
   authenticate('tenant'),
-  transactionController.retryFailedTransaction
+  asyncHandler(transactionController.retryFailedTransaction)
 );
 
-// Export transaction records (Admin only)
 router.get('/export/csv',
   authenticate('admin'),
-  transactionController.exportTransactionsCSV
+  asyncHandler(transactionController.exportTransactionsCSV)
 );
+
+// Add error handling middleware
+router.use((err, req, res, next) => {
+  console.error('Transaction route error:', err);
+  res.status(500).json({ error: 'Transaction processing failed' });
+});
 
 module.exports = router;

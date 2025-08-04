@@ -1,22 +1,28 @@
 const router = require('express').Router();
+const asyncHandler = require('express-async-handler');
 const adminController = require('../../controllers/admin.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
-// Admin-only access
-router.use(authenticate('admin'));
-
-// Kenyan compliance endpoints
+// Removed global middleware and added to individual routes
 router.get('/compliance',
-  adminController.checkCompliance
+  authenticate('admin'),
+  asyncHandler(adminController.checkCompliance)
 );
 
 router.post('/notices',
-  adminController.sendLegalNotices
+  authenticate('admin'),
+  asyncHandler(adminController.sendLegalNotices)
 );
 
-// Reporting
 router.get('/reports/rent',
-  adminController.generateFinancialReport
+  authenticate('admin'),
+  asyncHandler(adminController.generateFinancialReport)
 );
+
+// Error handling middleware
+router.use((err, req, res, next) => {
+  console.error('Admin route error:', err);
+  res.status(500).json({ error: 'Admin operation failed' });
+});
 
 module.exports = router;
