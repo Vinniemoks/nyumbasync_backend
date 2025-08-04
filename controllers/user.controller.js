@@ -1,5 +1,5 @@
 const User = require('../models/user.model');
-const Lease = require('../../models/lease.model');
+const Lease = require('../../models/lease.model'); 
 const { sendSMS } = require('../../services/sms.service');
 const { generateAuthToken } = require('../../services/auth.service');
 const { logUserActivity } = require('../../utils/logger');

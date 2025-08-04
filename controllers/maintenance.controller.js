@@ -68,3 +68,15 @@ exports.updateStatus = async (req, res) => {
     });
   }
 };
+
+// Add these functions:
+exports.getMyRequests = async (req, res) => {
+  // Implement logic to fetch requests for the logged-in tenant
+  res.json([]); // Placeholder
+};
+
+exports.getPropertyRequests = async (req, res) => {
+  // Implement logic to fetch requests for a property (landlord view)
+  res.json([]); // Placeholder
+};
+

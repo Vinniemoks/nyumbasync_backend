@@ -16,7 +16,7 @@ router.post('/notices',
 
 // Reporting
 router.get('/reports/rent',
-  adminController.generateRentReport
+  adminController.generateFinancialReport
 );
 
 module.exports = router;

@@ -1,8 +1,9 @@
 const User = require('../models/user.model');
-const Property = require('../../models/property.model');
+const Property = require('../../models/property.model'); 
 const Transaction = require('../../models/transaction.model');
 const Lease = require('../../models/lease.model');
 const { sendEmail } = require('../../services/email.service');
+const { sendSMS } = require('../../services/sms.service'); 
 const { generateReport } = require('../../services/report.service');
 const { logAdminActivity } = require('../../utils/logger');
 
@@ -15,7 +16,7 @@ exports.getDashboardStats = async (req, res) => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     
-    const [users, properties, transactions, revenue] = await Promise.all([
+    const [users, properties, transactions, revenue, activeLeases] = await Promise.all([
       User.countDocuments(),
       Property.countDocuments(),
       Transaction.countDocuments({ 
@@ -35,7 +36,11 @@ exports.getDashboardStats = async (req, res) => {
             total: { $sum: '$amount' }
           }
         }
-      ])
+      ]),
+      Lease.countDocuments({ 
+        status: 'active',
+        endDate: { $gte: new Date() }
+      })
     ]);
 
     res.json({
@@ -44,6 +49,7 @@ exports.getDashboardStats = async (req, res) => {
         totalProperties: properties,
         monthlyTransactions: transactions,
         monthlyRevenue: revenue[0]?.total || 0,
+        activeLeases: activeLeases,
         currency: 'KES'
       },
       lastUpdated: now.toISOString()
@@ -52,6 +58,309 @@ exports.getDashboardStats = async (req, res) => {
   } catch (error) {
     logAdminActivity(req.user._id, 'DASHBOARD_FETCH_FAILED', error.message);
     res.status(500).json({ error: 'Failed to load dashboard stats' });
+  }
+};
+
+/**
+ * Lease Management Functions
+ */
+
+// Get all leases with filtering options
+exports.getLeases = async (req, res) => {
+  try {
+    const { status, propertyId, tenantId, landlordId } = req.query;
+    
+    const filter = {};
+    if (status) filter.status = status;
+    if (propertyId) filter.property = propertyId;
+    if (tenantId) filter.tenant = tenantId;
+    if (landlordId) filter.landlord = landlordId;
+
+    const leases = await Lease.find(filter)
+      .populate('property', 'name location')
+      .populate('tenant', 'name phone')
+      .populate('landlord', 'name phone');
+
+    res.json({
+      count: leases.length,
+      leases
+    });
+
+  } catch (error) {
+    logAdminActivity(req.user._id, 'LEASE_FETCH_FAILED', error.message);
+    res.status(500).json({ error: 'Failed to fetch leases' });
+  }
+};
+
+// Create a new lease (admin override)
+exports.createLease = async (req, res) => {
+  try {
+    const { propertyId, tenantId, startDate, endDate, rentAmount, paymentCycle } = req.body;
+
+    // Validate required fields
+    if (!propertyId || !tenantId || !startDate || !endDate || !rentAmount || !paymentCycle) {
+      return res.status(400).json({ error: 'Missing required lease fields' });
+    }
+
+    // Check if property exists
+    const property = await Property.findById(propertyId);
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    // Check if tenant exists
+    const tenant = await User.findById(tenantId);
+    if (!tenant || tenant.role !== 'tenant') {
+      return res.status(404).json({ error: 'Tenant not found or invalid role' });
+    }
+
+    // Create lease
+    const lease = new Lease({
+      property: propertyId,
+      tenant: tenantId,
+      landlord: property.owner,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      rentAmount,
+      paymentCycle,
+      status: 'active',
+      createdBy: req.user._id,
+      isAdminCreated: true
+    });
+
+    await lease.save();
+
+    // Update property status to occupied
+    await Property.findByIdAndUpdate(propertyId, { status: 'occupied' });
+
+    // Log admin action
+    logAdminActivity(req.user._id, 'LEASE_CREATED', { leaseId: lease._id });
+
+    res.status(201).json({
+      message: 'Lease created successfully',
+      lease
+    });
+
+  } catch (error) {
+    logAdminActivity(req.user._id, 'LEASE_CREATION_FAILED', error.message);
+    res.status(500).json({ error: 'Failed to create lease' });
+  }
+};
+
+// Update lease details
+exports.updateLease = async (req, res) => {
+  try {
+    const { leaseId } = req.params;
+    const updates = req.body;
+
+    // Validate lease exists
+    const lease = await Lease.findById(leaseId);
+    if (!lease) {
+      return res.status(404).json({ error: 'Lease not found' });
+    }
+
+    // Prevent certain fields from being updated
+    const restrictedFields = ['property', 'tenant', 'landlord', 'createdBy'];
+    for (const field of restrictedFields) {
+      if (updates[field]) {
+        return res.status(400).json({ 
+          error: `Cannot update ${field} directly` 
+        });
+      }
+    }
+
+    // If updating dates, validate the sequence
+    if (updates.startDate || updates.endDate) {
+      const newStartDate = updates.startDate ? new Date(updates.startDate) : lease.startDate;
+      const newEndDate = updates.endDate ? new Date(updates.endDate) : lease.endDate;
+      
+      if (newStartDate >= newEndDate) {
+        return res.status(400).json({ 
+          error: 'End date must be after start date' 
+        });
+      }
+    }
+
+    // Apply updates
+    const updatedLease = await Lease.findByIdAndUpdate(
+      leaseId,
+      updates,
+      { new: true }
+    );
+
+    // Log admin action
+    logAdminActivity(req.user._id, 'LEASE_UPDATED', { 
+      leaseId: lease._id,
+      updates: Object.keys(updates) 
+    });
+
+    res.json({
+      message: 'Lease updated successfully',
+      lease: updatedLease
+    });
+
+  } catch (error) {
+    logAdminActivity(req.user._id, 'LEASE_UPDATE_FAILED', error.message);
+    res.status(500).json({ error: 'Failed to update lease' });
+  }
+};
+
+// Terminate a lease
+exports.terminateLease = async (req, res) => {
+  try {
+    const { leaseId } = req.params;
+    const { terminationReason } = req.body;
+
+    if (!terminationReason) {
+      return res.status(400).json({ error: 'Termination reason is required' });
+    }
+
+    // Find and update lease
+    const lease = await Lease.findById(leaseId);
+    if (!lease) {
+      return res.status(404).json({ error: 'Lease not found' });
+    }
+
+    if (lease.status === 'terminated') {
+      return res.status(400).json({ error: 'Lease is already terminated' });
+    }
+
+    lease.status = 'terminated';
+    lease.terminationDate = new Date();
+    lease.terminationReason = terminationReason;
+    lease.terminatedBy = req.user._id;
+    await lease.save();
+
+    // Update property status to available
+    await Property.findByIdAndUpdate(lease.property, { status: 'available' });
+
+    // Notify tenant and landlord
+    const [tenant, landlord] = await Promise.all([
+      User.findById(lease.tenant),
+      User.findById(lease.landlord)
+    ]);
+
+    const notificationMessage = `Your lease at ${lease.property.name} has been terminated. Reason: ${terminationReason}`;
+
+    await Promise.all([
+      sendSMS({ to: tenant.phone, message: notificationMessage }),
+      sendSMS({ to: landlord.phone, message: notificationMessage }),
+      tenant.email && sendEmail({
+        to: tenant.email,
+        subject: 'Lease Termination Notice',
+        text: notificationMessage
+      }),
+      landlord.email && sendEmail({
+        to: landlord.email,
+        subject: 'Lease Termination Notice',
+        text: notificationMessage
+      })
+    ]);
+
+    // Log admin action
+    logAdminActivity(req.user._id, 'LEASE_TERMINATED', { 
+      leaseId: lease._id,
+      reason: terminationReason 
+    });
+
+    res.json({
+      message: 'Lease terminated successfully',
+      lease
+    });
+
+  } catch (error) {
+    logAdminActivity(req.user._id, 'LEASE_TERMINATION_FAILED', error.message);
+    res.status(500).json({ error: 'Failed to terminate lease' });
+  }
+};
+
+// Renew a lease
+exports.renewLease = async (req, res) => {
+  try {
+    const { leaseId } = req.params;
+    const { newEndDate, newRentAmount } = req.body;
+
+    if (!newEndDate) {
+      return res.status(400).json({ error: 'New end date is required' });
+    }
+
+    // Find and update lease
+    const lease = await Lease.findById(leaseId);
+    if (!lease) {
+      return res.status(404).json({ error: 'Lease not found' });
+    }
+
+    if (lease.status !== 'active') {
+      return res.status(400).json({ error: 'Only active leases can be renewed' });
+    }
+
+    const parsedNewEndDate = new Date(newEndDate);
+    if (parsedNewEndDate <= lease.endDate) {
+      return res.status(400).json({ 
+        error: 'New end date must be after current end date' 
+      });
+    }
+
+    // Create a new lease record for renewal
+    const renewedLease = new Lease({
+      property: lease.property,
+      tenant: lease.tenant,
+      landlord: lease.landlord,
+      startDate: lease.endDate,
+      endDate: parsedNewEndDate,
+      rentAmount: newRentAmount || lease.rentAmount,
+      paymentCycle: lease.paymentCycle,
+      status: 'active',
+      previousLease: lease._id,
+      createdBy: req.user._id,
+      isAdminCreated: true
+    });
+
+    await renewedLease.save();
+
+    // Update old lease
+    lease.renewedBy = renewedLease._id;
+    lease.status = 'completed';
+    await lease.save();
+
+    // Notify tenant and landlord
+    const [tenant, landlord] = await Promise.all([
+      User.findById(lease.tenant),
+      User.findById(lease.landlord)
+    ]);
+
+    const notificationMessage = `Your lease at ${lease.property.name} has been renewed until ${newEndDate}.`;
+
+    await Promise.all([
+      sendSMS({ to: tenant.phone, message: notificationMessage }),
+      sendSMS({ to: landlord.phone, message: notificationMessage }),
+      tenant.email && sendEmail({
+        to: tenant.email,
+        subject: 'Lease Renewal Confirmation',
+        text: notificationMessage
+      }),
+      landlord.email && sendEmail({
+        to: landlord.email,
+        subject: 'Lease Renewal Confirmation',
+        text: notificationMessage
+      })
+    ]);
+
+    // Log admin action
+    logAdminActivity(req.user._id, 'LEASE_RENEWED', { 
+      originalLeaseId: lease._id,
+      newLeaseId: renewedLease._id 
+    });
+
+    res.status(201).json({
+      message: 'Lease renewed successfully',
+      originalLease: lease,
+      renewedLease
+    });
+
+  } catch (error) {
+    logAdminActivity(req.user._id, 'LEASE_RENEWAL_FAILED', error.message);
+    res.status(500).json({ error: 'Failed to renew lease' });
   }
 };
 

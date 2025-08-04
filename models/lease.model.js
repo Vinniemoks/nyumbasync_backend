@@ -47,3 +47,5 @@ const LeaseSchema = new mongoose.Schema({
   // PDF snapshot
   documentUrl: String // S3/Cloudinary link
 }, { timestamps: true });
+
+module.exports = mongoose.model('Lease', LeaseSchema);

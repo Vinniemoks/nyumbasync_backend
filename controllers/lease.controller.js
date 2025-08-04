@@ -1,4 +1,4 @@
-const Lease = require('../models/lease.model');
+const Lease = require('../../models/lease.model');
 const { generateLeasePDF } = require('../services/document.service');
 
 // Create Kenyan-compliant lease

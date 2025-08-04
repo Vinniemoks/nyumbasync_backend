@@ -51,30 +51,241 @@ const logger = createLogger({
   ]
 });
 
-// Improved Route Loader Function
+// Enhanced Route Loader Function with Debug Logging
 const loadRoute = (routeName) => {
   const routePath = path.join(__dirname, 'routes', 'v1', `${routeName}.routes.js`);
+  
+  logger.info(`🔄 Attempting to load ${routeName} routes from: ${routePath}`);
+  
   try {
+    // Check if file exists first
+    if (!fs.existsSync(routePath)) {
+      logger.error(`❌ Route file does not exist: ${routePath}`);
+      return null;
+    }
+    
+    // Check file permissions
+    try {
+      fs.accessSync(routePath, fs.constants.R_OK);
+      logger.debug(`✅ File is readable: ${routePath}`);
+    } catch (accessErr) {
+      logger.error(`❌ File is not readable: ${routePath}`, accessErr.message);
+      return null;
+    }
+    
+    // Get file stats for debugging
+    const stats = fs.statSync(routePath);
+    logger.debug(`📊 File stats for ${routeName}: Size: ${stats.size} bytes, Modified: ${stats.mtime}`);
+    
+    // Clear require cache in development to avoid stale modules
+    if (process.env.NODE_ENV === 'development') {
+      delete require.cache[require.resolve(routePath)];
+      logger.debug(`🧹 Cleared require cache for: ${routePath}`);
+    }
+    
+    // Attempt to require the route
     const route = require(routePath);
-    logger.info(`✅ ${routeName} routes loaded from: ${routePath}`);
+    
+    // Validate the loaded route
+    if (!route) {
+      logger.error(`❌ ${routeName} route file exists but exports null/undefined`);
+      return null;
+    }
+    
+    if (typeof route !== 'function' && typeof route !== 'object') {
+      logger.error(`❌ ${routeName} route exports invalid type: ${typeof route}. Expected function or router object.`);
+      return null;
+    }
+    
+    // Check if it's an Express router
+    if (route && route.stack && Array.isArray(route.stack)) {
+      logger.info(`✅ ${routeName} routes loaded successfully with ${route.stack.length} route(s)`);
+      
+      // Log individual routes in debug mode
+      if (process.env.LOG_LEVEL === 'debug') {
+        route.stack.forEach((layer, index) => {
+          const method = layer.route ? 
+            Object.keys(layer.route.methods).join(', ').toUpperCase() : 
+            'MIDDLEWARE';
+          const path = layer.route ? layer.route.path : layer.regexp.source;
+          logger.debug(`  📍 Route ${index + 1}: ${method} ${path}`);
+        });
+      }
+    } else if (typeof route === 'function') {
+      logger.info(`✅ ${routeName} middleware function loaded successfully`);
+    } else {
+      logger.warn(`⚠️ ${routeName} loaded but may not be a valid Express router or middleware`);
+    }
+    
     return route;
+    
   } catch (err) {
-    logger.warn(`⚠️ ${routeName} routes not found at ${routePath}. Error: ${err.message}`);
+    // Detailed error logging based on error type
+    if (err.code === 'MODULE_NOT_FOUND') {
+      logger.error(`❌ ${routeName} routes - Module not found error:`, {
+        message: err.message,
+        requireStack: err.requireStack,
+        modulePath: routePath
+      });
+      
+      // Check if it's a dependency issue
+      if (err.message.includes('Cannot find module') && !err.message.includes(routePath)) {
+        const missingModule = err.message.match(/Cannot find module '([^']+)'/);
+        if (missingModule) {
+          logger.error(`💡 Missing dependency in ${routeName}: ${missingModule[1]}`);
+          logger.error(`💡 Try running: npm install ${missingModule[1]}`);
+        }
+      }
+    } else if (err instanceof SyntaxError) {
+      logger.error(`❌ ${routeName} routes - Syntax error:`, {
+        message: err.message,
+        stack: err.stack,
+        filePath: routePath
+      });
+    } else if (err.code === 'ENOENT') {
+      logger.error(`❌ ${routeName} routes - File not found: ${routePath}`);
+    } else if (err.code === 'EACCES') {
+      logger.error(`❌ ${routeName} routes - Permission denied: ${routePath}`);
+    } else {
+      logger.error(`❌ ${routeName} routes - Unexpected error:`, {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+        filePath: routePath
+      });
+    }
+    
     return null;
   }
 };
 
-// Load all routes
-const mpesaRoutes = loadRoute('mpesa');
-const propertyRoutes = loadRoute('property');
-const authRoutes = loadRoute('auth');
-const uploadRoutes = loadRoute('upload');
-const userRoutes = loadRoute('user');
-const adminRoutes = loadRoute('admin');
-const maintenanceRoutes = loadRoute('maintenance');
-const paymentRoutes= loadRoute('payment');
-const transactionRoutes = loadRoute('transaction');
+// Route Loading Summary Function
+const loadAllRoutes = () => {
+  logger.info('🚀 Starting route loading process...');
+  
+  const routesToLoad = [
+    'mpesa',
+    'property', 
+    'auth',
+    'upload',
+    'user',
+    'admin',
+    'maintenance',
+    'payment',
+    'transaction'
+  ];
+  
+  const loadedRoutes = {};
+  const failedRoutes = [];
+  const routeStats = {
+    total: routesToLoad.length,
+    loaded: 0,
+    failed: 0
+  };
+  
+  // Load each route and track results
+  routesToLoad.forEach(routeName => {
+    logger.info(`\n📂 Loading ${routeName} routes...`);
+    const route = loadRoute(routeName);
+    
+    if (route) {
+      loadedRoutes[routeName] = route;
+      routeStats.loaded++;
+      logger.info(`✅ ${routeName} routes loaded successfully`);
+    } else {
+      failedRoutes.push(routeName);
+      routeStats.failed++;
+      logger.error(`❌ ${routeName} routes failed to load`);
+    }
+  });
+  
+  // Summary logging
+  logger.info('\n📊 Route Loading Summary:');
+  logger.info(`   Total routes attempted: ${routeStats.total}`);
+  logger.info(`   Successfully loaded: ${routeStats.loaded}`);
+  logger.info(`   Failed to load: ${routeStats.failed}`);
+  
+  if (routeStats.loaded > 0) {
+    logger.info(`   ✅ Loaded routes: ${Object.keys(loadedRoutes).join(', ')}`);
+  }
+  
+  if (failedRoutes.length > 0) {
+    logger.error(`   ❌ Failed routes: ${failedRoutes.join(', ')}`);
+    logger.error('   💡 Check the individual error messages above for details');
+  }
+  
+  if (routeStats.failed === 0) {
+    logger.info('🎉 All routes loaded successfully!');
+  } else if (routeStats.loaded === 0) {
+    logger.error('🚨 No routes were loaded! Check your routes directory structure.');
+  } else {
+    logger.warn(`⚠️ Partial success: ${routeStats.loaded}/${routeStats.total} routes loaded`);
+  }
+  
+  return loadedRoutes;
+};
 
+// Directory Structure Checker
+const checkRouteDirectoryStructure = () => {
+  const routesDir = path.join(__dirname, 'routes');
+  const v1Dir = path.join(routesDir, 'v1');
+  
+  logger.info('🔍 Checking route directory structure...');
+  
+  if (!fs.existsSync(routesDir)) {
+    logger.error('❌ Routes directory does not exist:', routesDir);
+    logger.error('💡 Create the directory structure: routes/v1/');
+    return false;
+  }
+  
+  if (!fs.existsSync(v1Dir)) {
+    logger.error('❌ v1 routes directory does not exist:', v1Dir);
+    logger.error('💡 Create the directory: routes/v1/');
+    return false;
+  }
+  
+  // List all files in the v1 directory
+  try {
+    const files = fs.readdirSync(v1Dir);
+    const routeFiles = files.filter(file => file.endsWith('.routes.js'));
+    
+    logger.info(`📁 Found ${files.length} file(s) in routes/v1/:`);
+    files.forEach(file => {
+      const filePath = path.join(v1Dir, file);
+      const stats = fs.statSync(filePath);
+      const isRouteFile = file.endsWith('.routes.js');
+      logger.info(`   ${isRouteFile ? '📄' : '📋'} ${file} (${stats.size} bytes)`);
+    });
+    
+    logger.info(`🎯 Found ${routeFiles.length} route file(s):`);
+    routeFiles.forEach(file => {
+      logger.info(`   📄 ${file}`);
+    });
+    
+    return true;
+  } catch (err) {
+    logger.error('❌ Error reading routes directory:', err.message);
+    return false;
+  }
+};
+
+// Check directory structure first
+checkRouteDirectoryStructure();
+
+// Load all routes with enhanced debugging
+const allRoutes = loadAllRoutes();
+
+// Extract individual routes from the loaded routes object
+const mpesaRoutes = allRoutes.mpesa || null;
+const propertyRoutes = allRoutes.property || null;
+const authRoutes = allRoutes.auth || null;
+const uploadRoutes = allRoutes.upload || null;
+const userRoutes = allRoutes.user || null;
+const adminRoutes = allRoutes.admin || null;
+const maintenanceRoutes = allRoutes.maintenance || null;
+const paymentRoutes = allRoutes.payment || null;
+const transactionRoutes = allRoutes.transaction || null;
 
 // JWT Authentication middleware
 const authenticateToken = (req, res, next) => {
@@ -461,34 +672,126 @@ app.post('/api/v1/upload/multiple', authenticateToken, upload.array('images', 5)
   }
 });
 
-// API Routes with proper middleware
-if (authRoutes) {
-  app.use('/api/v1/auth/login', authLimiter);
-  app.use('/api/v1/auth/register', authLimiter);
-  app.use('/api/v1/auth/reset-password', passwordResetLimiter);
-  app.use('/api/v1/auth', authRoutes);
-  logger.info('✅ Auth routes registered with rate limiting');
-}
+// Enhanced Route Registration with Debug Logging
+const registerRoutes = () => {
+  logger.info('\n🔗 Registering routes with Express app...');
+  
+  // Auth routes with rate limiting
+  if (authRoutes) {
+    try {
+      app.use('/api/v1/auth/login', authLimiter);
+      app.use('/api/v1/auth/register', authLimiter);
+      app.use('/api/v1/auth/reset-password', passwordResetLimiter);
+      app.use('/api/v1/auth', authRoutes);
+      logger.info('✅ Auth routes registered with rate limiting at /api/v1/auth');
+    } catch (err) {
+      logger.error('❌ Failed to register auth routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Auth routes not registered - route loading failed');
+  }
 
-if (userRoutes) {
-  app.use('/api/v1/users', authenticateToken, userRoutes);
-  logger.info('✅ User routes registered with authentication');
-}
+  // User routes with authentication
+  if (userRoutes) {
+    try {
+      app.use('/api/v1/users', authenticateToken, userRoutes);
+      logger.info('✅ User routes registered with authentication at /api/v1/users');
+    } catch (err) {
+      logger.error('❌ Failed to register user routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ User routes not registered - route loading failed');
+  }
 
-if (mpesaRoutes) {
-  app.use('/api/v1/mpesa', authenticateToken, mpesaRoutes);
-  logger.info('✅ M-Pesa routes registered with authentication');
-}
+  // M-Pesa routes with authentication
+  if (mpesaRoutes) {
+    try {
+      app.use('/api/v1/mpesa', authenticateToken, mpesaRoutes);
+      logger.info('✅ M-Pesa routes registered with authentication at /api/v1/mpesa');
+    } catch (err) {
+      logger.error('❌ Failed to register M-Pesa routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ M-Pesa routes not registered - route loading failed');
+  }
 
-if (propertyRoutes) {
-  app.use('/api/v1/properties', optionalAuth, propertyRoutes);
-  logger.info('✅ Property routes registered with optional authentication');
-}
+  // Property routes with optional authentication
+  if (propertyRoutes) {
+    try {
+      app.use('/api/v1/properties', optionalAuth, propertyRoutes);
+      logger.info('✅ Property routes registered with optional authentication at /api/v1/properties');
+    } catch (err) {
+      logger.error('❌ Failed to register property routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Property routes not registered - route loading failed');
+  }
 
-if (uploadRoutes) {
-  app.use('/api/v1/upload', authenticateToken, uploadRoutes);
-  logger.info('✅ Upload routes registered with authentication');
-}
+  // Upload routes with authentication
+  if (uploadRoutes) {
+    try {
+      app.use('/api/v1/upload', authenticateToken, uploadRoutes);
+      logger.info('✅ Upload routes registered with authentication at /api/v1/upload');
+    } catch (err) {
+      logger.error('❌ Failed to register upload routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Upload routes not registered - route loading failed');
+  }
+
+  // Admin routes with authentication and authorization
+  if (adminRoutes) {
+    try {
+      app.use('/api/v1/admin', authenticateToken, authorize('admin'), adminRoutes);
+      logger.info('✅ Admin routes registered with authentication and authorization at /api/v1/admin');
+    } catch (err) {
+      logger.error('❌ Failed to register admin routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Admin routes not registered - route loading failed');
+  }
+
+  // Maintenance routes
+  if (maintenanceRoutes) {
+    try {
+      app.use('/api/v1/maintenance', authenticateToken, maintenanceRoutes);
+      logger.info('✅ Maintenance routes registered with authentication at /api/v1/maintenance');
+    } catch (err) {
+      logger.error('❌ Failed to register maintenance routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Maintenance routes not registered - route loading failed');
+  }
+
+  // Payment routes
+  if (paymentRoutes) {
+    try {
+      app.use('/api/v1/payments', authenticateToken, paymentRoutes);
+      logger.info('✅ Payment routes registered with authentication at /api/v1/payments');
+    } catch (err) {
+      logger.error('❌ Failed to register payment routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Payment routes not registered - route loading failed');
+  }
+
+  // Transaction routes
+  if (transactionRoutes) {
+    try {
+      app.use('/api/v1/transactions', authenticateToken, transactionRoutes);
+      logger.info('✅ Transaction routes registered with authentication at /api/v1/transactions');
+    } catch (err) {
+      logger.error('❌ Failed to register transaction routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Transaction routes not registered - route loading failed');
+  }
+
+  logger.info('🎯 Route registration process completed\n');
+};
+
+// Call the route registration function
+registerRoutes();
 
 // Admin routes (if you have admin functionality)
 app.get('/api/v1/admin/stats', authenticateToken, authorize('admin'), (req, res) => {
@@ -499,49 +802,67 @@ app.get('/api/v1/admin/stats', authenticateToken, authorize('admin'), (req, res)
   });
 });
 
-// REPLACE the entire Route Debugging Middleware section with this simplified version:
-
-// Route Debugging Middleware (Development only) - FIXED
+// Enhanced Debug Route for Development
 if (process.env.NODE_ENV === 'development') {
   app.get('/api/debug/routes', (req, res) => {
-    // Simplified route listing without problematic regex operations
-    const routeSummary = {
+    const routeStatus = {
       system: 'NyumbaSync API',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV,
+      routeDirectory: path.join(__dirname, 'routes', 'v1'),
       loadedRoutes: {
-        auth: authRoutes ? 'loaded' : 'not found',
-        mpesa: mpesaRoutes ? 'loaded' : 'not found',
-        property: propertyRoutes ? 'loaded' : 'not found',
-        upload: uploadRoutes ? 'loaded' : 'not found',
-        payment: paymentRoutes ? 'loaded' : 'not found',
-        user: userRoutes ? 'loaded' : 'not found',
-        admin: adminRoutes ? 'loaded' : 'not found',
-        maintenance: maintenanceRoutes ? 'loaded' : 'not found',
-        transaction: transactionRoutes ? 'loaded' : 'not found'
+        auth: authRoutes ? 'loaded' : 'failed',
+        mpesa: mpesaRoutes ? 'loaded' : 'failed',
+        property: propertyRoutes ? 'loaded' : 'failed',
+        upload: uploadRoutes ? 'loaded' : 'failed',
+        payment: paymentRoutes ? 'loaded' : 'failed',
+        user: userRoutes ? 'loaded' : 'failed',
+        admin: adminRoutes ? 'loaded' : 'failed',
+        maintenance: maintenanceRoutes ? 'loaded' : 'failed',
+        transaction: transactionRoutes ? 'loaded' : 'failed'
       },
-      availableEndpoints: [
-        'GET /',
-        'GET /health',
-        'GET /api/status',
-        'GET /api/docs',
-        'POST /api/v1/auth/register',
-        'POST /api/v1/auth/login',
-        'GET /api/v1/auth/profile',
-        'GET /api/v1/properties',
-        'POST /api/v1/properties',
-        'POST /api/v1/mpesa/stkpush',
-        'POST /api/v1/upload/images',
-        'POST /api/v1/upload/documents',
-        'GET /api/v1/upload/user'
-      ],
-      note: 'Detailed route inspection disabled to prevent regex parsing errors'
+      registeredEndpoints: [],
+      recommendations: []
     };
+
+    // Check which routes are actually registered
+    const loadedCount = Object.values(routeStatus.loadedRoutes).filter(status => status === 'loaded').length;
+    const totalCount = Object.keys(routeStatus.loadedRoutes).length;
     
-    res.json(routeSummary);
+    routeStatus.summary = {
+      total: totalCount,
+      loaded: loadedCount,
+      failed: totalCount - loadedCount,
+      successRate: `${Math.round((loadedCount / totalCount) * 100)}%`
+    };
+
+    // Add recommendations based on failures
+    const failedRoutes = Object.entries(routeStatus.loadedRoutes)
+      .filter(([, status]) => status === 'failed')
+      .map(([route]) => route);
+
+    if (failedRoutes.length > 0) {
+      routeStatus.recommendations.push(
+        `Check if these route files exist: ${failedRoutes.map(r => `routes/v1/${r}.routes.js`).join(', ')}`
+      );
+      routeStatus.recommendations.push('Verify file permissions and syntax in failed route files');
+      routeStatus.recommendations.push('Check server logs for detailed error messages');
+    }
+
+    // Try to read directory contents for additional info
+    try {
+      const v1Dir = path.join(__dirname, 'routes', 'v1');
+      const files = fs.existsSync(v1Dir) ? fs.readdirSync(v1Dir) : [];
+      routeStatus.filesInDirectory = files;
+      routeStatus.routeFiles = files.filter(f => f.endsWith('.routes.js'));
+    } catch (err) {
+      routeStatus.directoryError = err.message;
+    }
+
+    res.json(routeStatus);
   });
   
-  logger.info('✅ Simplified route debugger available at /api/debug/routes');
+  logger.info('✅ Enhanced route debugger available at /api/debug/routes');
 }
 
 // Static Files

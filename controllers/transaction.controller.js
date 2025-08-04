@@ -1,5 +1,6 @@
 const Transaction = require('../models/transaction.model');
 const Property = require('../../models/property.model');
+const Property = require('../../models/property.model'); 
 const User = require('../../models/user.model');
 const axios = require('axios');
 const { logTransaction } = require('../../utils/logger');
