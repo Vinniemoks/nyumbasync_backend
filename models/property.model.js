@@ -1,21 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
-const PropertySchema = new Schema({
-  landlord: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Landlord reference is required'],
-    validate: {
-      validator: async function(id) {
-        const user = await mongoose.model('User').findById(id);
-        return user && user.role === 'landlord';
-      },
-      message: 'Referenced user must be a landlord'
-    }
-  },
-
-  // Property Identification
+const propertySchema = new Schema({
+  // Basic property information
   title: {
     type: String,
     required: [true, 'Property title is required'],
@@ -30,100 +17,137 @@ const PropertySchema = new Schema({
     maxlength: [2000, 'Description cannot exceed 2000 characters']
   },
 
-  // Financial Details
-  rent: {
-    type: Number,
-    required: [true, 'Monthly rent amount is required'],
-    min: [1000, 'Rent cannot be less than KES 1,000'],
-    max: [1000000, 'Rent cannot exceed KES 1,000,000'],
-    set: v => Math.round(v) // Store only whole numbers
-  },
-  currency: {
-    type: String,
-    default: 'KES',
-    enum: {
-      values: ['KES'],
-      message: 'Only Kenyan Shillings (KES) are accepted'
-    }
-  },
-
-  // Nairobi Geolocation
-  location: {
-    type: {
-      type: String,
-      default: 'Point',
-      enum: ['Point']
-    },
-    coordinates: {
-      type: [Number],
-      required: [true, 'Coordinates are required'],
-      validate: {
-        validator: function(v) {
-          // Nairobi County bounding box coordinates
-          return v.length === 2 && 
-                 v[0] >= 36.65 && v[0] <= 37.05 && // Longitude range
-                 v[1] >= -1.55 && v[1] <= -1.10;   // Latitude range
-        },
-        message: 'Coordinates must be within Nairobi County boundaries'
-      }
-    },
-    address: {
-      type: String,
-      required: [true, 'Physical address is required']
-    }
-  },
-
-  // Nairobi Administrative Units
-  county: {
-    type: String,
-    default: 'Nairobi',
-    immutable: true
-  },
-  subcounty: {
-    type: String,
-    required: [true, 'Subcounty is required'],
-    enum: {
-      values: [
-        'Westlands', 'Dagoretti North', 'Dagoretti South', 
-        'Embakasi East', 'Embakasi West', 'Embakasi Central',
-        'Embakasi North', 'Embakasi South', 'Kasarani',
-        'Langata', 'Starehe', 'Kamukunji', 'Mathare',
-        'Roysambu', 'Ruaraka', 'Makadara'
-      ],
-      message: 'Invalid Nairobi subcounty'
-    }
-  },
-  ward: String,
-
-  // Property Characteristics
+  // Property type and details
   type: {
     type: String,
     required: true,
-    enum: {
-      values: [
-        'Apartment', 'Bedsitter', 'Single Room',
-        'Maisonette', 'Bungalow', 'Townhouse',
-        'Commercial Space', 'Hostel', 'Shared House'
-      ],
-      message: 'Invalid property type'
-    }
+    enum: [
+      'apartment', 'house', 'studio', 'bedsitter', 'commercial', 'office',
+      'Apartment', 'Bedsitter', 'Single Room', 'Maisonette', 'Bungalow', 
+      'Townhouse', 'Commercial Space', 'Hostel', 'Shared House'
+    ],
+    index: true
   },
   bedrooms: {
     type: Number,
     required: true,
-    min: [0, 'Bedrooms cannot be negative'],
-    max: [20, 'Unrealistic number of bedrooms']
+    min: 0,
+    max: 20
   },
   bathrooms: {
     type: Number,
     required: true,
-    min: [0, 'Bathrooms cannot be negative'],
-    max: [10, 'Unrealistic number of bathrooms']
+    min: 0,
+    max: 20
+  },
+  squareFootage: {
+    type: Number,
+    min: 0
   },
   floor: {
     type: Number,
-    min: [0, 'Invalid floor number'],
-    max: [100, 'Unrealistic floor number']
+    min: 0,
+    max: 100
+  },
+
+  // Location details
+  address: {
+    street: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    area: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true
+    },
+    city: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true
+    },
+    county: {
+      type: String,
+      required: true,
+      trim: true,
+      default: 'Nairobi'
+    },
+    postalCode: {
+      type: String,
+      trim: true
+    },
+    coordinates: {
+      type: {
+        type: String,
+        default: 'Point',
+        enum: ['Point']
+      },
+      coordinates: {
+        type: [Number],
+        validate: {
+          validator: function(v) {
+            if (!v || v.length !== 2) return true; // Not required if not provided
+            // Nairobi County bounding box coordinates
+            return v[0] >= 36.65 && v[0] <= 37.05 && // Longitude range
+                   v[1] >= -1.55 && v[1] <= -1.10;   // Latitude range
+          },
+          message: 'Coordinates must be within Nairobi County boundaries'
+        }
+      }
+    }
+  },
+
+  // Nairobi Administrative Units
+  subcounty: {
+    type: String,
+    enum: [
+      'Westlands', 'Dagoretti North', 'Dagoretti South', 
+      'Embakasi East', 'Embakasi West', 'Embakasi Central',
+      'Embakasi North', 'Embakasi South', 'Kasarani',
+      'Langata', 'Starehe', 'Kamukunji', 'Mathare',
+      'Roysambu', 'Ruaraka', 'Makadara'
+    ]
+  },
+  ward: String,
+
+  // Financial information
+  rent: {
+    amount: {
+      type: Number,
+      required: [true, 'Monthly rent amount is required'],
+      min: [1000, 'Rent cannot be less than KES 1,000'],
+      max: [1000000, 'Rent cannot exceed KES 1,000,000'],
+      set: v => Math.round(v) // Store only whole numbers
+    },
+    currency: {
+      type: String,
+      default: 'KES',
+      enum: ['KES', 'USD']
+    },
+    paymentFrequency: {
+      type: String,
+      enum: ['monthly', 'quarterly', 'annually'],
+      default: 'monthly'
+    }
+  },
+  deposit: {
+    type: Number,
+    required: true,
+    min: 0,
+    validate: {
+      validator: function(v) {
+        return v <= this.rent.amount * 3; // Kenyan rental law maximum
+      },
+      message: 'Deposit cannot exceed 3 months rent'
+    }
+  },
+  serviceCharge: {
+    type: Number,
+    default: 0,
+    min: 0
   },
 
   // Kenyan Utilities
@@ -146,59 +170,139 @@ const PropertySchema = new Schema({
     default: false
   },
 
-  // Legal Compliance
-  deposit: {
-    type: Number,
-    validate: {
-      validator: function(v) {
-        return v <= this.rent * 3; // Kenyan rental law maximum
-      },
-      message: 'Deposit cannot exceed 3 months rent'
-    }
-  },
-  contractUrl: {
+  // Property status and availability
+  status: {
     type: String,
-    match: [/^https?:\/\//, 'Please use a valid URL']
+    enum: ['available', 'occupied', 'maintenance', 'unavailable'],
+    default: 'available',
+    index: true
   },
-  compliance: {
-    ratesPaid: Boolean,
-    nemaApproved: Boolean,
-    fireCertificate: Boolean
-  },
-
-  // Media
-  images: {
-    type: [{
-      url: String,
-      caption: String,
-      isPrimary: Boolean
-    }],
-    validate: {
-      validator: function(v) {
-        return v.length <= 20; // Maximum 20 images
-      },
-      message: 'Cannot upload more than 20 images'
-    }
-  },
-  videoTour: String,
-
-  // Status and Timings
   isAvailable: {
     type: Boolean,
     default: true
+  },
+  furnished: {
+    type: Boolean,
+    default: false
+  },
+  petFriendly: {
+    type: Boolean,
+    default: false
   },
   availableFrom: Date,
   viewingSchedule: [{
     day: String,
     hours: String
   }],
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    immutable: true
+
+  // Owner/Manager information
+  landlord: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Landlord reference is required'],
+    validate: {
+      validator: async function(id) {
+        const user = await mongoose.model('User').findById(id);
+        return user && user.role === 'landlord';
+      },
+      message: 'Referenced user must be a landlord'
+    },
+    index: true
   },
-  updatedAt: Date
+  manager: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+  // Current tenant information
+  currentTenant: {
+    tenantId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    leaseStart: Date,
+    leaseEnd: Date,
+    rentDueDate: {
+      type: Number,
+      min: 1,
+      max: 31,
+      default: 1
+    }
+  },
+
+  // Amenities and features
+  amenities: [{
+    type: String,
+    enum: [
+      'parking', 'security', 'wifi', 'gym', 'pool', 'garden', 
+      'balcony', 'elevator', 'backup_generator', 'water_tank',
+      'cctv', 'gym', 'playground', 'laundry', 'shopping_center'
+    ]
+  }],
+
+  // Media
+  images: [{
+    url: {
+      type: String,
+      required: true
+    },
+    caption: String,
+    isPrimary: {
+      type: Boolean,
+      default: false
+    }
+  }],
+  videoTour: String,
+  documents: [{
+    type: String,
+    url: String,
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
+  // Legal Compliance
+  compliance: {
+    ratesPaid: Boolean,
+    nemaApproved: Boolean,
+    fireCertificate: Boolean
+  },
+  contractUrl: {
+    type: String,
+    match: [/^https?:\/\//, 'Please use a valid URL']
+  },
+
+  // Verification and compliance
+  verified: {
+    type: Boolean,
+    default: false
+  },
+  verifiedAt: Date,
+  verifiedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+  // Metadata
+  views: {
+    type: Number,
+    default: 0
+  },
+  featured: {
+    type: Boolean,
+    default: false
+  },
+  listingDate: {
+    type: Date,
+    default: Date.now
+  },
+  metadata: {
+    type: Schema.Types.Mixed,
+    default: {}
+  }
 }, {
+  timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
@@ -206,80 +310,212 @@ const PropertySchema = new Schema({
 // ========================
 // INDEXES
 // ========================
-PropertySchema.index({ location: '2dsphere' }); // Geospatial queries
-PropertySchema.index({ subcounty: 1, rent: 1 }); // Common filter combination
-PropertySchema.index({ landlord: 1, isAvailable: 1 }); // Landlord dashboard
-PropertySchema.index({ rent: 1, bedrooms: 1 }); // Tenant searches
-PropertySchema.index({ title: 'text', description: 'text' }); // Full-text search
+propertySchema.index({ location: '2dsphere' }); // Geospatial queries
+propertySchema.index({ 'address.area': 1, status: 1 });
+propertySchema.index({ 'address.city': 1, status: 1 });
+propertySchema.index({ type: 1, status: 1 });
+propertySchema.index({ landlord: 1, status: 1 });
+propertySchema.index({ 'rent.amount': 1, status: 1 });
+propertySchema.index({ featured: 1, listingDate: -1 });
+propertySchema.index({ subcounty: 1, rent: 1 });
+propertySchema.index({ title: 'text', description: 'text' });
 
 // ========================
 // VIRTUAL PROPERTIES
 // ========================
-PropertySchema.virtual('depositAmount').get(function() {
-  return this.deposit || this.rent * 2; // Default 2 months deposit
+propertySchema.virtual('fullAddress').get(function() {
+  const addr = this.address;
+  return `${addr.street}, ${addr.area}, ${addr.city}, ${addr.county}${addr.postalCode ? ' ' + addr.postalCode : ''}`;
 });
 
-PropertySchema.virtual('formattedRent').get(function() {
-  return `KES ${this.rent.toLocaleString('en-KE')}`;
+propertySchema.virtual('primaryImage').get(function() {
+  const primary = this.images.find(img => img.isPrimary);
+  return primary ? primary.url : (this.images.length > 0 ? this.images[0].url : null);
 });
 
-PropertySchema.virtual('coordinates').get(function() {
-  return this.location?.coordinates?.join(', ') || '';
+propertySchema.virtual('rentDisplay').get(function() {
+  return `${this.rent.currency} ${this.rent.amount.toLocaleString()}/${this.rent.paymentFrequency}`;
+});
+
+propertySchema.virtual('depositAmount').get(function() {
+  return this.deposit || this.rent.amount * 2; // Default 2 months deposit
+});
+
+propertySchema.virtual('formattedRent').get(function() {
+  return `KES ${this.rent.amount.toLocaleString('en-KE')}`;
+});
+
+propertySchema.virtual('coordinates').get(function() {
+  return this.address.coordinates?.coordinates?.join(', ') || '';
 });
 
 // ========================
 // INSTANCE METHODS
 // ========================
-PropertySchema.methods.getWaterStatus = function() {
+propertySchema.methods.getWaterStatus = function() {
   return this.waterSchedule && this.waterSchedule.size > 0 
     ? 'Rationed' 
     : 'Available';
 };
 
-PropertySchema.methods.getFullAddress = function() {
-  return `${this.location.address}, ${this.subcounty}, Nairobi`;
+propertySchema.methods.markAsOccupied = function(tenantId, leaseStart, leaseEnd, rentDueDate = 1) {
+  this.status = 'occupied';
+  this.isAvailable = false;
+  this.currentTenant = {
+    tenantId,
+    leaseStart,
+    leaseEnd,
+    rentDueDate
+  };
+  return this.save();
+};
+
+propertySchema.methods.markAsAvailable = function() {
+  this.status = 'available';
+  this.isAvailable = true;
+  this.currentTenant = {};
+  return this.save();
+};
+
+propertySchema.methods.updateRent = function(newAmount) {
+  this.rent.amount = newAmount;
+  return this.save();
+};
+
+propertySchema.methods.addImage = function(imageUrl, caption = '', isPrimary = false) {
+  if (isPrimary) {
+    // Remove primary flag from existing images
+    this.images.forEach(img => img.isPrimary = false);
+  }
+  
+  this.images.push({
+    url: imageUrl,
+    caption,
+    isPrimary: isPrimary || this.images.length === 0
+  });
+  
+  return this.save();
+};
+
+propertySchema.methods.incrementViews = function() {
+  this.views += 1;
+  return this.save();
 };
 
 // ========================
 // MIDDLEWARE
 // ========================
-PropertySchema.pre('save', function(next) {
-  this.updatedAt = new Date();
-  
-  // Ensure at least one image is marked as primary
-  if (this.images && this.images.length > 0 && !this.images.some(img => img.isPrimary)) {
-    this.images[0].isPrimary = true;
+propertySchema.pre('save', function(next) {
+  // Ensure only one primary image
+  if (this.images && this.images.length > 0) {
+    let primaryCount = 0;
+    this.images.forEach((img, index) => {
+      if (img.isPrimary) {
+        primaryCount++;
+        if (primaryCount > 1) {
+          img.isPrimary = false;
+        }
+      }
+    });
+    
+    // If no primary image, set first one as primary
+    if (primaryCount === 0) {
+      this.images[0].isPrimary = true;
+    }
+  }
+
+  // Sync status with isAvailable
+  if (this.isModified('status')) {
+    this.isAvailable = this.status === 'available';
+  } else if (this.isModified('isAvailable')) {
+    this.status = this.isAvailable ? 'available' : 'occupied';
   }
   
   next();
 });
 
-PropertySchema.post('save', function(doc, next) {
-  // Update landlord's properties count
-  mongoose.model('User').updateOne(
-    { _id: doc.landlord },
-    { $inc: { propertyCount: 1 } }
-  ).exec();
+propertySchema.post('save', function(doc, next) {
+  // Update landlord's properties count if new property
+  if (this.isNew) {
+    mongoose.model('User').updateOne(
+      { _id: doc.landlord },
+      { $inc: { propertyCount: 1 } }
+    ).exec();
+  }
   next();
 });
 
 // ========================
 // STATIC METHODS
 // ========================
-PropertySchema.statics.findBySubcounty = function(subcounty) {
-  return this.find({ subcounty, isAvailable: true })
-    .sort({ rent: 1 })
-    .limit(100);
+propertySchema.statics.findAvailable = function(filters = {}) {
+  const query = { status: 'available', isAvailable: true };
+  
+  if (filters.city) {
+    query['address.city'] = new RegExp(filters.city, 'i');
+  }
+  
+  if (filters.area) {
+    query['address.area'] = new RegExp(filters.area, 'i');
+  }
+  
+  if (filters.type) {
+    query.type = filters.type;
+  }
+  
+  if (filters.minRent || filters.maxRent) {
+    query['rent.amount'] = {};
+    if (filters.minRent) query['rent.amount'].$gte = filters.minRent;
+    if (filters.maxRent) query['rent.amount'].$lte = filters.maxRent;
+  }
+  
+  if (filters.bedrooms) {
+    query.bedrooms = filters.bedrooms;
+  }
+  
+  if (filters.amenities && filters.amenities.length > 0) {
+    query.amenities = { $in: filters.amenities };
+  }
+  
+  return this.find(query)
+    .populate('landlord', 'name email phone')
+    .sort({ featured: -1, listingDate: -1 });
 };
 
-PropertySchema.statics.getRentStats = async function() {
+propertySchema.statics.findByLandlord = function(landlordId) {
+  return this.find({ landlord: landlordId })
+    .populate('currentTenant.tenantId', 'name email phone')
+    .sort({ createdAt: -1 });
+};
+
+propertySchema.statics.getAreaStats = async function() {
+  const pipeline = [
+    {
+      $group: {
+        _id: '$address.area',
+        count: { $sum: 1 },
+        averageRent: { $avg: '$rent.amount' },
+        availableCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] }
+        }
+      }
+    },
+    {
+      $sort: { count: -1 }
+    }
+  ];
+  
+  return this.aggregate(pipeline);
+};
+
+propertySchema.statics.getRentStats = async function() {
   return this.aggregate([
     {
       $group: {
         _id: '$subcounty',
-        averageRent: { $avg: '$rent' },
-        minRent: { $min: '$rent' },
-        maxRent: { $max: '$rent' },
+        averageRent: { $avg: '$rent.amount' },
+        minRent: { $min: '$rent.amount' },
+        maxRent: { $max: '$rent.amount' },
         count: { $sum: 1 }
       }
     },
@@ -287,4 +523,4 @@ PropertySchema.statics.getRentStats = async function() {
   ]);
 };
 
-module.exports = mongoose.model('Property', PropertySchema);
+module.exports = mongoose.model('Property', propertySchema);

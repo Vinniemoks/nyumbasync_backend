@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const { createLogger } = require('winston');
-const sharp = require('sharp'); // You'll need to install: npm install sharp
+const sharp = require('sharp'); 
 const router = express.Router();
 
 // Logger (you can import from your main logger configuration)

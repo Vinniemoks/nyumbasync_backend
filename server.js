@@ -350,7 +350,7 @@ const authorize = (...roles) => {
 };
 
 // File upload configuration
-const storage = multer.diskStorage({
+/* const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
   },
@@ -358,9 +358,9 @@ const storage = multer.diskStorage({
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
-});
+}); */
 
-const upload = multer({
+/* const upload = multer({
   storage: storage,
   limits: { 
     fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
@@ -373,7 +373,7 @@ const upload = multer({
       cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'));
     }
   }
-});
+}); */
 
 // Database Connection with Retry
 const connectWithRetry = () => {
@@ -607,7 +607,7 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// File upload endpoint
+/* // File upload endpoint
 app.post('/api/v1/upload', authenticateToken, upload.single('image'), (req, res) => {
   try {
     if (!req.file) {
@@ -637,9 +637,9 @@ app.post('/api/v1/upload', authenticateToken, upload.single('image'), (req, res)
       timestamp: res.locals.currentTime
     });
   }
-});
+}); */
 
-// Multiple file upload endpoint
+/* // Multiple file upload endpoint
 app.post('/api/v1/upload/multiple', authenticateToken, upload.array('images', 5), (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
@@ -670,7 +670,7 @@ app.post('/api/v1/upload/multiple', authenticateToken, upload.array('images', 5)
       timestamp: res.locals.currentTime
     });
   }
-});
+}); */
 
 // Enhanced Route Registration with Debug Logging
 const registerRoutes = () => {

@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const asyncHandler = require('express-async-handler'); // Add this
+const asyncHandler = require('express-async-handler'); 
 const transactionController = require('../../controllers/transaction.controller');
+const property =require('../../models/property.model');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { validateMpesaPayment } = require('../../middlewares/validation');
 
