@@ -491,7 +491,7 @@ app.use('/api/', limiter);
 // CORS Configuration
 app.use(cors({
   origin: [
-    'https://nyumbasync-backend.onrender.com',
+    '',
     'https://mokuavinnie.tech',
     'https://nyumbasync.co.ke',
     'https://app.nyumbasync.co.ke',
@@ -508,14 +508,6 @@ app.use(cors({
   credentials: true
 }));
 
-// Render Proxy Middleware
-app.use((req, res, next) => {
-  if (process.env.RENDER) {
-    res.set('X-Render-Host', req.hostname);
-    res.set('X-Render-Instance', process.env.RENDER_INSTANCE_ID || 'unknown');
-  }
-  next();
-});
 
 // Timezone Middleware
 app.use((req, res, next) => {
@@ -561,9 +553,8 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     environment: process.env.NODE_ENV || 'development',
-    renderInstance: process.env.RENDER_INSTANCE_ID || 'local',
     uptime: process.uptime(),
-    documentation: 'https://docs.nyumbasync.com',
+    documentation: '',
     endpoints: {
       auth: '/api/v1/auth',
       properties: '/api/v1/properties',
@@ -1050,8 +1041,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`⏰ Current EAT: ${currentTime}`);
   logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
   logger.info(`📤 Uploads directory: ${path.join(__dirname, 'uploads')}`);
-  logger.info(`🔗 Commit: ${process.env.RENDER_GIT_COMMIT || 'unknown'}`);
-  logger.info(`🌿 Branch: ${process.env.RENDER_GIT_BRANCH || 'unknown'}`);
   logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
   logger.info(`📖 API Documentation: http://0.0.0.0:${PORT}/api/docs`);
   logger.info(`🏥 Health Check: http://0.0.0.0:${PORT}/health`);

@@ -3,9 +3,9 @@ const Property = require('../models/property.model');
 const Transaction = require('../models/transaction.model');
 const Lease = require('../models/lease.model');
 const { sendEmail } = require('../services/email.service');
-const { sendSMS } = require('../../services/sms.service'); 
-const { generateReport } = require('../../services/report.service');
-const { logAdminActivity } = require('../../utils/logger');
+const { sendSMS } = require('../services/sms.service'); 
+const { generateReport } = require('../services/report.service');
+const { logAdminActivity } = require('../utils/logger');
 
 /**
  * Admin Dashboard Statistics

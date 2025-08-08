@@ -1,130 +1,87 @@
+// C:\Users\USER\NyumbaSync\nyumbasync_backend\routes\v1\user.routes.js
 const express = require('express');
 const router = express.Router();
 const asyncHandler = require('express-async-handler');
-const SMSService = require('../../services/sms.service');
+const { param, body, validationResult } = require('express-validator');
+const smsService = require('../../services/sms.service');
 const userController = require('../../controllers/user.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { validateUpdateUser } = require('../../middlewares/validation');
+const User = require('../../models/user.model');
 
-// Initialize SMS Service
-const smsService = new SMSService();
+// Validation middleware
+const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+  }
+  next();
+};
 
-// All routes wrapped in asyncHandler
-router.get('/profile', 
-  authenticate, 
-  asyncHandler(userController.getUserProfile)
-);
+// User Profile Routes
+router.get('/profile', authenticate, asyncHandler(userController.getUserProfile));
 
-router.put('/profile',
-  authenticate,
-  validateUpdateUser,
-  asyncHandler(userController.updateProfile)
-);
+router.put('/profile', authenticate, validateUpdateUser, asyncHandler(userController.updateProfile));
 
-router.get('/',
-  authenticate('admin'),
-  asyncHandler(userController.listUsers)
-);
+router.put('/profile/complete', authenticate, [
+  body('name').isString().trim().notEmpty().withMessage('Name is required'),
+  body('idNumber').isString().trim().notEmpty().withMessage('ID number is required'),
+  body('kraPin').isString().trim().notEmpty().withMessage('KRA PIN is required')
+], validate, asyncHandler(userController.completeProfile));
 
-// Simplified parameter name from :userId to :id
-router.get('/:id',
-  authenticate('admin'),
-  asyncHandler(userController.getUserById)
-);
+// Phone Verification Routes
+router.post('/verify-phone', authenticate, [
+  body('phone').isString().matches(/^\+254\d{9}$/).withMessage('Invalid phone format')
+], validate, asyncHandler(userController.initiatePhoneVerification));
 
-router.patch('/:id/status',
-  authenticate('admin'),
-  asyncHandler(userController.updateUserStatus)
-);
+router.post('/confirm-verification', authenticate, [
+  body('code').isString().matches(/^\d{6}$/).withMessage('Invalid verification code')
+], validate, asyncHandler(userController.confirmVerificationCode));
 
-router.post('/verify-phone',
-  authenticate,
-  asyncHandler(async (req, res) => {
-    const { phoneNumber } = req.body;
-    const userId = req.user._id;
-    
-    // Generate verification code (4-6 digits)
-    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
-    
-    // Save verification code to user record (implementation depends on your DB)
-    await userController.saveVerificationCode(userId, verificationCode);
-    
-    // Send SMS with verification code
-    const message = `Your verification code is: ${verificationCode}`;
-    await smsService.sendSMS(phoneNumber, message);
-    
-    res.json({ 
-      success: true,
-      message: 'Verification code sent successfully'
-    });
-  })
-);
+// Landlord Routes
+router.get('/properties', authenticate('landlord'), asyncHandler(userController.getUserProperties));
 
-router.post('/confirm-verification',
-  authenticate,
-  asyncHandler(async (req, res) => {
-    const { verificationCode } = req.body;
-    const userId = req.user._id;
-    
-    // Verify the code with user record
-    const isVerified = await userController.verifyCode(userId, verificationCode);
-    
-    if (!isVerified) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Invalid verification code' 
-      });
+router.get('/houses', authenticate('tenant'), asyncHandler(userController.getUserHouses));
+
+// Admin Routes
+router.get('/admin/users', authenticate('admin'), asyncHandler(userController.listUsers));
+
+router.get('/admin/users/:id', [
+  param('id').isMongoId().withMessage('Invalid user ID')
+], validate, authenticate('admin'), asyncHandler(userController.getUserById));
+
+router.patch('/admin/users/:id/status', [
+  param('id').isMongoId().withMessage('Invalid user ID'),
+  body('status').isIn(['active', 'suspended', 'inactive']).withMessage('Invalid status')
+], validate, authenticate('admin'), asyncHandler(userController.updateUserStatus));
+
+router.post('/admin/users/:id/notify', [
+  param('id').isMongoId().withMessage('Invalid user ID'),
+  body('message').isString().trim().notEmpty().withMessage('Message is required')
+], validate, authenticate('admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { message } = req.body;
+  try {
+    const user = await User.findById(id).select('phone');
+    if (!user || !user.phone) {
+      return res.status(400).json({ success: false, error: 'User has no registered phone number' });
     }
-    
-    // Update user's phone verification status
-    await userController.markPhoneAsVerified(userId);
-    
-    res.json({ 
-      success: true,
-      message: 'Phone number verified successfully' 
-    });
-  })
-);
+    await smsService.sendSMS({ phoneNumber: user.phone, message });
+    res.json({ success: true, message: 'Notification sent successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to send notification' });
+  }
+}));
 
-// Admin notification route example
-router.post('/:id/notify',
-  authenticate('admin'),
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const { message } = req.body;
-    
-    // Get user's phone number from DB
-    const user = await userController.getUserById(id);
-    
-    if (!user.phoneNumber) {
-      return res.status(400).json({
-        success: false,
-        error: 'User has no registered phone number'
-      });
-    }
-    
-    // Send notification SMS
-    await smsService.sendSMS(user.phoneNumber, message);
-    
-    res.json({
-      success: true,
-      message: 'Notification sent successfully'
-    });
-  })
-);
-
-// Error handling middleware
+// Error Handling Middleware
 router.use((err, req, res, next) => {
   console.error('User route error:', err);
-  
-  // SMS error notification to admin (optional)
   if (process.env.ADMIN_PHONE) {
-    smsService.sendSMS(
-      process.env.ADMIN_PHONE,
-      `User Route Error: ${err.message}`
-    ).catch(e => console.error('Failed to send error SMS:', e));
+    smsService.sendSMS({
+      phoneNumber: process.env.ADMIN_PHONE,
+      message: `User Route Error: ${err.message}`
+    }).catch(e => console.error('Failed to send error SMS:', e));
   }
-  
   res.status(500).json({ 
     error: 'User operation failed',
     details: process.env.NODE_ENV === 'development' ? err.message : undefined

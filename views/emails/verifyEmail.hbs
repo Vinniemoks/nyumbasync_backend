@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NyumbaSync - Email Verification</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .logo {
+            width: 150px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        p {
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        
+        .status-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        
+        .success {
+            color: #27ae60;
+        }
+        
+        .error {
+            color: #e74c3c;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background-color 0.3s;
+            margin-top: 15px;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .resend-link {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .resend-link:hover {
+            text-decoration: underline;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{#if success}}
+            <!-- Success state -->
+            <div class="status-icon success">✓</div>
+            <h1>Email Verified Successfully!</h1>
+            <p>Thank you for verifying your email address. Your NyumbaSync account is now fully activated.</p>
+            <a href="/dashboard" class="btn">Go to Dashboard</a>
+        {{else}}
+            <!-- Error state -->
+            <div class="status-icon error">✗</div>
+            <h1>Email Verification Failed</h1>
+            <p>{{errorMessage}}</p>
+            
+            {{#if showResend}}
+                <p>Didn't receive the email? <a href="/resend-verification" class="resend-link">Resend verification email</a></p>
+            {{/if}}
+            
+            <a href="/" class="btn">Return to Home</a>
+        {{/if}}
+        
+        <div class="footer">
+            <p>&copy; {{currentYear}} NyumbaSync. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

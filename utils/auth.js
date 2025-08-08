@@ -72,7 +72,7 @@ const generateVerificationCode = () => {
 module.exports = {
   generateToken,
   verifyToken,
-  validateKenyanPhone, // Your strict validator
-  formatToStrictKenyan, // Format converter
+  validateKenyanPhone, 
+  formatToStrictKenyan, 
   generateVerificationCode
 };

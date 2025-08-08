@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Receipt - NyumbaSync</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+        
+        .header {
+            background-color: #2c3e50;
+            padding: 25px 20px;
+            text-align: center;
+            color: white;
+        }
+        
+        .logo {
+            height: 40px;
+            margin-bottom: 10px;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .receipt-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .receipt-title {
+            font-size: 24px;
+            color: #27ae60;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .receipt-number {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        
+        .receipt-details {
+            margin-bottom: 30px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .detail-label {
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+        
+        .detail-value {
+            font-weight: 500;
+        }
+        
+        .amount-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 0;
+            font-size: 18px;
+            font-weight: 600;
+            border-top: 2px solid #eee;
+            border-bottom: 2px solid #eee;
+            margin: 25px 0;
+        }
+        
+        .property-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 25px;
+        }
+        
+        .property-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .property-address {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        .notes {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin: 25px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            background-color: #2c3e50;
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: 500;
+            margin-top: 15px;
+        }
+        
+        .contact-info {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://nyumbasync.com/logo-white.png" alt="NyumbaSync Logo" class="logo">
+            <h1>Payment Receipt</h1>
+        </div>
+        
+        <div class="content">
+            <div class="receipt-header">
+                <div class="receipt-title">Payment Successful</div>
+                <div class="receipt-number">Receipt #{{receiptNumber}}</div>
+            </div>
+            
+            <div class="property-info">
+                <div class="property-name">{{propertyName}}</div>
+                <div class="property-address">{{propertyAddress}}</div>
+            </div>
+            
+            <div class="receipt-details">
+                <div class="detail-row">
+                    <span class="detail-label">Payment Date</span>
+                    <span class="detail-value">{{paymentDate}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Payment Method</span>
+                    <span class="detail-value">{{paymentMethod}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Transaction ID</span>
+                    <span class="detail-value">{{transactionId}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Paid By</span>
+                    <span class="detail-value">{{payerName}}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Received By</span>
+                    <span class="detail-value">{{recipientName}}</span>
+                </div>
+            </div>
+            
+            <div class="amount-row">
+                <span>Total Amount</span>
+                <span>{{amount}}</span>
+            </div>
+            
+            {{#if paymentFor}}
+            <div class="detail-row">
+                <span class="detail-label">Payment For</span>
+                <span class="detail-value">{{paymentFor}}</span>
+            </div>
+            {{/if}}
+            
+            {{#if periodCovered}}
+            <div class="detail-row">
+                <span class="detail-label">Period Covered</span>
+                <span class="detail-value">{{periodCovered}}</span>
+            </div>
+            {{/if}}
+            
+            {{#if notes}}
+            <div class="notes">
+                <strong>Notes:</strong> {{notes}}
+            </div>
+            {{/if}}
+            
+            <div style="text-align: center;">
+                <a href="{{downloadLink}}" class="download-btn">Download Receipt</a>
+            </div>
+            
+            <div class="contact-info">
+                <p>If you have any questions about this payment, please contact:</p>
+                <p><strong>NyumbaSync Support</strong><br>
+                Email: <a href="mailto:support@nyumbasync.com" style="color: #2c3e50;">support@nyumbasync.com</a><br>
+                Phone: {{supportPhone}}</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>&copy; {{currentYear}} NyumbaSync. All rights reserved.</p>
+            <p>This is an automated receipt. Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -23,7 +23,7 @@ const propertySchema = new Schema({
     required: true,
     enum: [
       'apartment', 'house', 'studio', 'bedsitter', 'commercial', 'office',
-      'Apartment', 'Bedsitter', 'Single Room', 'Maisonette', 'Bungalow', 
+      'Apartment', 'Bedsitter', 'Single Room', 'Maisonette', 'Bungalow',
       'Townhouse', 'Commercial Space', 'Hostel', 'Shared House'
     ],
     index: true
@@ -52,59 +52,29 @@ const propertySchema = new Schema({
 
   // Location details
   address: {
-    street: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    area: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true
-    },
-    city: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true
-    },
-    county: {
-      type: String,
-      required: true,
-      trim: true,
-      default: 'Nairobi'
-    },
-    postalCode: {
-      type: String,
-      trim: true
-    },
+    street: { type: String, required: true, trim: true },
+    area: { type: String, required: true, trim: true, index: true },
+    city: { type: String, required: true, trim: true, index: true },
+    county: { type: String, required: true, trim: true, default: 'Nairobi' },
+    postalCode: { type: String, trim: true },
     coordinates: {
-      type: {
-        type: String,
-        default: 'Point',
-        enum: ['Point']
-      },
+      type: { type: String, default: 'Point', enum: ['Point'] },
       coordinates: {
         type: [Number],
         validate: {
           validator: function(v) {
-            if (!v || v.length !== 2) return true; // Not required if not provided
-            // Nairobi County bounding box coordinates
-            return v[0] >= 36.65 && v[0] <= 37.05 && // Longitude range
-                   v[1] >= -1.55 && v[1] <= -1.10;   // Latitude range
+            if (!v || v.length !== 2) return true;
+            return v[0] >= 36.65 && v[0] <= 37.05 && v[1] >= -1.55 && v[1] <= -1.10;
           },
           message: 'Coordinates must be within Nairobi County boundaries'
         }
       }
     }
   },
-
-  // Nairobi Administrative Units
   subcounty: {
     type: String,
     enum: [
-      'Westlands', 'Dagoretti North', 'Dagoretti South', 
+      'Westlands', 'Dagoretti North', 'Dagoretti South',
       'Embakasi East', 'Embakasi West', 'Embakasi Central',
       'Embakasi North', 'Embakasi South', 'Kasarani',
       'Langata', 'Starehe', 'Kamukunji', 'Mathare',
@@ -120,80 +90,35 @@ const propertySchema = new Schema({
       required: [true, 'Monthly rent amount is required'],
       min: [1000, 'Rent cannot be less than KES 1,000'],
       max: [1000000, 'Rent cannot exceed KES 1,000,000'],
-      set: v => Math.round(v) // Store only whole numbers
+      set: v => Math.round(v)
     },
-    currency: {
-      type: String,
-      default: 'KES',
-      enum: ['KES', 'USD']
-    },
-    paymentFrequency: {
-      type: String,
-      enum: ['monthly', 'quarterly', 'annually'],
-      default: 'monthly'
-    }
+    currency: { type: String, default: 'KES', enum: ['KES', 'USD'] },
+    paymentFrequency: { type: String, enum: ['monthly', 'quarterly', 'annually'], default: 'monthly' }
   },
   deposit: {
     type: Number,
     required: true,
     min: 0,
     validate: {
-      validator: function(v) {
-        return v <= this.rent.amount * 3; // Kenyan rental law maximum
-      },
+      validator: function(v) { return v <= this.rent.amount * 3; },
       message: 'Deposit cannot exceed 3 months rent'
     }
   },
-  serviceCharge: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
+  serviceCharge: { type: Number, default: 0, min: 0 },
 
   // Kenyan Utilities
-  waterSource: {
-    type: String,
-    enum: ['county', 'borehole', 'tank', 'well'],
-    default: 'county'
-  },
-  waterSchedule: {
-    type: Map,
-    of: String // Stores rationing schedule if applicable
-  },
-  powerBackup: {
-    type: String,
-    enum: ['none', 'generator', 'inverter', 'solar'],
-    default: 'none'
-  },
-  internet: {
-    type: Boolean,
-    default: false
-  },
+  waterSource: { type: String, enum: ['county', 'borehole', 'tank', 'well'], default: 'county' },
+  waterSchedule: { type: Map, of: String },
+  powerBackup: { type: String, enum: ['none', 'generator', 'inverter', 'solar'], default: 'none' },
+  internet: { type: Boolean, default: false },
 
   // Property status and availability
-  status: {
-    type: String,
-    enum: ['available', 'occupied', 'maintenance', 'unavailable'],
-    default: 'available',
-    index: true
-  },
-  isAvailable: {
-    type: Boolean,
-    default: true
-  },
-  furnished: {
-    type: Boolean,
-    default: false
-  },
-  petFriendly: {
-    type: Boolean,
-    default: false
-  },
+  status: { type: String, enum: ['available', 'occupied', 'maintenance', 'unavailable'], default: 'available', index: true },
+  isAvailable: { type: Boolean, default: true },
+  furnished: { type: Boolean, default: false },
+  petFriendly: { type: Boolean, default: false },
   availableFrom: Date,
-  viewingSchedule: [{
-    day: String,
-    hours: String
-  }],
+  viewingSchedule: [{ day: String, hours: String }],
 
   // Owner/Manager information
   landlord: {
@@ -209,57 +134,45 @@ const propertySchema = new Schema({
     },
     index: true
   },
-  manager: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  },
+  manager: { type: Schema.Types.ObjectId, ref: 'User' },
+
+  // Houses
+  houses: [{
+    number: { type: String, required: true, trim: true },
+    lastPayment: { type: Date },
+    tenant: { type: Schema.Types.ObjectId, ref: 'User' },
+    status: { type: String, enum: ['occupied', 'available', 'maintenance'], default: 'available' }
+  }],
 
   // Current tenant information
   currentTenant: {
-    tenantId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User'
-    },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'User' },
     leaseStart: Date,
     leaseEnd: Date,
-    rentDueDate: {
-      type: Number,
-      min: 1,
-      max: 31,
-      default: 1
-    }
+    rentDueDate: { type: Number, min: 1, max: 31, default: 1 }
   },
 
   // Amenities and features
   amenities: [{
     type: String,
     enum: [
-      'parking', 'security', 'wifi', 'gym', 'pool', 'garden', 
+      'parking', 'security', 'wifi', 'gym', 'pool', 'garden',
       'balcony', 'elevator', 'backup_generator', 'water_tank',
-      'cctv', 'gym', 'playground', 'laundry', 'shopping_center'
+      'cctv', 'playground', 'laundry', 'shopping_center'
     ]
   }],
 
   // Media
   images: [{
-    url: {
-      type: String,
-      required: true
-    },
+    url: { type: String, required: true },
     caption: String,
-    isPrimary: {
-      type: Boolean,
-      default: false
-    }
+    isPrimary: { type: Boolean, default: false }
   }],
   videoTour: String,
   documents: [{
     type: String,
     url: String,
-    uploadedAt: {
-      type: Date,
-      default: Date.now
-    }
+    uploadedAt: { type: Date, default: Date.now }
   }],
 
   // Legal Compliance
@@ -268,49 +181,26 @@ const propertySchema = new Schema({
     nemaApproved: Boolean,
     fireCertificate: Boolean
   },
-  contractUrl: {
-    type: String,
-    match: [/^https?:\/\//, 'Please use a valid URL']
-  },
+  contractUrl: { type: String, match: [/^https?:\/\//, 'Please use a valid URL'] },
 
   // Verification and compliance
-  verified: {
-    type: Boolean,
-    default: false
-  },
+  verified: { type: Boolean, default: false },
   verifiedAt: Date,
-  verifiedBy: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  },
+  verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' },
 
   // Metadata
-  views: {
-    type: Number,
-    default: 0
-  },
-  featured: {
-    type: Boolean,
-    default: false
-  },
-  listingDate: {
-    type: Date,
-    default: Date.now
-  },
-  metadata: {
-    type: Schema.Types.Mixed,
-    default: {}
-  }
+  views: { type: Number, default: 0 },
+  featured: { type: Boolean, default: false },
+  listingDate: { type: Date, default: Date.now },
+  metadata: { type: Schema.Types.Mixed, default: {} }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// ========================
-// INDEXES
-// ========================
-propertySchema.index({ location: '2dsphere' }); // Geospatial queries
+// Indexes
+propertySchema.index({ 'address.coordinates': '2dsphere' });
 propertySchema.index({ 'address.area': 1, status: 1 });
 propertySchema.index({ 'address.city': 1, status: 1 });
 propertySchema.index({ type: 1, status: 1 });
@@ -320,9 +210,7 @@ propertySchema.index({ featured: 1, listingDate: -1 });
 propertySchema.index({ subcounty: 1, rent: 1 });
 propertySchema.index({ title: 'text', description: 'text' });
 
-// ========================
-// VIRTUAL PROPERTIES
-// ========================
+// Virtual properties
 propertySchema.virtual('fullAddress').get(function() {
   const addr = this.address;
   return `${addr.street}, ${addr.area}, ${addr.city}, ${addr.county}${addr.postalCode ? ' ' + addr.postalCode : ''}`;
@@ -338,7 +226,7 @@ propertySchema.virtual('rentDisplay').get(function() {
 });
 
 propertySchema.virtual('depositAmount').get(function() {
-  return this.deposit || this.rent.amount * 2; // Default 2 months deposit
+  return this.deposit || this.rent.amount * 2;
 });
 
 propertySchema.virtual('formattedRent').get(function() {
@@ -349,24 +237,15 @@ propertySchema.virtual('coordinates').get(function() {
   return this.address.coordinates?.coordinates?.join(', ') || '';
 });
 
-// ========================
-// INSTANCE METHODS
-// ========================
+// Instance methods
 propertySchema.methods.getWaterStatus = function() {
-  return this.waterSchedule && this.waterSchedule.size > 0 
-    ? 'Rationed' 
-    : 'Available';
+  return this.waterSchedule && this.waterSchedule.size > 0 ? 'Rationed' : 'Available';
 };
 
 propertySchema.methods.markAsOccupied = function(tenantId, leaseStart, leaseEnd, rentDueDate = 1) {
   this.status = 'occupied';
   this.isAvailable = false;
-  this.currentTenant = {
-    tenantId,
-    leaseStart,
-    leaseEnd,
-    rentDueDate
-  };
+  this.currentTenant = { tenantId, leaseStart, leaseEnd, rentDueDate };
   return this.save();
 };
 
@@ -384,16 +263,9 @@ propertySchema.methods.updateRent = function(newAmount) {
 
 propertySchema.methods.addImage = function(imageUrl, caption = '', isPrimary = false) {
   if (isPrimary) {
-    // Remove primary flag from existing images
     this.images.forEach(img => img.isPrimary = false);
   }
-  
-  this.images.push({
-    url: imageUrl,
-    caption,
-    isPrimary: isPrimary || this.images.length === 0
-  });
-  
+  this.images.push({ url: imageUrl, caption, isPrimary: isPrimary || this.images.length === 0 });
   return this.save();
 };
 
@@ -402,11 +274,8 @@ propertySchema.methods.incrementViews = function() {
   return this.save();
 };
 
-// ========================
-// MIDDLEWARE
-// ========================
+// Middleware
 propertySchema.pre('save', function(next) {
-  // Ensure only one primary image
   if (this.images && this.images.length > 0) {
     let primaryCount = 0;
     this.images.forEach((img, index) => {
@@ -417,25 +286,19 @@ propertySchema.pre('save', function(next) {
         }
       }
     });
-    
-    // If no primary image, set first one as primary
     if (primaryCount === 0) {
       this.images[0].isPrimary = true;
     }
   }
-
-  // Sync status with isAvailable
   if (this.isModified('status')) {
     this.isAvailable = this.status === 'available';
   } else if (this.isModified('isAvailable')) {
     this.status = this.isAvailable ? 'available' : 'occupied';
   }
-  
   next();
 });
 
 propertySchema.post('save', function(doc, next) {
-  // Update landlord's properties count if new property
   if (this.isNew) {
     mongoose.model('User').updateOne(
       { _id: doc.landlord },
@@ -445,80 +308,37 @@ propertySchema.post('save', function(doc, next) {
   next();
 });
 
-// ========================
-// STATIC METHODS
-// ========================
+// Static methods
 propertySchema.statics.findAvailable = function(filters = {}) {
   const query = { status: 'available', isAvailable: true };
-  
-  if (filters.city) {
-    query['address.city'] = new RegExp(filters.city, 'i');
-  }
-  
-  if (filters.area) {
-    query['address.area'] = new RegExp(filters.area, 'i');
-  }
-  
-  if (filters.type) {
-    query.type = filters.type;
-  }
-  
+  if (filters.city) query['address.city'] = new RegExp(filters.city, 'i');
+  if (filters.area) query['address.area'] = new RegExp(filters.area, 'i');
+  if (filters.type) query.type = filters.type;
   if (filters.minRent || filters.maxRent) {
     query['rent.amount'] = {};
     if (filters.minRent) query['rent.amount'].$gte = filters.minRent;
     if (filters.maxRent) query['rent.amount'].$lte = filters.maxRent;
   }
-  
-  if (filters.bedrooms) {
-    query.bedrooms = filters.bedrooms;
-  }
-  
-  if (filters.amenities && filters.amenities.length > 0) {
-    query.amenities = { $in: filters.amenities };
-  }
-  
-  return this.find(query)
-    .populate('landlord', 'name email phone')
-    .sort({ featured: -1, listingDate: -1 });
+  if (filters.bedrooms) query.bedrooms = filters.bedrooms;
+  if (filters.amenities && filters.amenities.length > 0) query.amenities = { $in: filters.amenities };
+  return this.find(query).populate('landlord', 'name email phone').sort({ featured: -1, listingDate: -1 });
 };
 
 propertySchema.statics.findByLandlord = function(landlordId) {
-  return this.find({ landlord: landlordId })
-    .populate('currentTenant.tenantId', 'name email phone')
-    .sort({ createdAt: -1 });
+  return this.find({ landlord: landlordId }).populate('currentTenant.tenantId', 'name email phone').sort({ createdAt: -1 });
 };
 
 propertySchema.statics.getAreaStats = async function() {
   const pipeline = [
-    {
-      $group: {
-        _id: '$address.area',
-        count: { $sum: 1 },
-        averageRent: { $avg: '$rent.amount' },
-        availableCount: {
-          $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] }
-        }
-      }
-    },
-    {
-      $sort: { count: -1 }
-    }
+    { $group: { _id: '$address.area', count: { $sum: 1 }, averageRent: { $avg: '$rent.amount' }, availableCount: { $sum: { $cond: [{ $eq: ['$status', 'available'] }, 1, 0] } } } },
+    { $sort: { count: -1 } }
   ];
-  
   return this.aggregate(pipeline);
 };
 
 propertySchema.statics.getRentStats = async function() {
   return this.aggregate([
-    {
-      $group: {
-        _id: '$subcounty',
-        averageRent: { $avg: '$rent.amount' },
-        minRent: { $min: '$rent.amount' },
-        maxRent: { $max: '$rent.amount' },
-        count: { $sum: 1 }
-      }
-    },
+    { $group: { _id: '$subcounty', averageRent: { $avg: '$rent.amount' }, minRent: { $min: '$rent.amount' }, maxRent: { $max: '$rent.amount' }, count: { $sum: 1 } } },
     { $sort: { averageRent: 1 } }
   ]);
 };

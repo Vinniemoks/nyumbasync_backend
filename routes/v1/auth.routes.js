@@ -1,39 +1,39 @@
-const express = require('express');
-const router = express.Router();
-const authController = require('../../controllers/auth.controller');
-const {
-  validatePhoneRegistration,
-  validateVerificationCode
-} = require('../../middlewares/validation');
+const router = require('express').Router();
+const asyncHandler = require('express-async-handler');
+
+// Add debugging for the controller import
+console.log('Attempting to import admin controller...');
+try {
+  const adminController = require('../../controllers/admin.controller');
+  console.log('Admin controller imported successfully:', Object.keys(adminController));
+} catch (error) {
+  console.error('Failed to import admin controller:', error.message);
+  console.error('Error details:', error);
+}
+
+const adminController = require('../../controllers/admin.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
-// M-Pesa phone registration
-router.post('/register',
-  validatePhoneRegistration,
-  authController.registerWithPhone
+// Removed global middleware and added to individual routes
+router.get('/compliance',
+  authenticate('admin'),
+  asyncHandler(adminController.checkCompliance)
 );
 
-// OTP verification
-router.post('/verify',
-  validateVerificationCode,
-  authController.verifyCode
+router.post('/notices',
+  authenticate('admin'),
+  asyncHandler(adminController.sendLegalNotices)
 );
 
-// Profile management - Fixed: authenticate used as middleware, not function call
-router.get('/profile',
-  authenticate,
-  authController.getProfile
+router.get('/reports/rent',
+  authenticate('admin'),
+  asyncHandler(adminController.generateFinancialReport)
 );
 
-// Profile routes with authentication middleware
-router.put('/profile/complete', 
-  authenticate, 
-  authController.completeProfile
-);
-
-router.put('/profile/update', 
-  authenticate, 
-  authController.updateProfile
-);
+// Error handling middleware
+router.use((err, req, res, next) => {
+  console.error('Admin route error:', err);
+  res.status(500).json({ error: 'Admin operation failed' });
+});
 
 module.exports = router;

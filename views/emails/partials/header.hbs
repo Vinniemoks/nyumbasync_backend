@@ -1,0 +1,60 @@
+<!-- Email Header Partial -->
+<table width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#2c3e50">
+  <tr>
+    <td align="center" style="padding: 30px 20px;">
+      <!-- Logo with fallback -->
+      <table cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="text-align: center;">
+            <a href="{{config.client.url}}" target="_blank" style="text-decoration: none;">
+              <img src="https://nyumbasync.com/images/logo-white.png" 
+                   alt="NyumbaSync Logo" 
+                   width="180" 
+                   style="display: block; width: 180px; max-width: 180px; height: auto; margin: 0 auto; border: 0;"
+                   border="0">
+            </a>
+          </td>
+        </tr>
+      </table>
+      
+      <!-- Optional header text -->
+      {{#if headerText}}
+      <table cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 20px;">
+        <tr>
+          <td align="center" style="color: #ffffff; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 18px; font-weight: bold; line-height: 1.4;">
+            {{headerText}}
+          </td>
+        </tr>
+      </table>
+      {{/if}}
+      
+      <!-- Optional header button -->
+      {{#if headerButton}}
+      <table cellspacing="0" cellpadding="0" border="0" style="margin-top: 25px;">
+        <tr>
+          <td align="center">
+            <table cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td align="center" bgcolor="#3498db" style="border-radius: 4px;">
+                  <a href="{{headerButton.url}}" 
+                     target="_blank" 
+                     style="display: inline-block; padding: 12px 24px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 16px; color: #ffffff; text-decoration: none; font-weight: bold; border-radius: 4px;">
+                    {{headerButton.text}}
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+      {{/if}}
+    </td>
+  </tr>
+</table>
+
+<!-- Spacer -->
+<table width="100%" cellspacing="0" cellpadding="0" border="0">
+  <tr>
+    <td height="20" style="font-size: 0; line-height: 0;">&nbsp;</td>
+  </tr>
+</table>

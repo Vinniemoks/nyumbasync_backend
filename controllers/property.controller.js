@@ -1,153 +1,177 @@
+// C:\Users\USER\NyumbaSync\nyumbasync_backend\controllers\property.controller.js
 const Property = require('../models/property.model');
+const asyncHandler = require('express-async-handler');
 const { validateRentIncrease } = require('../utils/kenyanValidators');
 
-// Get all available properties with optional filters
-exports.searchProperties = async (req, res) => {
-  try {
-    const { lng, lat, maxDistance = 5000, maxRent } = req.query; // Added maxRent
-    
-    const query = {
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(lng), parseFloat(lat)]
-          },
-          $maxDistance: parseInt(maxDistance)
-        }
-      },
-      status: 'available'
+// ADD MISSING FUNCTION: getAvailableProperties (called by route)
+exports.getAvailableProperties = asyncHandler(async (req, res) => {
+  const { lng, lat, maxDistance = 5000, maxRent, city, area, type, bedrooms, amenities } = req.query;
+  const filters = { city, area, type, bedrooms, amenities };
+  if (maxRent) {
+    filters.maxRent = parseInt(maxRent);
+  }
+  if (lng && lat) {
+    filters.coordinates = {
+      $near: {
+        $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+        $maxDistance: parseInt(maxDistance)
+      }
     };
+  }
+  const properties = await Property.findAvailable(filters);
+  res.json({ count: properties.length, properties });
+});
 
-    // Add maxRent filter if provided
-    if (maxRent) {
-      query.rent = { $lte: parseInt(maxRent) };
-    }
+exports.searchProperties = asyncHandler(async (req, res) => {
+  const { lng, lat, maxDistance = 5000, maxRent, city, area, type, bedrooms, amenities } = req.query;
+  const filters = { city, area, type, bedrooms, amenities };
+  if (maxRent) {
+    filters.maxRent = parseInt(maxRent);
+  }
+  if (lng && lat) {
+    filters.coordinates = {
+      $near: {
+        $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+        $maxDistance: parseInt(maxDistance)
+      }
+    };
+  }
+  const properties = await Property.findAvailable(filters);
+  res.json({ count: properties.length, properties });
+});
 
-    const properties = await Property.find(query); // Use the constructed query
+// RENAME FUNCTION: getProperty -> getPropertyDetails (to match route)
+exports.getPropertyDetails = asyncHandler(async (req, res) => {
+  const property = await Property.findById(req.params.id).populate('landlord', 'name phone');
+  if (!property) {
+    return res.status(404).json({ error: 'Property not found' });
+  }
+  await property.incrementViews();
+  res.json({
+    ...property.toJSON(),
+    waterStatus: property.getWaterStatus()
+  });
+});
 
-    res.json(properties);
-  } catch (err) {
-    res.status(500).json({
-      error: 'Search failed',
-      alternative: 'Browse by subcounty instead'
+// KEEP ORIGINAL FUNCTION NAME TOO (in case it's used elsewhere)
+exports.getProperty = asyncHandler(async (req, res) => {
+  const property = await Property.findById(req.params.id).populate('landlord', 'name phone');
+  if (!property) {
+    return res.status(404).json({ error: 'Property not found' });
+  }
+  await property.incrementViews();
+  res.json({
+    ...property.toJSON(),
+    waterStatus: property.getWaterStatus()
+  });
+});
+
+exports.createProperty = asyncHandler(async (req, res) => {
+  const { rent, deposit, houses } = req.body;
+  if (deposit > rent.amount * 3) {
+    return res.status(400).json({ error: 'Deposit cannot exceed 3 months rent per Kenyan law' });
+  }
+  const property = await Property.create({
+    ...req.body,
+    landlord: req.user._id,
+    status: 'available',
+    isAvailable: true,
+    houses: houses || []
+  });
+  res.status(201).json(property);
+});
+
+exports.updateProperty = asyncHandler(async (req, res) => {
+  const property = await Property.findOne({ _id: req.params.id, landlord: req.user._id });
+  if (!property) {
+    return res.status(403).json({ error: 'Unauthorized or property not found' });
+  }
+  const updated = await Property.findByIdAndUpdate(
+    req.params.id,
+    { ...req.body, landlord: req.user._id },
+    { new: true, runValidators: true }
+  );
+  res.json(updated);
+});
+
+exports.updatePropertyRent = asyncHandler(async (req, res) => {
+  const property = await Property.findOne({ _id: req.params.id, landlord: req.user._id });
+  if (!property) {
+    return res.status(403).json({ error: 'Unauthorized or property not found' });
+  }
+  if (!validateRentIncrease(property.rent.amount, req.body.amount)) {
+    return res.status(400).json({
+      error: 'Maximum 7% annual increase allowed',
+      currentRent: property.rent.amount,
+      allowedNewRent: property.rent.amount * 1.07
     });
   }
-};
+  await property.updateRent(req.body.amount);
+  res.json({ message: 'Rent updated successfully', property });
+});
 
-// Get single property details
-exports.getProperty = async (req, res) => {
-  try {
-    const property = await Property.findById(req.params.id)
-      .populate('landlord', 'name phone');
-    
-    if (!property) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
-
-    res.json(property);
-  } catch (err) {
-    res.status(500).json({ 
-      error: 'Failed to fetch property',
-      contact: '0700NYUMBA for assistance'
-    });
+exports.deleteProperty = asyncHandler(async (req, res) => {
+  const property = await Property.findOneAndDelete({ _id: req.params.id, landlord: req.user._id });
+  if (!property) {
+    return res.status(403).json({ error: 'Unauthorized or property not found' });
   }
-};
+  res.json({ 
+    message: 'Property listing removed',
+    refundNotice: 'Any deposits must be refunded within 14 days' 
+  });
+});
 
-// Create new property listing
-exports.createProperty = async (req, res) => {
-  try {
-    const { location, rent, deposit } = req.body;
+exports.getAreaStats = asyncHandler(async (req, res) => {
+  const stats = await Property.getAreaStats();
+  res.json(stats);
+});
 
-    // Kenyan deposit cap check
-    if (deposit > rent * 3) {
-      return res.status(400).json({
-        error: 'Deposit cannot exceed 3 months rent per Kenyan law'
-      });
-    }
+exports.getRentStats = asyncHandler(async (req, res) => {
+  const stats = await Property.getRentStats();
+  res.json(stats);
+});
 
-    const property = await Property.create({
-      ...req.body,
-      landlord: req.user.id,
-      status: 'available'
-    });
+exports.getLandlordProperties = asyncHandler(async (req, res) => {
+  const properties = await Property.findByLandlord(req.user._id);
+  res.json({ count: properties.length, properties });
+});
 
-    res.status(201).json(property);
-  } catch (err) {
-    res.status(500).json({
-      error: 'Failed to list property',
-      localContact: '0700NYUMBA'
-    });
+exports.addPropertyImage = asyncHandler(async (req, res) => {
+  const { url, caption, isPrimary } = req.body;
+  const property = await Property.findOne({ _id: req.params.id, landlord: req.user._id });
+  if (!property) {
+    return res.status(403).json({ error: 'Unauthorized or property not found' });
   }
-};
+  await property.addImage(url, caption, isPrimary);
+  res.json({ message: 'Image added successfully', property });
+});
 
-// Update property details
-exports.updateProperty = async (req, res) => {
-  try {
-    const updated = await Property.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-
-    if (!updated) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
-
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ 
-      error: 'Update failed',
-      details: err.message 
-    });
+exports.markPropertyAvailable = asyncHandler(async (req, res) => {
+  const property = await Property.findOne({ _id: req.params.id, landlord: req.user._id });
+  if (!property) {
+    return res.status(403).json({ error: 'Unauthorized or property not found' });
   }
-};
+  await property.markAsAvailable();
+  res.json({ message: 'Property marked as available', property });
+});
 
-// Update rent amount
-exports.updateRent = async (req, res) => {
-  try {
-    const property = await Property.findById(req.params.id);
-    
-    if (!validateRentIncrease(property.rent, req.body.rent)) {
-      return res.status(400).json({
-        error: 'Maximum 7% annual increase allowed',
-        currentRent: property.rent,
-        allowedNewRent: property.rent * 1.07
-      });
-    }
-
-    const updated = await Property.findByIdAndUpdate(
-      req.params.id,
-      { rent: req.body.rent },
-      { new: true }
-    );
-
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ 
-      error: 'Rent update failed',
-      notice: 'Tenant must be notified 2 months in advance' 
-    });
+exports.markHouseOccupied = asyncHandler(async (req, res) => {
+  const { tenantId, leaseStart, leaseEnd, houseNumber, rentDueDate } = req.body;
+  const property = await Property.findOne({ _id: req.params.id, landlord: req.user._id });
+  if (!property) {
+    return res.status(403).json({ error: 'Unauthorized or property not found' });
   }
-};
-
-// Delete property listing
-exports.deleteProperty = async (req, res) => {
-  try {
-    const property = await Property.findByIdAndDelete(req.params.id);
-
-    if (!property) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
-
-    res.json({ 
-      message: 'Property listing removed',
-      refundNotice: 'Any deposits must be refunded within 14 days' 
-    });
-  } catch (err) {
-    res.status(500).json({ 
-      error: 'Failed to delete property',
-      legalContact: 'contact@nyumbasync.co.ke' 
-    });
+  if (!property.houses || !property.houses.find(h => h.number === houseNumber)) {
+    return res.status(400).json({ error: 'House not found' });
   }
-};
+  const house = property.houses.find(h => h.number === houseNumber);
+  if (house.status !== 'available') {
+    return res.status(400).json({ error: 'House is not available' });
+  }
+  await property.markAsOccupied(tenantId, new Date(leaseStart), new Date(leaseEnd), rentDueDate);
+  house.status = 'occupied';
+  house.tenant = tenantId;
+  house.lastPayment = new Date();
+  await property.save();
+  res.json({ message: 'House marked as occupied', property });
+});
