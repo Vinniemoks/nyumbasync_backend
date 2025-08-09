@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
-const User = require('../models/User.model');
+const User = require('../models/user.model');
 const winston = require('winston');
 require('dotenv').config();
 

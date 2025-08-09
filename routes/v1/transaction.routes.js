@@ -1,5 +1,3 @@
-const express = require('express');
-const router = express.Router();
 const asyncHandler = require('express-async-handler');
 const { param, body, validationResult } = require('express-validator');
 const transactionController = require('../../controllers/transaction.controller');
@@ -22,25 +20,92 @@ const validate = (req, res, next) => {
   next();
 };
 
-router.post('/mpesa/stk-push', authenticate('tenant'), validateMpesaPayment, asyncHandler(transactionController.initiateMpesaPayment));
-router.post('/mpesa/callback', asyncHandler(transactionController.handleMpesaCallback));
-router.get('/history', authenticate, asyncHandler(transactionController.getTransactionHistory));
-router.get('/reconcile', authenticate('admin'), asyncHandler(transactionController.reconcileTransactions));
-router.get('/export/csv', authenticate('admin'), asyncHandler(transactionController.exportTransactionsCSV));
-router.get('/property/:propertyId', authenticate('landlord'), validatePropertyId, validate, asyncHandler(transactionController.getPropertyTransactions));
-router.get('/:transactionId', authenticate, validateTransactionId, validate, asyncHandler(transactionController.getTransactionDetails));
-router.post('/:transactionId/resend-receipt', authenticate, validateTransactionId, validate, asyncHandler(transactionController.resendTransactionReceipt));
-router.post('/:transactionId/retry', authenticate('tenant'), validateTransactionId, validate, asyncHandler(transactionController.retryFailedTransaction));
-
-router.use((err, req, res, next) => {
-  console.error('Transaction route error:', err);
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({ error: 'Validation failed', details: err.message });
+module.exports = [
+  {
+    method: 'POST',
+    path: '/mpesa/stk-push',
+    handler: [
+      authenticate('tenant'),
+      validateMpesaPayment,
+      asyncHandler(transactionController.initiateMpesaPayment)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/mpesa/callback',
+    handler: asyncHandler(transactionController.handleMpesaCallback),
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/history',
+    handler: [
+      authenticate,
+      asyncHandler(transactionController.getTransactionHistory)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/reconcile',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(transactionController.reconcileTransactions)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/export/csv',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(transactionController.exportTransactionsCSV)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/property/:propertyId',
+    handler: [
+      authenticate('landlord'),
+      validatePropertyId,
+      validate,
+      asyncHandler(transactionController.getPropertyTransactions)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/:transactionId',
+    handler: [
+      authenticate,
+      validateTransactionId,
+      validate,
+      asyncHandler(transactionController.getTransactionDetails)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/:transactionId/resend-receipt',
+    handler: [
+      authenticate,
+      validateTransactionId,
+      validate,
+      asyncHandler(transactionController.resendTransactionReceipt)
+    ],
+    config: { source: 'transaction.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/:transactionId/retry',
+    handler: [
+      authenticate('tenant'),
+      validateTransactionId,
+      validate,
+      asyncHandler(transactionController.retryFailedTransaction)
+    ],
+    config: { source: 'transaction.routes' }
   }
-  if (err.name === 'MongoError' || err.name === 'MongooseError') {
-    return res.status(500).json({ error: 'Database error', details: process.env.NODE_ENV === 'development' ? err.message : undefined });
-  }
-  res.status(500).json({ error: 'Transaction processing failed', details: process.env.NODE_ENV === 'development' ? err.message : undefined });
-});
-
-module.exports = router;
+];

@@ -1,4 +1,4 @@
-require('dotenv').config(); // Load environment variables first
+/* require('dotenv').config(); // Load environment variables first
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -105,4 +105,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Kuna kitu kimekosekana!' }); // "Something went wrong!"
 });
 
-module.exports = app;
+module.exports = app; */

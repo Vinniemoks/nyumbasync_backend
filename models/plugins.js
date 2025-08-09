@@ -1,4 +1,3 @@
-// models/plugins.js
 const toJSONPlugin = (schema) => {
   schema.set('toJSON', {
     transform(doc, ret) {

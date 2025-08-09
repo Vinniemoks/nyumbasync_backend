@@ -51,7 +51,48 @@ const logger = createLogger({
   ]
 });
 
-// Enhanced Route Loader Function with Debug Logging
+// Route Factory Function to convert array configs to Express routers
+const createRouterFromConfig = (routeConfigs) => {
+  if (!Array.isArray(routeConfigs)) {
+    throw new Error('Route config must be an array');
+  }
+
+  const router = express.Router();
+
+  routeConfigs.forEach((routeConfig, index) => {
+    const { method, path, handler, config } = routeConfig;
+
+    if (!method || !path || !handler) {
+      throw new Error(`Invalid route config at index ${index}: missing method, path, or handler`);
+    }
+
+     if (typeof path !== 'string' || !path.startsWith('/') || path.includes('://')) {
+    throw new Error(`Invalid route path at index ${index}: "${path}"`);
+  }
+
+    const httpMethod = method.toLowerCase();
+    
+    // Validate HTTP method
+    if (!['get', 'post', 'put', 'patch', 'delete', 'options', 'head'].includes(httpMethod)) {
+      throw new Error(`Invalid HTTP method: ${method}`);
+    }
+
+    // Ensure handler is an array
+    const handlers = Array.isArray(handler) ? handler : [handler];
+
+    // Register the route
+    try {
+      router[httpMethod](path, ...handlers);
+      logger.debug(`  📍 Route registered: ${method.toUpperCase()} ${path}`);
+    } catch (error) {
+      throw new Error(`Failed to register route ${method} ${path}: ${error.message}`);
+    }
+  });
+
+  return router;
+};
+
+// Enhanced Route Loader Function with Array Config Support
 const loadRoute = (routeName) => {
   const routePath = path.join(__dirname, 'routes', 'v1', `${routeName}.routes.js`);
   
@@ -84,40 +125,49 @@ const loadRoute = (routeName) => {
     }
     
     // Attempt to require the route
-    const route = require(routePath);
+    const routeConfig = require(routePath);
     
     // Validate the loaded route
-    if (!route) {
+    if (!routeConfig) {
       logger.error(`❌ ${routeName} route file exists but exports null/undefined`);
       return null;
     }
     
-    if (typeof route !== 'function' && typeof route !== 'object') {
-      logger.error(`❌ ${routeName} route exports invalid type: ${typeof route}. Expected function or router object.`);
-      return null;
+    // Check if it's already an Express router
+    if (routeConfig && routeConfig.stack && Array.isArray(routeConfig.stack)) {
+      logger.info(`✅ ${routeName} routes loaded successfully with ${routeConfig.stack.length} route(s)`);
+      return routeConfig;
     }
     
-    // Check if it's an Express router
-    if (route && route.stack && Array.isArray(route.stack)) {
-      logger.info(`✅ ${routeName} routes loaded successfully with ${route.stack.length} route(s)`);
-      
-      // Log individual routes in debug mode
-      if (process.env.LOG_LEVEL === 'debug') {
-        route.stack.forEach((layer, index) => {
-          const method = layer.route ? 
-            Object.keys(layer.route.methods).join(', ').toUpperCase() : 
-            'MIDDLEWARE';
-          const path = layer.route ? layer.route.path : layer.regexp.source;
-          logger.debug(`  📍 Route ${index + 1}: ${method} ${path}`);
-        });
+    // Check if it's an array configuration (your current format)
+    if (Array.isArray(routeConfig)) {
+      logger.info(`🏭 Converting ${routeName} array config to Express router...`);
+      try {
+        const router = createRouterFromConfig(routeConfig);
+        logger.info(`✅ ${routeName} routes converted successfully with ${routeConfig.length} route(s)`);
+        
+        // Log individual routes in debug mode
+        if (process.env.LOG_LEVEL === 'debug') {
+          routeConfig.forEach((config, index) => {
+            logger.debug(`  📍 Route ${index + 1}: ${config.method.toUpperCase()} ${config.path}`);
+          });
+        }
+        
+        return router;
+      } catch (conversionError) {
+        logger.error(`❌ Failed to convert ${routeName} array config:`, conversionError.message);
+        return null;
       }
-    } else if (typeof route === 'function') {
-      logger.info(`✅ ${routeName} middleware function loaded successfully`);
-    } else {
-      logger.warn(`⚠️ ${routeName} loaded but may not be a valid Express router or middleware`);
     }
     
-    return route;
+    // If it's a function, assume it's middleware
+    if (typeof routeConfig === 'function') {
+      logger.info(`✅ ${routeName} middleware function loaded successfully`);
+      return routeConfig;
+    }
+    
+    logger.error(`❌ ${routeName} exports unknown type: ${typeof routeConfig}. Expected Express router, array, or function.`);
+    return null;
     
   } catch (err) {
     // Detailed error logging based on error type
@@ -349,32 +399,6 @@ const authorize = (...roles) => {
   };
 };
 
-// File upload configuration
-/* const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-}); */
-
-/* const upload = multer({
-  storage: storage,
-  limits: { 
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'));
-    }
-  }
-}); */
-
 // Database Connection with Retry
 const connectWithRetry = () => {
   if (!process.env.MONGODB_URI) {
@@ -391,7 +415,6 @@ const connectWithRetry = () => {
     serverSelectionTimeoutMS: 5000,
     socketTimeoutMS: 30000,
     maxPoolSize: 10,
-    bufferMaxEntries: 0,
     retryWrites: true,
     w: 'majority'
   })
@@ -508,7 +531,6 @@ app.use(cors({
   credentials: true
 }));
 
-
 // Timezone Middleware
 app.use((req, res, next) => {
   const now = new Date();
@@ -598,71 +620,6 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-/* // File upload endpoint
-app.post('/api/v1/upload', authenticateToken, upload.single('image'), (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ 
-        error: 'No file uploaded',
-        timestamp: res.locals.currentTime 
-      });
-    }
-    
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-    
-    res.status(200).json({
-      message: 'File uploaded successfully',
-      file: {
-        filename: req.file.filename,
-        originalname: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype,
-        url: fileUrl
-      },
-      timestamp: res.locals.currentTime
-    });
-  } catch (error) {
-    logger.error('File upload error:', error);
-    res.status(500).json({
-      error: 'File upload failed',
-      timestamp: res.locals.currentTime
-    });
-  }
-}); */
-
-/* // Multiple file upload endpoint
-app.post('/api/v1/upload/multiple', authenticateToken, upload.array('images', 5), (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ 
-        error: 'No files uploaded',
-        timestamp: res.locals.currentTime 
-      });
-    }
-    
-    const files = req.files.map(file => ({
-      filename: file.filename,
-      originalname: file.originalname,
-      size: file.size,
-      mimetype: file.mimetype,
-      url: `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
-    }));
-    
-    res.status(200).json({
-      message: 'Files uploaded successfully',
-      files,
-      count: files.length,
-      timestamp: res.locals.currentTime
-    });
-  } catch (error) {
-    logger.error('Multiple file upload error:', error);
-    res.status(500).json({
-      error: 'File upload failed',
-      timestamp: res.locals.currentTime
-    });
-  }
-}); */
-
 // Enhanced Route Registration with Debug Logging
 const registerRoutes = () => {
   logger.info('\n🔗 Registering routes with Express app...');
@@ -679,7 +636,7 @@ const registerRoutes = () => {
       logger.error('❌ Failed to register auth routes:', err.message);
     }
   } else {
-    logger.warn('⚠️ Auth routes not registered - route loading failed');
+    logger.error('❌ Failed to register auth routes:');
   }
 
   // User routes with authentication
@@ -691,14 +648,14 @@ const registerRoutes = () => {
       logger.error('❌ Failed to register user routes:', err.message);
     }
   } else {
-    logger.warn('⚠️ User routes not registered - route loading failed');
+    logger.error('❌ Failed to register user routes:');
   }
 
   // M-Pesa routes with authentication
   if (mpesaRoutes) {
     try {
       app.use('/api/v1/mpesa', authenticateToken, mpesaRoutes);
-      logger.info('✅ M-Pesa routes registered with authentication at /api/v1/mpesa');
+      logger.info('✅ M-Pesa routes registered with authentication at /api/v1/mpesa');    
     } catch (err) {
       logger.error('❌ Failed to register M-Pesa routes:', err.message);
     }
@@ -715,7 +672,7 @@ const registerRoutes = () => {
       logger.error('❌ Failed to register property routes:', err.message);
     }
   } else {
-    logger.warn('⚠️ Property routes not registered - route loading failed');
+    logger.error('❌ Failed to register property routes:');
   }
 
   // Upload routes with authentication
@@ -739,7 +696,7 @@ const registerRoutes = () => {
       logger.error('❌ Failed to register admin routes:', err.message);
     }
   } else {
-    logger.warn('⚠️ Admin routes not registered - route loading failed');
+    logger.error('❌ Failed to register admin routes:');
   }
 
   // Maintenance routes
@@ -775,7 +732,7 @@ const registerRoutes = () => {
       logger.error('❌ Failed to register transaction routes:', err.message);
     }
   } else {
-    logger.warn('⚠️ Transaction routes not registered - route loading failed');
+    logger.error('❌ Failed to register transaction routes:');
   }
 
   logger.info('🎯 Route registration process completed\n');
@@ -856,7 +813,7 @@ if (process.env.NODE_ENV === 'development') {
   logger.info('✅ Enhanced route debugger available at /api/debug/routes');
 }
 
-// Static Files
+/* // Static Files
 const publicDir = path.join(__dirname, 'public');
 if (fs.existsSync(publicDir)) {
   app.use('/public', express.static(publicDir, {
@@ -872,7 +829,7 @@ if (fs.existsSync(publicDir)) {
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   maxAge: '7d',
   etag: true
-}));
+})); */
 
 // API Documentation (in development)
 if (process.env.NODE_ENV === 'development') {
@@ -910,14 +867,14 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// 404 Handler
+// 404 Handler for unmatched routes
 app.use('*', (req, res) => {
-  logger.warn(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+  logger.warn(`404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     error: 'Route not found',
     path: req.originalUrl,
     method: req.method,
-    timestamp: res.locals.currentTime,
+    timestamp: new Date().toISOString(),
     requestId: req.requestId,
     suggestedRoutes: [
       '/api/v1/auth',
@@ -930,17 +887,48 @@ app.use('*', (req, res) => {
   });
 });
 
-// Enhanced Error Handling
+// =============================================
+// GLOBAL ERROR HANDLER MIDDLEWARE
+// =============================================
 app.use((err, req, res, next) => {
-  let statusCode = err.statusCode || 500;
-  let message = err.message || 'Internal Server Error';
+  // Log the error with Winston logger
+  logger.error('Global error handler:', {
+    error: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+    user: req.user ? req.user.id : 'anonymous'
+  });
 
   // Handle specific error types
+  let statusCode = 500;
+  let message = 'Internal Server Error';
+  let details = null;
+
   if (err.name === 'ValidationError') {
     statusCode = 400;
-    message = Object.values(err.errors).map(val => val.message).join(', ');
+    message = 'Validation Error';
+    details = Object.values(err.errors).map(e => e.message);
+  } else if (err.name === 'UnauthorizedError') {
+    statusCode = 401;
+    message = 'Unauthorized';
+  } else if (err.name === 'ForbiddenError') {
+    statusCode = 403;
+    message = 'Forbidden';
+  } else if (err.name === 'NotFoundError') {
+    statusCode = 404;
+    message = 'Resource Not Found';
+  } else if (err.name === 'MongoError') {
+    // Handle specific MongoDB errors
+    if (err.code === 11000) {
+      statusCode = 409;
+      message = 'Duplicate Key Error';
+      const key = Object.keys(err.keyValue)[0];
+      details = `${key} already exists`;
+    }
   } else if (err.name === 'CastError') {
-    statusCode = 400
+    statusCode = 400;
     message = `Invalid ${err.path}: ${err.value}`;
   } else if (err.code === 11000) {
     statusCode = 400;
@@ -961,18 +949,6 @@ app.use((err, req, res, next) => {
     }
   }
 
-  // Log error details
-  logger.error({
-    message: `[${res.locals.currentTime}] ${message}`,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('User-Agent'),
-    requestId: req.requestId,
-    userId: req.user ? req.user.id : 'anonymous',
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-
   // Handle M-Pesa specific errors
   if (err.isMpesaError) {
     return res.status(503).json({
@@ -984,16 +960,20 @@ app.use((err, req, res, next) => {
     });
   }
 
-  // Send error response
-  res.status(statusCode).json({
+  // Format the error response
+  const errorResponse = {
     error: message,
-    timestamp: res.locals.currentTime,
+    timestamp: res.locals.currentTime || new Date().toISOString(),
+    path: req.originalUrl,
     requestId: req.requestId,
+    ...(details && { details }),
     ...(process.env.NODE_ENV === 'development' && { 
-      stack: err.stack,
-      details: err 
+      stack: err.stack 
     })
-  });
+  };
+
+  // Send the error response
+  res.status(statusCode).json(errorResponse);
 });
 
 // Database connection event handlers
@@ -1086,4 +1066,4 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Export for testing
-module.exports = { app, server, authenticateToken, authorize };
+module.exports = { app, server, authenticateToken, authorize, createRouterFromConfig };

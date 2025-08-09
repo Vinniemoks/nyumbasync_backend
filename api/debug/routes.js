@@ -25,14 +25,15 @@ router.get('/', (req, res) => {
           methods: Object.keys(route.methods).filter(method => route.methods[method]),
           handler: route.stack[0].name || 'anonymous'
         });
-      } else if (middleware.name === 'router' || middleware.name === 'bound dispatch') {
+      } 
+      else if (middleware.name === 'router' || middleware.name === 'bound dispatch') {
         // Router middleware (routes from router.use())
         const router = middleware.handle;
         router.stack.forEach((handler) => {
           const route = handler.route;
           if (route) {
             routes.push({
-              path: middleware.regexp.source.replace('\\/?(?=\\/|$)', '') + route.path,
+              path: route.path,
               methods: Object.keys(route.methods).filter(method => route.methods[method]),
               handler: route.stack[0].name || 'anonymous'
             });
@@ -41,6 +42,7 @@ router.get('/', (req, res) => {
       }
     });
 
+    // Return the list of routes
     res.json({
       status: 'success',
       count: routes.length,

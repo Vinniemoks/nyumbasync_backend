@@ -1,6 +1,3 @@
-// C:\Users\USER\NyumbaSync\nyumbasync_backend\routes\v1\user.routes.js
-const express = require('express');
-const router = express.Router();
 const asyncHandler = require('express-async-handler');
 const { param, body, validationResult } = require('express-validator');
 const smsService = require('../../services/sms.service');
@@ -18,74 +15,147 @@ const validate = (req, res, next) => {
   next();
 };
 
-// User Profile Routes
-router.get('/profile', authenticate, asyncHandler(userController.getUserProfile));
+module.exports = [
+  // User Profile Routes
+  {
+    method: 'GET',
+    path: '/profile',
+    handler: [
+      authenticate,
+      asyncHandler(userController.getUserProfile)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'PUT',
+    path: '/profile',
+    handler: [
+      authenticate,
+      validateUpdateUser,
+      asyncHandler(userController.updateProfile)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'PUT',
+    path: '/profile/complete',
+    handler: [
+      authenticate,
+      [
+        body('name').isString().trim().notEmpty().withMessage('Name is required'),
+        body('idNumber').isString().trim().notEmpty().withMessage('ID number is required'),
+        body('kraPin').isString().trim().notEmpty().withMessage('KRA PIN is required')
+      ],
+      validate,
+      asyncHandler(userController.completeProfile)
+    ],
+    config: { source: 'user.routes' }
+  },
 
-router.put('/profile', authenticate, validateUpdateUser, asyncHandler(userController.updateProfile));
+  // Phone Verification Routes
+  {
+    method: 'POST',
+    path: '/verify-phone',
+    handler: [
+      authenticate,
+      [
+        body('phone').isString().matches(/^\+254\d{9}$/).withMessage('Invalid phone format')
+      ],
+      validate,
+      asyncHandler(userController.initiatePhoneVerification)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/confirm-verification',
+    handler: [
+      authenticate,
+      [
+        body('code').isString().matches(/^\d{6}$/).withMessage('Invalid verification code')
+      ],
+      validate,
+      asyncHandler(userController.confirmVerificationCode)
+    ],
+    config: { source: 'user.routes' }
+  },
 
-router.put('/profile/complete', authenticate, [
-  body('name').isString().trim().notEmpty().withMessage('Name is required'),
-  body('idNumber').isString().trim().notEmpty().withMessage('ID number is required'),
-  body('kraPin').isString().trim().notEmpty().withMessage('KRA PIN is required')
-], validate, asyncHandler(userController.completeProfile));
+  // Landlord Routes
+  {
+    method: 'GET',
+    path: '/properties',
+    handler: [
+      authenticate('landlord'),
+      asyncHandler(userController.getUserProperties)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/houses',
+    handler: [
+      authenticate('tenant'),
+      asyncHandler(userController.getUserHouses)
+    ],
+    config: { source: 'user.routes' }
+  },
 
-// Phone Verification Routes
-router.post('/verify-phone', authenticate, [
-  body('phone').isString().matches(/^\+254\d{9}$/).withMessage('Invalid phone format')
-], validate, asyncHandler(userController.initiatePhoneVerification));
-
-router.post('/confirm-verification', authenticate, [
-  body('code').isString().matches(/^\d{6}$/).withMessage('Invalid verification code')
-], validate, asyncHandler(userController.confirmVerificationCode));
-
-// Landlord Routes
-router.get('/properties', authenticate('landlord'), asyncHandler(userController.getUserProperties));
-
-router.get('/houses', authenticate('tenant'), asyncHandler(userController.getUserHouses));
-
-// Admin Routes
-router.get('/admin/users', authenticate('admin'), asyncHandler(userController.listUsers));
-
-router.get('/admin/users/:id', [
-  param('id').isMongoId().withMessage('Invalid user ID')
-], validate, authenticate('admin'), asyncHandler(userController.getUserById));
-
-router.patch('/admin/users/:id/status', [
-  param('id').isMongoId().withMessage('Invalid user ID'),
-  body('status').isIn(['active', 'suspended', 'inactive']).withMessage('Invalid status')
-], validate, authenticate('admin'), asyncHandler(userController.updateUserStatus));
-
-router.post('/admin/users/:id/notify', [
-  param('id').isMongoId().withMessage('Invalid user ID'),
-  body('message').isString().trim().notEmpty().withMessage('Message is required')
-], validate, authenticate('admin'), asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { message } = req.body;
-  try {
-    const user = await User.findById(id).select('phone');
-    if (!user || !user.phone) {
-      return res.status(400).json({ success: false, error: 'User has no registered phone number' });
-    }
-    await smsService.sendSMS({ phoneNumber: user.phone, message });
-    res.json({ success: true, message: 'Notification sent successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: 'Failed to send notification' });
+  // Admin Routes
+  {
+    method: 'GET',
+    path: '/admin/users',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(userController.listUsers)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/admin/users/:id',
+    handler: [
+      param('id').isMongoId().withMessage('Invalid user ID'),
+      validate,
+      authenticate('admin'),
+      asyncHandler(userController.getUserById)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'PATCH',
+    path: '/admin/users/:id/status',
+    handler: [
+      param('id').isMongoId().withMessage('Invalid user ID'),
+      body('status').isIn(['active', 'suspended', 'inactive']).withMessage('Invalid status'),
+      validate,
+      authenticate('admin'),
+      asyncHandler(userController.updateUserStatus)
+    ],
+    config: { source: 'user.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/admin/users/:id/notify',
+    handler: [
+      param('id').isMongoId().withMessage('Invalid user ID'),
+      body('message').isString().trim().notEmpty().withMessage('Message is required'),
+      validate,
+      authenticate('admin'),
+      asyncHandler(async (req, res) => {
+        const { id } = req.params;
+        const { message } = req.body;
+        try {
+          const user = await User.findById(id).select('phone');
+          if (!user || !user.phone) {
+            return res.status(400).json({ success: false, error: 'User has no registered phone number' });
+          }
+          await smsService.sendSMS({ phoneNumber: user.phone, message });
+          res.json({ success: true, message: 'Notification sent successfully' });
+        } catch (error) {
+          res.status(500).json({ success: false, error: 'Failed to send notification' });
+        }
+      })
+    ],
+    config: { source: 'user.routes' }
   }
-}));
-
-// Error Handling Middleware
-router.use((err, req, res, next) => {
-  console.error('User route error:', err);
-  if (process.env.ADMIN_PHONE) {
-    smsService.sendSMS({
-      phoneNumber: process.env.ADMIN_PHONE,
-      message: `User Route Error: ${err.message}`
-    }).catch(e => console.error('Failed to send error SMS:', e));
-  }
-  res.status(500).json({ 
-    error: 'User operation failed',
-    details: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
-module.exports = router;
+];
