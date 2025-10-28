@@ -11,10 +11,28 @@ const mongoSanitize = require('express-mongo-sanitize');
 const xss = require('xss-clean');
 const compression = require('compression');
 const multer = require('multer');
+const cluster = require('cluster');
 const { createLogger, format, transports } = require('winston');
+
+// Import load balancing utilities
+const LoadBalancer = require('./utils/load-balancer');
+const WorkerHealth = require('./utils/worker-health');
+const WorkerRateLimiter = require('./utils/worker-rate-limiter');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// Initialize worker monitoring if in cluster mode
+let workerHealth;
+let workerRateLimiter;
+if (cluster.isWorker) {
+  workerHealth = new WorkerHealth();
+  workerRateLimiter = new WorkerRateLimiter({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '60000'),
+    maxRequestsPerIP: parseInt(process.env.MAX_REQUESTS_PER_IP || '100'),
+    maxRequestsPerWorker: parseInt(process.env.MAX_REQUESTS_PER_WORKER || '1000')
+  });
+}
 
 // Create logs directory if it doesn't exist
 const logsDir = path.join(__dirname, 'logs');
@@ -320,11 +338,49 @@ const checkRouteDirectoryStructure = () => {
   }
 };
 
+// Validate route handlers
+const validateRouteHandlers = (routes) => {
+  const validationErrors = [];
+
+  const validateHandler = (handler, path) => {
+    if (typeof handler !== 'function') {
+      validationErrors.push(`Invalid handler for path: ${path}`);
+    }
+  };
+
+  routes.stack?.forEach(layer => {
+    if (layer.route) {
+      Object.values(layer.route.methods).forEach(method => {
+        layer.route.stack.forEach(routeLayer => {
+          validateHandler(routeLayer.handle, `${method.toUpperCase()} ${layer.route.path}`);
+        });
+      });
+    }
+  });
+
+  if (validationErrors.length > 0) {
+    throw new Error(`Route validation failed:\n${validationErrors.join('\n')}`);
+  }
+  
+  return true;
+};
+
 // Check directory structure first
 checkRouteDirectoryStructure();
 
 // Load all routes with enhanced debugging
 const allRoutes = loadAllRoutes();
+
+// Validate loaded routes
+Object.entries(allRoutes).forEach(([name, router]) => {
+  try {
+    validateRouteHandlers(router);
+    logger.info(`✅ Validated routes for: ${name}`);
+  } catch (error) {
+    logger.error(`❌ Route validation failed for ${name}:`, error.message);
+    process.exit(1);
+  }
+});
 
 // Extract individual routes from the loaded routes object
 const mpesaRoutes = allRoutes.mpesa || null;
@@ -430,16 +486,37 @@ const connectWithRetry = () => {
     });
 };
 
-// Database indexes creation
+// Database indexes creation and model initialization
 const createIndexes = async () => {
   try {
-    // Add your collection indexes here
-    // Example:
-    // await mongoose.connection.db.collection('properties').createIndex({ location: '2dsphere' });
-    // await mongoose.connection.db.collection('users').createIndex({ email: 1 }, { unique: true });
+    // Pre-load all models to ensure they're registered
+    require('./models/user.model');
+    require('./models/property.model');
+    require('./models/transaction.model');
+    require('./models/payment.model');
+    require('./models/maintenance.model');
+    require('./models/vendor.model');
+    require('./models/lease.model');
+    require('./models/config.model');
+    require('./models/audit-log.model');
+    require('./models/admin-role.model');
+    require('./models/admin-user.model');
+    require('./models/tenant.model');
+    require('./models/property-approval.model');
+    
+    // Create indexes
+    await mongoose.connection.db.collection('properties').createIndex({ location: '2dsphere' });
+    await mongoose.connection.db.collection('users').createIndex({ email: 1 }, { unique: true });
+    await mongoose.connection.db.collection('payments').createIndex({ transactionId: 1 });
+    await mongoose.connection.db.collection('maintenance').createIndex({ propertyId: 1 });
+    await mongoose.connection.db.collection('transactions').createIndex({ createdAt: -1 });
+    await mongoose.connection.db.collection('audits').createIndex({ timestamp: -1 });
+    
     logger.info('✅ Database indexes created successfully');
+    logger.info('✅ All models loaded successfully');
   } catch (error) {
-    logger.error('❌ Error creating database indexes:', error.message);
+    logger.error('❌ Error in database initialization:', error.message);
+    throw error; // Rethrow to trigger connection retry
   }
 };
 
@@ -460,6 +537,54 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false
 }));
+
+// Cluster-aware request tracking middleware
+if (cluster.isWorker && workerHealth) {
+  app.use((req, res, next) => {
+    const startTime = Date.now();
+    
+    // Track response completion
+    res.on('finish', () => {
+      const duration = Date.now() - startTime;
+      workerHealth.trackRequest(duration, res.statusCode >= 400);
+      
+      // Send health update to primary process
+      if (process.send) {
+        process.send({
+          type: 'health_status',
+          data: workerHealth.getHealthStatus()
+        });
+      }
+    });
+    
+    next();
+  });
+}
+
+// Worker-specific rate limiting
+if (cluster.isWorker && workerRateLimiter) {
+  app.use((req, res, next) => {
+    const clientIP = req.ip || req.connection.remoteAddress;
+    const rateLimit = workerRateLimiter.checkLimit(clientIP);
+    
+    if (!rateLimit.allowed) {
+      return res.status(429).json({
+        error: 'Too many requests',
+        reason: rateLimit.reason,
+        retryAfter: rateLimit.resetIn
+      });
+    }
+    
+    // Add rate limit info to response headers
+    res.set({
+      'X-RateLimit-Limit': workerRateLimiter.maxRequestsPerIP,
+      'X-RateLimit-Remaining': rateLimit.remaining.ip,
+      'X-RateLimit-Reset': workerRateLimiter.lastReset + workerRateLimiter.windowMs
+    });
+    
+    next();
+  });
+}
 
 // Rate limiting
 const limiter = rateLimit({
@@ -1002,8 +1127,43 @@ setInterval(() => {
   logger.info(`📊 Memory usage: ${Math.round(memUsage.rss / 1024 / 1024)}MB RSS, ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB Heap`);
 }, 300000);
 
-// Start Server
+// Validate middleware stack before starting server
+const validateMiddlewareStack = () => {
+  const requiredMiddleware = [
+    'helmet',
+    'compression',
+    'cors',
+    'express.json',
+    'express.urlencoded',
+    'mongoSanitize',
+    'xss'
+  ];
+
+  const registeredMiddleware = app._router.stack
+    .filter(layer => layer.name !== '<anonymous>')
+    .map(layer => layer.name);
+
+  const missingMiddleware = requiredMiddleware.filter(
+    middleware => !registeredMiddleware.includes(middleware)
+  );
+
+  if (missingMiddleware.length > 0) {
+    throw new Error(`Missing required middleware: ${missingMiddleware.join(', ')}`);
+  }
+
+  logger.info('✅ All required middleware validated');
+  return true;
+};
+
+// Start Server with graceful shutdown
 const server = app.listen(PORT, '0.0.0.0', () => {
+  try {
+    validateMiddlewareStack();
+  } catch (error) {
+    logger.error('❌ Middleware validation failed:', error.message);
+    process.exit(1);
+  }
+
   const currentTime = new Date().toLocaleString('en-KE', {
     timeZone: 'Africa/Nairobi',
     hour12: true,
@@ -1019,6 +1179,58 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
   logger.info(`⏰ Current EAT: ${currentTime}`);
+});
+
+module.exports = server;
+  
+  if (cluster.isWorker) {
+    logger.info(`👷 Worker ${cluster.worker.id} is running`);
+  }
+});
+
+// Graceful shutdown handling
+const gracefulShutdown = async (signal) => {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+  // Stop accepting new connections
+  server.close(async () => {
+    logger.info('HTTP server closed');
+
+    // Close database connection
+    try {
+      await mongoose.connection.close();
+      logger.info('Database connection closed');
+    } catch (err) {
+      logger.error('Error closing database connection:', err);
+    }
+
+    // Cleanup cluster resources
+    if (cluster.isWorker) {
+      if (workerHealth) {
+        // Send final health status to primary
+        process.send({
+          type: 'health_status',
+          data: { ...await workerHealth.getHealthStatus(), shutdownInitiated: true }
+        });
+      }
+    }
+
+    // Final cleanup
+    logger.info('Cleanup completed');
+    process.exit(0);
+  });
+
+  // Force shutdown after timeout
+  setTimeout(() => {
+    logger.error('Forced shutdown due to timeout');
+    process.exit(1);
+  }, process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30000);
+};
+
+// Setup signal handlers
+['SIGTERM', 'SIGINT'].forEach(signal => {
+  process.on(signal, () => gracefulShutdown(signal));
+});
   logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
   logger.info(`📤 Uploads directory: ${path.join(__dirname, 'uploads')}`);
   logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
