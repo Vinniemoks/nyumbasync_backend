@@ -139,9 +139,12 @@ const validateUpdateUser = [
   }
 ];
 
+const { validatePropertyApproval } = require('./validation/property-approval.validation');
+
 module.exports = {
   validatePhoneRegistration,
   validateVerificationCode,
   validateMpesaPayment,
-  validateUpdateUser
+  validateUpdateUser,
+  validatePropertyApproval
 };
