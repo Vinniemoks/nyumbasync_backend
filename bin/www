@@ -1,0 +1,13 @@
+#!/usr/bin/env node
+require('dotenv').config();
+
+// Check if we should run in cluster mode
+const CLUSTER_MODE = process.env.CLUSTER_MODE === 'true';
+
+if (CLUSTER_MODE) {
+  // Start the cluster
+  require('./cluster')();
+} else {
+  // Start single instance
+  require('./server');
+}

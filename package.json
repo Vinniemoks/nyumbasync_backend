@@ -4,8 +4,10 @@
   "description": "NyumbaSync Backend API",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node ./bin/www",
+    "dev": "nodemon ./bin/www",
+    "start:single": "CLUSTER_MODE=false node ./bin/www",
+    "start:cluster": "CLUSTER_MODE=true node ./bin/www",
     "test": "jest",
     "build": "npm install"
   },
