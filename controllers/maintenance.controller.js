@@ -80,3 +80,168 @@ exports.getPropertyRequests = async (req, res) => {
   res.json([]); // Placeholder
 };
 
+
+
+// Get tenant maintenance requests
+exports.getTenantMaintenanceRequests = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const requests = await Maintenance.find({ reportedBy: userId })
+      .populate('property')
+      .populate('assignedVendor')
+      .sort({ createdAt: -1 });
+    
+    res.json(requests.map(req => ({
+      id: req._id,
+      ticketNumber: req.ticketNumber || `TKT-${req._id}`,
+      title: req.issueType,
+      description: req.description,
+      category: req.issueType,
+      priority: req.priority || 'medium',
+      status: req.status,
+      propertyId: req.property?._id,
+      tenantId: req.reportedBy,
+      date: req.createdAt,
+      time: req.createdAt,
+      createdAt: req.createdAt
+    })));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch maintenance requests' });
+  }
+};
+
+// Get specific tenant maintenance request
+exports.getTenantMaintenanceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    const request = await Maintenance.findOne({
+      _id: id,
+      reportedBy: userId
+    })
+      .populate('property')
+      .populate('assignedVendor');
+    
+    if (!request) {
+      return res.status(404).json({ error: 'Maintenance request not found' });
+    }
+    
+    res.json({
+      id: request._id,
+      ticketNumber: request.ticketNumber || `TKT-${request._id}`,
+      title: request.issueType,
+      description: request.description,
+      category: request.issueType,
+      priority: request.priority || 'medium',
+      status: request.status,
+      date: request.createdAt,
+      createdAt: request.createdAt,
+      statusHistory: request.statusHistory || [],
+      assignedVendor: request.assignedVendor ? {
+        id: request.assignedVendor._id,
+        name: request.assignedVendor.name,
+        phone: request.assignedVendor.phone,
+        estimatedArrival: 'Within 24 hours'
+      } : null
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch maintenance request' });
+  }
+};
+
+// Create maintenance request
+exports.createMaintenanceRequest = async (req, res) => {
+  try {
+    const { title, description, category, priority, propertyId } = req.body;
+    const userId = req.user.id;
+    
+    const request = await Maintenance.create({
+      property: propertyId,
+      reportedBy: userId,
+      issueType: category || title,
+      description,
+      priority: priority || 'medium',
+      status: 'submitted',
+      ticketNumber: `TKT-${Date.now()}`
+    });
+    
+    res.status(201).json({
+      id: request._id,
+      ticketNumber: request.ticketNumber,
+      title: request.issueType,
+      description: request.description,
+      category: request.issueType,
+      priority: request.priority,
+      status: request.status,
+      propertyId: request.property,
+      tenantId: request.reportedBy,
+      createdAt: request.createdAt
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create maintenance request' });
+  }
+};
+
+// Update maintenance request
+exports.updateMaintenanceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+    const userId = req.user.id;
+    
+    const request = await Maintenance.findOneAndUpdate(
+      { _id: id, reportedBy: userId },
+      { 
+        status,
+        $push: {
+          statusHistory: {
+            status,
+            timestamp: new Date(),
+            note
+          }
+        }
+      },
+      { new: true }
+    );
+    
+    if (!request) {
+      return res.status(404).json({ error: 'Maintenance request not found' });
+    }
+    
+    res.json(request);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update maintenance request' });
+  }
+};
+
+// Rate maintenance request
+exports.rateMaintenanceRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, feedback } = req.body;
+    const userId = req.user.id;
+    
+    const request = await Maintenance.findOneAndUpdate(
+      { _id: id, reportedBy: userId },
+      {
+        rating,
+        feedback,
+        ratedAt: new Date()
+      },
+      { new: true }
+    );
+    
+    if (!request) {
+      return res.status(404).json({ error: 'Maintenance request not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Thank you for your feedback!'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to rate maintenance request' });
+  }
+};

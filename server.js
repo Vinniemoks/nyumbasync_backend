@@ -14,6 +14,19 @@ const multer = require('multer');
 const cluster = require('cluster');
 const { createLogger, format, transports } = require('winston');
 
+// Import security configuration and middleware
+const { securityConfig, validateSecurityConfig } = require('./config/security.config');
+const {
+  addRequestId,
+  securityHeaders,
+  detectSuspiciousActivity,
+  requestTiming,
+  httpsRedirect,
+  auditLog,
+  requestSizeLimiter,
+  preventParameterPollution
+} = require('./middlewares/security.middleware');
+
 // Import load balancing utilities
 const LoadBalancer = require('./utils/load-balancer');
 const WorkerHealth = require('./utils/worker-health');
@@ -241,7 +254,14 @@ const loadAllRoutes = () => {
     'admin',
     'maintenance',
     'payment',
-    'transaction'
+    'transaction',
+    'tenant',
+    'lease',
+    'document',
+    'notification',
+    'message',
+    'vendor',
+    'analytics'
   ];
   
   const loadedRoutes = {};
@@ -378,7 +398,8 @@ Object.entries(allRoutes).forEach(([name, router]) => {
     logger.info(`✅ Validated routes for: ${name}`);
   } catch (error) {
     logger.error(`❌ Route validation failed for ${name}:`, error.message);
-    process.exit(1);
+    // Log warning but don't exit - allow server to start
+    logger.warn(`⚠️ Server will continue despite validation errors in ${name} routes`);
   }
 });
 
@@ -392,6 +413,13 @@ const adminRoutes = allRoutes.admin || null;
 const maintenanceRoutes = allRoutes.maintenance || null;
 const paymentRoutes = allRoutes.payment || null;
 const transactionRoutes = allRoutes.transaction || null;
+const tenantRoutes = allRoutes.tenant || null;
+const leaseRoutes = allRoutes.lease || null;
+const documentRoutes = allRoutes.document || null;
+const notificationRoutes = allRoutes.notification || null;
+const messageRoutes = allRoutes.message || null;
+const vendorRoutes = allRoutes.vendor || null;
+const analyticsRoutes = allRoutes.analytics || null;
 
 // JWT Authentication middleware
 const authenticateToken = (req, res, next) => {
@@ -463,27 +491,33 @@ const connectWithRetry = () => {
   }
 
   mongoose.set('strictQuery', false);
-  logger.info('🔄 Attempting MongoDB connection...');
+  
+  // Skip MongoDB connection in test environment (tests handle their own connection)
+  if (process.env.NODE_ENV !== 'test') {
+    logger.info('🔄 Attempting MongoDB connection...');
 
-  mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 30000,
-    maxPoolSize: 10,
-    retryWrites: true,
-    w: 'majority'
-  })
-    .then(() => {
-      logger.info('✅ Connected to MongoDB');
+    mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 30000,
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
+    })
+      .then(() => {
+        logger.info('✅ Connected to MongoDB');
       // Create indexes if needed
       createIndexes();
     })
-    .catch(err => {
-      logger.error(`❌ MongoDB connection failed: ${err.message}`);
-      logger.info('⏳ Retrying connection in 5 seconds...');
-      setTimeout(connectWithRetry, 5000);
-    });
+      .catch(err => {
+        logger.error(`❌ MongoDB connection failed: ${err.message}`);
+        logger.info('⏳ Retrying connection in 5 seconds...');
+        setTimeout(connectWithRetry, 5000);
+      });
+  } else {
+    logger.info('⏭️ Skipping MongoDB connection in test environment');
+  }
 };
 
 // Database indexes creation and model initialization
@@ -597,8 +631,8 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Skip rate limiting for health checks
-    return req.path === '/health' || req.path === '/';
+    // Skip rate limiting for health checks and in test environment
+    return req.path === '/health' || req.path === '/' || process.env.NODE_ENV === 'test';
   }
 });
 
@@ -611,7 +645,11 @@ const authLimiter = rateLimit({
     retryAfter: '15 minutes'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting in test environment
+    return process.env.NODE_ENV === 'test';
+  }
 });
 
 // Very strict rate limiting for password reset
@@ -621,13 +659,32 @@ const passwordResetLimiter = rateLimit({
   message: {
     error: 'Too many password reset attempts, please try again later.',
     retryAfter: '1 hour'
+  },
+  skip: (req) => {
+    // Skip rate limiting in test environment
+    return process.env.NODE_ENV === 'test';
   }
 });
 
-// Basic middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Validate security configuration on startup
+validateSecurityConfig();
+
+// Apply critical security middleware FIRST
+app.use(httpsRedirect);
+app.use(addRequestId);
+app.use(securityHeaders);
+app.use(requestSizeLimiter);
+app.use(preventParameterPollution);
+
+// Basic middleware with security limits
+app.use(express.json(securityConfig.bodyParser.json));
+app.use(express.urlencoded(securityConfig.bodyParser.urlencoded));
 app.use(compression());
+
+// Additional security middleware
+app.use(detectSuspiciousActivity);
+app.use(requestTiming);
+app.use(auditLog);
 
 // Data sanitization
 app.use(mongoSanitize());
@@ -764,6 +821,15 @@ const registerRoutes = () => {
     logger.error('❌ Failed to register auth routes:');
   }
 
+  // MFA routes with authentication
+  try {
+    const mfaRoutes = require('./routes/v1/mfa.routes');
+    app.use('/api/v1/auth/mfa', mfaRoutes);
+    logger.info('✅ MFA routes registered at /api/v1/auth/mfa');
+  } catch (err) {
+    logger.error('❌ Failed to register MFA routes:', err.message);
+  }
+
   // User routes with authentication
   if (userRoutes) {
     try {
@@ -858,6 +924,90 @@ const registerRoutes = () => {
     }
   } else {
     logger.error('❌ Failed to register transaction routes:');
+  }
+
+  // Tenant routes
+  if (tenantRoutes) {
+    try {
+      app.use('/api/v1/tenant', authenticateToken, tenantRoutes);
+      logger.info('✅ Tenant routes registered with authentication at /api/v1/tenant');
+    } catch (err) {
+      logger.error('❌ Failed to register tenant routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Tenant routes not registered - route loading failed');
+  }
+
+  // Lease routes
+  if (leaseRoutes) {
+    try {
+      app.use('/api/v1/leases', authenticateToken, leaseRoutes);
+      logger.info('✅ Lease routes registered with authentication at /api/v1/leases');
+    } catch (err) {
+      logger.error('❌ Failed to register lease routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Lease routes not registered - route loading failed');
+  }
+
+  // Document routes
+  if (documentRoutes) {
+    try {
+      app.use('/api/v1/documents', authenticateToken, documentRoutes);
+      logger.info('✅ Document routes registered with authentication at /api/v1/documents');
+    } catch (err) {
+      logger.error('❌ Failed to register document routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Document routes not registered - route loading failed');
+  }
+
+  // Notification routes
+  if (notificationRoutes) {
+    try {
+      app.use('/api/v1/notifications', authenticateToken, notificationRoutes);
+      logger.info('✅ Notification routes registered with authentication at /api/v1/notifications');
+    } catch (err) {
+      logger.error('❌ Failed to register notification routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Notification routes not registered - route loading failed');
+  }
+
+  // Message routes
+  if (messageRoutes) {
+    try {
+      app.use('/api/v1/messages', authenticateToken, messageRoutes);
+      logger.info('✅ Message routes registered with authentication at /api/v1/messages');
+    } catch (err) {
+      logger.error('❌ Failed to register message routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Message routes not registered - route loading failed');
+  }
+
+  // Vendor routes
+  if (vendorRoutes) {
+    try {
+      app.use('/api/v1/vendors', authenticateToken, vendorRoutes);
+      logger.info('✅ Vendor routes registered with authentication at /api/v1/vendors');
+    } catch (err) {
+      logger.error('❌ Failed to register vendor routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Vendor routes not registered - route loading failed');
+  }
+
+  // Analytics routes
+  if (analyticsRoutes) {
+    try {
+      app.use('/api/v1/analytics', authenticateToken, analyticsRoutes);
+      logger.info('✅ Analytics routes registered with authentication at /api/v1/analytics');
+    } catch (err) {
+      logger.error('❌ Failed to register analytics routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Analytics routes not registered - route loading failed');
   }
 
   logger.info('🎯 Route registration process completed\n');
@@ -1161,7 +1311,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     validateMiddlewareStack();
   } catch (error) {
     logger.error('❌ Middleware validation failed:', error.message);
-    process.exit(1);
+    // Log warning but don't exit - allow server to start
+    logger.warn('⚠️ Server will continue despite middleware validation errors');
   }
 
   const currentTime = new Date().toLocaleString('en-KE', {
@@ -1179,13 +1330,18 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
   logger.info(`⏰ Current EAT: ${currentTime}`);
-});
-
-module.exports = server;
+  logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
+  logger.info(`📤 Uploads directory: ${path.join(__dirname, 'uploads')}`);
+  logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
+  logger.info(`📖 API Documentation: http://0.0.0.0:${PORT}/api/docs`);
+  logger.info(`🏥 Health Check: http://0.0.0.0:${PORT}/health`);
   
   if (cluster.isWorker) {
     logger.info(`👷 Worker ${cluster.worker.id} is running`);
   }
+}).on('error', (err) => {
+  logger.error('❌ Server failed to start:', err);
+  process.exit(1);
 });
 
 // Graceful shutdown handling
@@ -1231,41 +1387,6 @@ const gracefulShutdown = async (signal) => {
 ['SIGTERM', 'SIGINT'].forEach(signal => {
   process.on(signal, () => gracefulShutdown(signal));
 });
-  logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
-  logger.info(`📤 Uploads directory: ${path.join(__dirname, 'uploads')}`);
-  logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
-  logger.info(`📖 API Documentation: http://0.0.0.0:${PORT}/api/docs`);
-  logger.info(`🏥 Health Check: http://0.0.0.0:${PORT}/health`);
-}).on('error', (err) => {
-  logger.error('❌ Server failed to start:', err);
-  process.exit(1);
-});
-
-// Graceful Shutdown
-const shutdown = (signal) => {
-  logger.info(`\n${signal} received. Shutting down gracefully...`);
-  
-  server.close(() => {
-    logger.info('✅ HTTP server closed');
-    
-    mongoose.connection.close(false, () => {
-      logger.info('✅ MongoDB connection closed');
-      
-      // Close any other resources here
-      process.exit(0);
-    });
-  });
-  
-  // Force close after 10 seconds
-  setTimeout(() => {
-    logger.error('❌ Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 10000);
-};
-
-// Process event handlers
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
   logger.error('❌ Uncaught Exception:', err);

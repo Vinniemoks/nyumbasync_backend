@@ -9,5 +9,5 @@ if (CLUSTER_MODE) {
   require('./cluster')();
 } else {
   // Start single instance
-  require('./server');
+  require('../server');
 }

@@ -1,115 +1,145 @@
 const multer = require('multer');
 const path = require('path');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('../config/cloudinary');
+const fs = require('fs');
+const logger = require('../utils/logger');
 
-// Configure Cloudinary storage for maintenance images
-const maintenanceStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'maintenance',
-    allowed_formats: ['jpg', 'jpeg', 'png'],
-    transformation: [
-      { width: 1200, height: 1200, crop: 'limit' },
-      { quality: 'auto:good' }
-    ]
+// Ensure upload directory exists
+const uploadDir = process.env.UPLOAD_DIR || './uploads';
+const createUploadDirs = () => {
+  const dirs = [
+    uploadDir,
+    path.join(uploadDir, 'images'),
+    path.join(uploadDir, 'documents'),
+    path.join(uploadDir, 'properties'),
+    path.join(uploadDir, 'maintenance'),
+    path.join(uploadDir, 'profiles')
+  ];
+  
+  dirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      logger.info(`Created upload directory: ${dir}`);
+    }
+  });
+};
+
+createUploadDirs();
+
+// Configure storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    let subDir = 'documents';
+    
+    // Determine subdirectory based on field name or route
+    if (file.fieldname === 'image' || file.mimetype.startsWith('image/')) {
+      subDir = 'images';
+    }
+    if (req.path.includes('/properties')) {
+      subDir = 'properties';
+    }
+    if (req.path.includes('/maintenance')) {
+      subDir = 'maintenance';
+    }
+    if (req.path.includes('/profile')) {
+      subDir = 'profiles';
+    }
+    
+    const dir = path.join(uploadDir, subDir);
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const basename = path.basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9]/g, '-')
+      .substring(0, 50);
+    
+    cb(null, `${basename}-${uniqueSuffix}${ext}`);
   }
 });
 
-// Configure Cloudinary storage for property images
-const propertyStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'properties',
-    allowed_formats: ['jpg', 'jpeg', 'png'],
-    transformation: [
-      { width: 2000, height: 2000, crop: 'limit' },
-      { quality: 'auto:good' }
-    ]
-  }
-});
-
-// Configure Cloudinary storage for documents
-const documentStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'documents',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
-    resource_type: 'auto'
-  }
-});
-
-// File filters
-const imageFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+// File filter
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = (process.env.ALLOWED_FILE_TYPES || 'jpg,jpeg,png,gif,pdf,doc,docx').split(',');
+  const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+  
+  if (allowedTypes.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed!'), false);
+    cb(new Error(`File type .${ext} not allowed. Allowed types: ${allowedTypes.join(', ')}`), false);
   }
 };
 
-const documentFilter = (req, file, cb) => {
-  const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
-  if (allowedMimeTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only images and PDF files are allowed!'), false);
-  }
-};
-
-// Upload middleware configurations
-const maintenanceUpload = multer({
-  storage: maintenanceStorage,
-  fileFilter: imageFilter,
+// Multer configuration
+const upload = multer({
+  storage,
+  fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB
+    fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
+    files: 5 // Max 5 files at once
   }
 });
 
-const propertyUpload = multer({
-  storage: propertyStorage,
-  fileFilter: imageFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
-  }
-});
-
-const documentUpload = multer({
-  storage: documentStorage,
-  fileFilter: documentFilter,
-  limits: {
-    fileSize: 15 * 1024 * 1024 // 15MB
-  }
-});
-
-// Error handler middleware for multer
-const handleUploadError = (err, req, res, next) => {
+// Error handler middleware
+const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
-        error: 'File size limit exceeded',
-        details: 'Maximum file size allowed is 5MB for maintenance images, 10MB for property images, and 15MB for documents'
+        error: 'File too large',
+        message: `Maximum file size is ${process.env.MAX_FILE_SIZE || '10MB'}`
       });
     }
-    return res.status(400).json({
-      error: 'File upload error',
-      details: err.message
-    });
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        error: 'Too many files',
+        message: 'Maximum 5 files allowed'
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        error: 'Unexpected field',
+        message: 'Invalid file field name'
+      });
+    }
   }
   
   if (err) {
     return res.status(400).json({
-      error: 'Invalid file type',
-      details: err.message
+      error: 'Upload failed',
+      message: err.message
     });
   }
   
   next();
 };
 
+// Export middleware functions
 module.exports = {
-  maintenanceUpload,
-  propertyUpload,
-  documentUpload,
-  handleUploadError
+  // Single file upload
+  uploadSingle: (fieldName = 'file') => [
+    upload.single(fieldName),
+    handleMulterError
+  ],
+  
+  // Multiple files upload
+  uploadMultiple: (fieldName = 'files', maxCount = 5) => [
+    upload.array(fieldName, maxCount),
+    handleMulterError
+  ],
+  
+  // Multiple fields
+  uploadFields: (fields) => [
+    upload.fields(fields),
+    handleMulterError
+  ],
+  
+  // Specific upload types
+  uploadImage: [upload.single('image'), handleMulterError],
+  uploadDocument: [upload.single('document'), handleMulterError],
+  uploadPropertyImages: [upload.array('images', 10), handleMulterError],
+  uploadMaintenancePhotos: [upload.array('photos', 5), handleMulterError],
+  
+  // Raw multer instance for custom use
+  upload
 };

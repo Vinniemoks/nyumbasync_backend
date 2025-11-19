@@ -1,0 +1,172 @@
+config:
+  target: "http://localhost:3002"
+  phases:
+    # Warm-up phase
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    # Ramp-up phase
+    - duration: 120
+      arrivalRate: 5
+      rampTo: 50
+      name: "Ramp up load"
+    # Sustained load phase
+    - duration: 300
+      arrivalRate: 50
+      name: "Sustained load"
+  payload:
+    path: "./test-data.csv"
+    fields:
+      - email
+      - password
+      - phone
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  processor: "./processor.js"
+
+scenarios:
+  # Scenario 1: Authentication Flow
+  - name: "Authentication Flow"
+    weight: 30
+    flow:
+      - post:
+          url: "/api/v1/auth/signup"
+          json:
+            email: "{{ $randomString() }}@test.com"
+            password: "Test123!@#"
+            firstName: "Test"
+            lastName: "User"
+            phone: "254{{ $randomNumber(100000000, 999999999) }}"
+            role: "tenant"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 201
+      
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            identifier: "{{ email }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.token"
+              as: "loginToken"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/v1/auth/me"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          expect:
+            - statusCode: 200
+      
+      - post:
+          url: "/api/v1/auth/logout"
+          headers:
+            Authorization: "Bearer {{ loginToken }}"
+          expect:
+            - statusCode: 200
+
+  # Scenario 2: Property Browsing
+  - name: "Property Browsing"
+    weight: 40
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            identifier: "{{ email }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.token"
+              as: "token"
+      
+      - get:
+          url: "/api/v1/properties"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/v1/properties?location=Nairobi&minPrice=10000&maxPrice=50000"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+      
+      - think: 2
+      
+      - get:
+          url: "/api/v1/properties?page=1&limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # Scenario 3: Maintenance Request
+  - name: "Maintenance Request"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            identifier: "{{ email }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.token"
+              as: "token"
+      
+      - post:
+          url: "/api/v1/maintenance"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            title: "Leaking faucet"
+            description: "Kitchen faucet is leaking"
+            priority: "medium"
+            category: "plumbing"
+          capture:
+            - json: "$.data.id"
+              as: "maintenanceId"
+          expect:
+            - statusCode: 201
+      
+      - get:
+          url: "/api/v1/maintenance/{{ maintenanceId }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  # Scenario 4: Messaging
+  - name: "Messaging"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            identifier: "{{ email }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.token"
+              as: "token"
+      
+      - get:
+          url: "/api/v1/messages/conversations"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+      
+      - post:
+          url: "/api/v1/messages"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            recipientId: "{{ $randomString() }}"
+            content: "Test message"
+          expect:
+            - statusCode: [200, 201]

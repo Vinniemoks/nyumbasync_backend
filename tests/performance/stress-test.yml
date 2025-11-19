@@ -1,0 +1,60 @@
+config:
+  target: "http://localhost:3002"
+  phases:
+    # Ramp up to breaking point
+    - duration: 60
+      arrivalRate: 10
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 100
+      name: "Ramp up"
+    - duration: 180
+      arrivalRate: 100
+      rampTo: 200
+      name: "Stress test"
+    - duration: 120
+      arrivalRate: 200
+      rampTo: 500
+      name: "Breaking point"
+    # Recovery phase
+    - duration: 60
+      arrivalRate: 10
+      name: "Recovery"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "High Load Authentication"
+    weight: 50
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            identifier: "test{{ $randomNumber(1, 1000) }}@test.com"
+            password: "Test123!@#"
+          expect:
+            - statusCode: [200, 401, 429, 500]
+      
+      - think: 1
+
+  - name: "High Load Property Search"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/v1/properties?page={{ $randomNumber(1, 10) }}"
+          expect:
+            - statusCode: [200, 429, 500]
+
+  - name: "High Load Maintenance"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/v1/maintenance"
+          json:
+            title: "Emergency repair"
+            description: "Urgent issue"
+            priority: "high"
+          expect:
+            - statusCode: [201, 401, 429, 500]

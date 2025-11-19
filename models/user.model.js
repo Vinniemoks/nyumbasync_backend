@@ -101,6 +101,36 @@ const UserSchema = new mongoose.Schema({
   passwordResetToken: String,
   passwordResetExpires: Date,
 
+  // Password history (prevent reuse)
+  passwordHistory: [{
+    hash: {
+      type: String,
+      select: false
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
+  // Multi-Factor Authentication (MFA)
+  mfaEnabled: {
+    type: Boolean,
+    default: false
+  },
+  mfaSecret: {
+    type: String,
+    select: false
+  },
+  mfaBackupCodes: [{
+    type: String,
+    select: false
+  }],
+  mfaVerified: {
+    type: Boolean,
+    default: false
+  },
+
   // Verification status
   isVerified: {
     type: Boolean,

@@ -1,0 +1,42 @@
+config:
+  target: "http://localhost:3002"
+  phases:
+    # Normal load
+    - duration: 60
+      arrivalRate: 10
+      name: "Normal load"
+    # Sudden spike
+    - duration: 30
+      arrivalRate: 500
+      name: "Traffic spike"
+    # Back to normal
+    - duration: 60
+      arrivalRate: 10
+      name: "Recovery"
+    # Another spike
+    - duration: 30
+      arrivalRate: 500
+      name: "Second spike"
+    # Final recovery
+    - duration: 60
+      arrivalRate: 10
+      name: "Final recovery"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Spike Test"
+    flow:
+      - get:
+          url: "/api/v1/properties"
+          expect:
+            - statusCode: [200, 429, 500, 503]
+      
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            identifier: "test@test.com"
+            password: "Test123!@#"
+          expect:
+            - statusCode: [200, 401, 429, 500]
