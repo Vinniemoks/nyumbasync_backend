@@ -2,6 +2,15 @@ const express = require('express');
 const router = express.Router();
 const v1Routes = require('./v1');
 
+// Import new core routes
+const contactRoutes = require('./contact.routes');
+const propertyV2Routes = require('./property-v2.routes');
+const transactionV2Routes = require('./transaction-v2.routes');
+const flowsRoutes = require('./flows.routes');
+const tenantPortalRoutes = require('./tenant-portal.routes');
+const tenantJourneyRoutes = require('./tenant-journey.routes');
+const maintenanceRequestRoutes = require('./maintenance-request.routes');
+
 // Import middlewares
 const { 
   authMiddleware,
@@ -24,6 +33,15 @@ router.use((req, res, next) => {
   });
   next();
 });
+
+// Core application routes (new)
+router.use('/contacts', contactRoutes);
+router.use('/v2/properties', propertyV2Routes);
+router.use('/v2/transactions', transactionV2Routes);
+router.use('/flows', flowsRoutes);
+router.use('/tenant-portal', tenantPortalRoutes);
+router.use('/tenant-journey', tenantJourneyRoutes);
+router.use('/maintenance-requests', maintenanceRequestRoutes);
 
 // API versioning
 const API_VERSION = process.env.API_VERSION || 'v1';

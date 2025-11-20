@@ -136,6 +136,73 @@ const propertySchema = new Schema({
   },
   manager: { type: Schema.Types.ObjectId, ref: 'User' },
 
+  // Related Contacts - The "Sync" Magic
+  relatedContacts: [{
+    contact: { type: Schema.Types.ObjectId, ref: 'Contact' },
+    relationship: {
+      type: String,
+      enum: ['interested', 'viewed', 'offered', 'owner', 'tenant', 'agent']
+    },
+    date: { type: Date, default: Date.now },
+    notes: String
+  }],
+
+  // Transaction History
+  transactionHistory: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Transaction'
+  }],
+
+  // Investment Analysis Fields
+  investment: {
+    purchasePrice: Number,
+    purchaseDate: Date,
+    renovationCosts: Number,
+    currentValue: Number,
+    projectedRentalIncome: Number,
+    actualRentalIncome: Number,
+    expenses: {
+      propertyTax: Number,
+      insurance: Number,
+      maintenance: Number,
+      utilities: Number,
+      management: Number,
+      other: Number
+    },
+    capRate: Number, // Calculated
+    cashFlow: Number, // Calculated
+    roi: Number, // Calculated
+    notes: String
+  },
+
+  // Listing Data (for properties on market)
+  listing: {
+    isListed: { type: Boolean, default: false },
+    listPrice: Number,
+    listDate: Date,
+    daysOnMarket: Number,
+    mlsNumber: String,
+    priceHistory: [{
+      price: Number,
+      date: { type: Date, default: Date.now },
+      reason: String
+    }],
+    showingInstructions: String,
+    lockboxCode: String
+  },
+
+  // Property History
+  history: [{
+    event: {
+      type: String,
+      enum: ['listed', 'price_change', 'status_change', 'sold', 'rented', 'maintenance', 'inspection', 'other']
+    },
+    date: { type: Date, default: Date.now },
+    description: String,
+    amount: Number,
+    performedBy: { type: Schema.Types.ObjectId, ref: 'User' }
+  }],
+
   // Houses
   houses: [{
     number: { type: String, required: true, trim: true },
@@ -240,6 +307,71 @@ propertySchema.virtual('coordinates').get(function() {
 // Instance methods
 propertySchema.methods.getWaterStatus = function() {
   return this.waterSchedule && this.waterSchedule.size > 0 ? 'Rationed' : 'Available';
+};
+
+propertySchema.methods.linkContact = function(contactId, relationship, notes = '') {
+  const existing = this.relatedContacts.find(
+    rc => rc.contact.toString() === contactId.toString()
+  );
+  
+  if (existing) {
+    existing.relationship = relationship;
+    existing.date = new Date();
+    existing.notes = notes;
+  } else {
+    this.relatedContacts.push({
+      contact: contactId,
+      relationship,
+      notes,
+      date: new Date()
+    });
+  }
+  
+  return this.save();
+};
+
+propertySchema.methods.addToHistory = function(event, description, amount = null, performedBy = null) {
+  this.history.push({
+    event,
+    description,
+    amount,
+    performedBy,
+    date: new Date()
+  });
+  return this.save();
+};
+
+propertySchema.methods.calculateInvestmentMetrics = function() {
+  if (!this.investment.purchasePrice) return this;
+  
+  const totalInvestment = this.investment.purchasePrice + (this.investment.renovationCosts || 0);
+  const annualIncome = (this.investment.actualRentalIncome || this.investment.projectedRentalIncome || 0) * 12;
+  const totalExpenses = Object.values(this.investment.expenses || {}).reduce((sum, val) => sum + (val || 0), 0);
+  const noi = annualIncome - totalExpenses;
+  
+  this.investment.capRate = totalInvestment > 0 ? (noi / totalInvestment) * 100 : 0;
+  this.investment.cashFlow = noi / 12;
+  this.investment.roi = totalInvestment > 0 ? ((noi / totalInvestment) * 100) : 0;
+  
+  return this.save();
+};
+
+propertySchema.methods.updateListingPrice = function(newPrice, reason = '') {
+  if (!this.listing.priceHistory) {
+    this.listing.priceHistory = [];
+  }
+  
+  this.listing.priceHistory.push({
+    price: this.listing.listPrice,
+    date: new Date(),
+    reason
+  });
+  
+  this.listing.listPrice = newPrice;
+  
+  this.addToHistory('price_change', `Price changed to ${newPrice}. Reason: ${reason}`, newPrice);
+  
+  return this.save();
 };
 
 propertySchema.methods.markAsOccupied = function(tenantId, leaseStart, leaseEnd, rentDueDate = 1) {

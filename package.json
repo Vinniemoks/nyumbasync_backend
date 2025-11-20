@@ -9,7 +9,10 @@
     "start:single": "CLUSTER_MODE=false node ./bin/www",
     "start:cluster": "CLUSTER_MODE=true node ./bin/www",
     "test": "jest",
-    "build": "npm install"
+    "build": "npm install",
+    "setup:models": "node scripts/setup-core-models.js",
+    "seed:sample": "node scripts/seed-sample-data.js",
+    "test:flows": "node scripts/test-flows.js"
   },
   "keywords": [
     "nyumbasync",

@@ -1155,8 +1155,21 @@ const validateMiddlewareStack = () => {
   return true;
 };
 
+// Initialize Flow Engine
+const initializeFlowsEngine = async () => {
+  try {
+    logger.info('🔄 Initializing Flows Engine...');
+    const { initializeFlowEngine } = require('./flows');
+    await initializeFlowEngine();
+    logger.info('✅ Flows Engine initialized successfully');
+  } catch (error) {
+    logger.error('❌ Failed to initialize Flows Engine:', error.message);
+    // Don't exit - flows are optional, core functionality should still work
+  }
+};
+
 // Start Server with graceful shutdown
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', async () => {
   try {
     validateMiddlewareStack();
   } catch (error) {
@@ -1179,6 +1192,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
   logger.info(`⏰ Current EAT: ${currentTime}`);
+  
+  // Initialize Flow Engine after server starts
+  await initializeFlowsEngine();
 });
 
 module.exports = server;
