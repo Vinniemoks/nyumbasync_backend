@@ -12,6 +12,8 @@ const Payment = require('./payment.model');
 const Maintenance = require('./maintenance.model');
 const TenantPortalAuth = require('./tenant-portal-auth.model');
 const MaintenanceRequest = require('./maintenance-request.model');
+const Notification = require('./notification.model');
+const Communication = require('./communication.model');
 
 module.exports = {
   // Core Models - The Three Pillars
@@ -25,5 +27,7 @@ module.exports = {
   Payment,
   Maintenance,
   TenantPortalAuth,
-  MaintenanceRequest
+  MaintenanceRequest,
+  Notification,
+  Communication
 };

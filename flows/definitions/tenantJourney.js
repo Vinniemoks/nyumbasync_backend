@@ -31,6 +31,16 @@ module.exports = {
         }
       },
       {
+        type: 'notification',
+        recipientId: '{{contact._id}}',
+        recipientRole: 'tenant',
+        notificationType: 'document_required',
+        priority: 'medium',
+        title: 'Complete Your Application',
+        message: 'Welcome! Please complete your rental application to proceed.',
+        channels: { inApp: true, email: true, sms: false }
+      },
+      {
         type: 'task',
         title: 'Follow up with new prospect: {{contact.fullName}}',
         dueDate: { days: 2 },

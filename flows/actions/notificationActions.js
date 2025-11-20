@@ -1,80 +1,91 @@
 /**
- * Notification Actions for Flow Engine
+ * Notification Actions for Flows
+ * Sends notifications through the notification service
  */
 
+const notificationService = require('../../services/notification.service');
 const logger = require('../../utils/logger');
 
 /**
- * Send push notification action
+ * Send notification action
+ * @param {Object} actionConfig - Notification configuration
+ * @param {Object} context - Flow execution context
  */
-async function sendPushNotification(params, eventData) {
-  const { userId, title, message, data } = params;
+async function sendNotificationAction(actionConfig, context) {
+  try {
+    const {
+      recipientId,
+      recipientRole,
+      notificationType,
+      priority = 'medium',
+      title,
+      message,
+      data = {},
+      relatedEntity = null,
+      channels = { inApp: true, email: false, sms: false },
+      actionUrl = null,
+      actionLabel = null,
+      category = null
+    } = actionConfig;
 
-  if (!userId || !title || !message) {
-    throw new Error('Push notification requires "userId", "title", and "message" parameters');
+    // Resolve template variables
+    const resolvedRecipientId = resolveVariable(recipientId, context);
+    const resolvedTitle = resolveVariable(title, context);
+    const resolvedMessage = resolveVariable(message, context);
+    const resolvedActionUrl = actionUrl ? resolveVariable(actionUrl, context) : null;
+
+    // Send notification
+    const notification = await notificationService.sendNotification({
+      recipientId: resolvedRecipientId,
+      recipientRole,
+      type: notificationType,
+      priority,
+      title: resolvedTitle,
+      message: resolvedMessage,
+      data,
+      relatedEntity,
+      channels,
+      actionUrl: resolvedActionUrl,
+      actionLabel,
+      category
+    });
+
+    logger.info(`Notification sent via flow: ${notificationType} to ${resolvedRecipientId}`);
+
+    return {
+      success: true,
+      notificationId: notification._id
+    };
+  } catch (error) {
+    logger.error(`Notification action failed: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
   }
-
-  logger.info(`🔔 Sending push notification to user: ${userId}`);
-
-  // This would integrate with your push notification service (Firebase, OneSignal, etc.)
-  // For now, we'll just log it
-  return {
-    success: true,
-    userId,
-    title,
-    message,
-    notificationSent: true
-  };
 }
 
 /**
- * Send in-app notification action
+ * Resolve template variables in strings
  */
-async function sendInAppNotification(params, eventData) {
-  const { userId, title, message, type, link } = params;
+function resolveVariable(value, context) {
+  if (typeof value !== 'string') return value;
 
-  if (!userId || !message) {
-    throw new Error('In-app notification requires "userId" and "message" parameters');
-  }
+  // Replace {{variable}} with actual values from context
+  return value.replace(/\{\{([^}]+)\}\}/g, (match, path) => {
+    const keys = path.trim().split('.');
+    let result = context;
 
-  logger.info(`📬 Creating in-app notification for user: ${userId}`);
+    for (const key of keys) {
+      if (result && typeof result === 'object') {
+        result = result[key];
+      } else {
+        return match; // Return original if path not found
+      }
+    }
 
-  // This would create a notification in your database
-  // For now, we'll just log it
-  return {
-    success: true,
-    userId,
-    title,
-    message,
-    type: type || 'info',
-    link
-  };
+    return result !== undefined ? result : match;
+  });
 }
 
-/**
- * Send alert to agent action
- */
-async function sendAgentAlert(params, eventData) {
-  const { agentId, alertType, message, priority } = params;
-
-  if (!agentId || !message) {
-    throw new Error('Agent alert requires "agentId" and "message" parameters');
-  }
-
-  logger.info(`🚨 Sending alert to agent: ${agentId}`);
-
-  return {
-    success: true,
-    agentId,
-    alertType: alertType || 'general',
-    message,
-    priority: priority || 'medium',
-    timestamp: new Date()
-  };
-}
-
-module.exports = {
-  sendPushNotification,
-  sendInAppNotification,
-  sendAgentAlert
-};
+module.exports = sendNotificationAction;

@@ -10,6 +10,8 @@ const flowsRoutes = require('./flows.routes');
 const tenantPortalRoutes = require('./tenant-portal.routes');
 const tenantJourneyRoutes = require('./tenant-journey.routes');
 const maintenanceRequestRoutes = require('./maintenance-request.routes');
+const notificationRoutes = require('./notification.routes');
+const communicationRoutes = require('./communication.routes');
 
 // Import middlewares
 const { 
@@ -42,6 +44,8 @@ router.use('/flows', flowsRoutes);
 router.use('/tenant-portal', tenantPortalRoutes);
 router.use('/tenant-journey', tenantJourneyRoutes);
 router.use('/maintenance-requests', maintenanceRequestRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/communications', communicationRoutes);
 
 // API versioning
 const API_VERSION = process.env.API_VERSION || 'v1';

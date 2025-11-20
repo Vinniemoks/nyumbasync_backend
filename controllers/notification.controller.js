@@ -1,183 +1,220 @@
+/**
+ * Notification Controller
+ * Handles notification operations for all stakeholders
+ */
+
 const Notification = require('../models/notification.model');
+const notificationService = require('../services/notification.service');
 const logger = require('../utils/logger');
 
-// Get all notifications
-exports.getAllNotifications = async (req, res) => {
+/**
+ * Get all notifications for authenticated user
+ * GET /api/notifications
+ */
+exports.getNotifications = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    const notifications = await Notification.find({ user: userId })
-      .sort('-createdAt')
-      .limit(50);
-    
-    res.json(notifications);
-  } catch (error) {
-    logger.error('Error fetching notifications:', error);
-    res.status(500).json({ error: 'Failed to fetch notifications' });
-  }
-};
+    const {
+      page = 1,
+      limit = 20,
+      unreadOnly = false,
+      type,
+      category
+    } = req.query;
 
-// Get notification by ID
-exports.getNotificationById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    // TODO: Implement notification retrieval by ID
-    res.json({ id, title: 'Notification', message: 'Message', read: false });
-  } catch (error) {
-    logger.error('Error fetching notification:', error);
-    res.status(500).json({ error: 'Failed to fetch notification' });
-  }
-};
+    const contactId = req.user?._id || req.tenantContact?._id;
 
-// Get user notifications
-exports.getUserNotifications = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    const notifications = await Notification.find({ user: userId })
-      .sort('-createdAt')
-      .limit(100);
-    
-    res.json(notifications);
-  } catch (error) {
-    logger.error('Error fetching user notifications:', error);
-    res.status(500).json({ error: 'Failed to fetch user notifications' });
-  }
-};
+    const options = {
+      unreadOnly: unreadOnly === 'true',
+      type,
+      category,
+      limit: parseInt(limit)
+    };
 
-// Get unread count
-exports.getUnreadCount = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    const count = await Notification.getUnreadCount(userId);
-    
-    res.json({ count });
-  } catch (error) {
-    logger.error('Error fetching unread count:', error);
-    res.status(500).json({ error: 'Failed to fetch unread count' });
-  }
-};
+    const notifications = await Notification.getByRecipient(contactId, options);
+    const unreadCount = await Notification.getUnreadCount(contactId);
 
-// Mark as read
-exports.markAsRead = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = req.user.id;
-    
-    const notification = await Notification.findOne({
-      _id: notificationId,
-      user: userId
-    });
-    
-    if (!notification) {
-      return res.status(404).json({ error: 'Notification not found' });
-    }
-    
-    await notification.markAsRead();
-    
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('Error marking notification as read:', error);
-    res.status(500).json({ error: 'Failed to mark notification as read' });
-  }
-};
-
-// Mark all as read
-exports.markAllAsRead = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    
-    await Notification.updateMany(
-      { user: userId, status: { $in: ['sent', 'delivered'] } },
-      { status: 'read', readAt: new Date() }
-    );
-    
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('Error marking all notifications as read:', error);
-    res.status(500).json({ error: 'Failed to mark all notifications as read' });
-  }
-};
-
-// Delete notification
-exports.deleteNotification = async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    // TODO: Implement notification deletion
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('Error deleting notification:', error);
-    res.status(500).json({ error: 'Failed to delete notification' });
-  }
-};
-
-// Delete all notifications
-exports.deleteAllNotifications = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    // TODO: Implement delete all notifications
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('Error deleting all notifications:', error);
-    res.status(500).json({ error: 'Failed to delete all notifications' });
-  }
-};
-
-// Get preferences
-exports.getPreferences = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    // TODO: Implement get preferences
     res.json({
-      email: true,
-      sms: false,
-      push: true,
-      categories: {
-        payments: true,
-        maintenance: true,
-        messages: true
+      success: true,
+      data: notifications,
+      unreadCount,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit)
       }
     });
   } catch (error) {
-    logger.error('Error fetching notification preferences:', error);
-    res.status(500).json({ error: 'Failed to fetch notification preferences' });
+    logger.error(`Error getting notifications: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 };
 
-// Update preferences
-exports.updatePreferences = async (req, res) => {
+/**
+ * Get single notification
+ * GET /api/notifications/:id
+ */
+exports.getNotificationById = async (req, res) => {
   try {
-    const { userId } = req.params;
-    // TODO: Implement update preferences
-    res.json({ success: true, preferences: req.body });
+    const notification = await Notification.findById(req.params.id)
+      .populate('relatedEntity.entityId');
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notification not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: notification
+    });
   } catch (error) {
-    logger.error('Error updating notification preferences:', error);
-    res.status(500).json({ error: 'Failed to update notification preferences' });
+    logger.error(`Error getting notification: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 };
 
-// Register push token
-exports.registerPushToken = async (req, res) => {
+/**
+ * Mark notification as read
+ * PUT /api/notifications/:id/read
+ */
+exports.markAsRead = async (req, res) => {
   try {
-    const { userId, token } = req.body;
-    // TODO: Implement push token registration
-    res.json({ success: true });
+    const notification = await Notification.findById(req.params.id);
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notification not found'
+      });
+    }
+
+    await notification.markAsRead();
+
+    res.json({
+      success: true,
+      message: 'Notification marked as read',
+      data: notification
+    });
   } catch (error) {
-    logger.error('Error registering push token:', error);
-    res.status(500).json({ error: 'Failed to register push token' });
+    logger.error(`Error marking notification as read: ${error.message}`);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
   }
 };
 
-// Send notification
-exports.sendNotification = async (req, res) => {
+/**
+ * Mark all notifications as read
+ * PUT /api/notifications/mark-all-read
+ */
+exports.markAllAsRead = async (req, res) => {
   try {
-    const { userId, title, message, type } = req.body;
-    // TODO: Implement send notification
-    res.json({ success: true });
+    const contactId = req.user?._id || req.tenantContact?._id;
+
+    const result = await Notification.markAllAsRead(contactId);
+
+    res.json({
+      success: true,
+      message: 'All notifications marked as read',
+      data: result
+    });
   } catch (error) {
-    logger.error('Error sending notification:', error);
-    res.status(500).json({ error: 'Failed to send notification' });
+    logger.error(`Error marking all as read: ${error.message}`);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get unread count
+ * GET /api/notifications/unread-count
+ */
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const contactId = req.user?._id || req.tenantContact?._id;
+
+    const count = await Notification.getUnreadCount(contactId);
+
+    res.json({
+      success: true,
+      data: { count }
+    });
+  } catch (error) {
+    logger.error(`Error getting unread count: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Delete notification
+ * DELETE /api/notifications/:id
+ */
+exports.deleteNotification = async (req, res) => {
+  try {
+    const notification = await Notification.findByIdAndDelete(req.params.id);
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notification not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Notification deleted successfully'
+    });
+  } catch (error) {
+    logger.error(`Error deleting notification: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Send test notification (admin only)
+ * POST /api/notifications/test
+ */
+exports.sendTestNotification = async (req, res) => {
+  try {
+    const { recipientId, type, title, message } = req.body;
+
+    const notification = await notificationService.sendNotification({
+      recipientId,
+      recipientRole: 'tenant',
+      type: type || 'system_alert',
+      priority: 'medium',
+      title: title || 'Test Notification',
+      message: message || 'This is a test notification',
+      channels: { inApp: true, email: true, sms: false }
+    });
+
+    res.json({
+      success: true,
+      message: 'Test notification sent',
+      data: notification
+    });
+  } catch (error) {
+    logger.error(`Error sending test notification: ${error.message}`);
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
   }
 };
 

@@ -1,120 +1,252 @@
 const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+const { Schema } = mongoose;
 
+/**
+ * Notification Model
+ * Centralized notification system for all stakeholders
+ */
 const notificationSchema = new Schema({
-  user: {
+  // Recipient information
+  recipient: {
     type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: 'Contact',
+    required: true,
+    index: true
   },
+  
+  recipientRole: {
+    type: String,
+    enum: ['tenant', 'landlord', 'vendor', 'agent', 'property_manager', 'admin'],
+    required: true,
+    index: true
+  },
+  
+  // Notification details
   type: {
     type: String,
-    required: true,
     enum: [
-      'payment_due',
-      'payment_received',
+      // Tenant notifications
+      'rent_reminder',
+      'rent_overdue',
+      'lease_expiring',
       'maintenance_update',
-      'property_approval',
-      'lease_expiry',
-      'inspection_scheduled',
-      'document_expired',
-      'system_alert'
-    ]
+      'maintenance_scheduled',
+      'maintenance_completed',
+      'move_in_reminder',
+      'move_out_reminder',
+      'document_required',
+      
+      // Landlord notifications
+      'new_application',
+      'rent_received',
+      'maintenance_request',
+      'lease_signed',
+      'tenant_move_out_notice',
+      'property_inspection_due',
+      'vendor_assigned',
+      'payment_failed',
+      
+      // Vendor notifications
+      'work_order_assigned',
+      'work_order_updated',
+      'payment_processed',
+      'rating_received',
+      
+      // Agent notifications
+      'new_lead',
+      'showing_scheduled',
+      'offer_received',
+      'commission_ready',
+      
+      // Property Manager notifications
+      'property_added',
+      'tenant_issue',
+      'financial_report_ready',
+      'compliance_alert',
+      
+      // General
+      'system_alert',
+      'message_received',
+      'task_assigned',
+      'document_uploaded'
+    ],
+    required: true,
+    index: true
   },
-  title: {
-    type: String,
-    required: true
-  },
-  message: {
-    type: String,
-    required: true
-  },
+  
   priority: {
     type: String,
     enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
+    default: 'medium',
+    index: true
   },
+  
+  title: {
+    type: String,
+    required: true,
+    maxlength: 200
+  },
+  
+  message: {
+    type: String,
+    required: true,
+    maxlength: 1000
+  },
+  
+  // Rich content
+  data: {
+    type: Schema.Types.Mixed,
+    default: {}
+  },
+  
+  // Related entities
+  relatedEntity: {
+    entityType: {
+      type: String,
+      enum: ['Property', 'Contact', 'Transaction', 'MaintenanceRequest', 'Task', 'Document']
+    },
+    entityId: Schema.Types.ObjectId
+  },
+  
+  // Delivery channels
+  channels: {
+    inApp: { type: Boolean, default: true },
+    email: { type: Boolean, default: false },
+    sms: { type: Boolean, default: false },
+    push: { type: Boolean, default: false }
+  },
+  
+  // Delivery status
   status: {
     type: String,
     enum: ['pending', 'sent', 'delivered', 'read', 'failed'],
-    default: 'pending'
+    default: 'pending',
+    index: true
   },
-  channels: [{
-    type: String,
-    enum: ['email', 'sms', 'push', 'in_app'],
-    required: true
-  }],
-  metadata: {
-    type: Map,
-    of: Schema.Types.Mixed,
-    default: {}
-  },
-  schedule: {
-    type: Date,
-    default: Date.now
-  },
-  expiresAt: Date,
-  readAt: Date,
+  
+  sentAt: Date,
   deliveredAt: Date,
-  retryCount: {
-    type: Number,
-    default: 0
+  readAt: Date,
+  
+  // Action button
+  actionUrl: String,
+  actionLabel: String,
+  
+  // Grouping
+  category: {
+    type: String,
+    enum: ['payment', 'maintenance', 'lease', 'communication', 'task', 'alert'],
+    index: true
   },
-  lastRetryAt: Date,
-  error: {
-    code: String,
-    message: String,
-    details: Schema.Types.Mixed
-  }
+  
+  // Expiry
+  expiresAt: Date,
+  
+  // Metadata
+  createdBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  
+  metadata: Schema.Types.Mixed
+
 }, {
   timestamps: true
 });
 
 // Indexes
-notificationSchema.index({ user: 1, status: 1 });
-notificationSchema.index({ schedule: 1, status: 1 });
-notificationSchema.index({ type: 1, createdAt: -1 });
-notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+notificationSchema.index({ recipient: 1, status: 1, createdAt: -1 });
+notificationSchema.index({ recipient: 1, readAt: 1 });
+notificationSchema.index({ recipientRole: 1, type: 1 });
+notificationSchema.index({ createdAt: -1 });
+notificationSchema.index({ expiresAt: 1 }, { sparse: true });
 
-// Methods
-notificationSchema.methods.markAsRead = async function() {
-  this.status = 'read';
-  this.readAt = new Date();
+// Instance Methods
+notificationSchema.methods.markAsSent = function() {
+  this.status = 'sent';
+  this.sentAt = new Date();
   return this.save();
 };
 
-notificationSchema.methods.markAsDelivered = async function() {
+notificationSchema.methods.markAsDelivered = function() {
   this.status = 'delivered';
   this.deliveredAt = new Date();
   return this.save();
 };
 
-notificationSchema.methods.incrementRetry = async function(error) {
-  this.retryCount += 1;
-  this.lastRetryAt = new Date();
-  if (error) {
-    this.error = {
-      code: error.code || 'UNKNOWN',
-      message: error.message,
-      details: error.details
-    };
-  }
+notificationSchema.methods.markAsRead = function() {
+  this.status = 'read';
+  this.readAt = new Date();
   return this.save();
 };
 
-// Static methods
-notificationSchema.statics.getPendingNotifications = async function() {
-  return this.find({
-    status: 'pending',
-    schedule: { $lte: new Date() },
-    retryCount: { $lt: parseInt(process.env.NOTIFICATION_RETRY_ATTEMPTS) || 3 }
-  }).sort('schedule');
+notificationSchema.methods.markAsFailed = function(reason) {
+  this.status = 'failed';
+  this.metadata = { ...this.metadata, failureReason: reason };
+  return this.save();
 };
 
-notificationSchema.statics.getUnreadCount = async function(userId) {
+// Static Methods
+notificationSchema.statics.createNotification = async function(data) {
+  const notification = await this.create(data);
+  
+  // Trigger delivery based on channels
+  if (notification.channels.email) {
+    // Queue email delivery
+  }
+  if (notification.channels.sms) {
+    // Queue SMS delivery
+  }
+  if (notification.channels.push) {
+    // Queue push notification
+  }
+  
+  return notification;
+};
+
+notificationSchema.statics.getUnreadCount = function(recipientId) {
   return this.countDocuments({
-    user: userId,
-    status: { $in: ['sent', 'delivered'] }
+    recipient: recipientId,
+    status: { $in: ['pending', 'sent', 'delivered'] }
+  });
+};
+
+notificationSchema.statics.getByRecipient = function(recipientId, options = {}) {
+  const query = { recipient: recipientId };
+  
+  if (options.unreadOnly) {
+    query.status = { $in: ['pending', 'sent', 'delivered'] };
+  }
+  
+  if (options.type) {
+    query.type = options.type;
+  }
+  
+  if (options.category) {
+    query.category = options.category;
+  }
+  
+  return this.find(query)
+    .sort({ createdAt: -1 })
+    .limit(options.limit || 50);
+};
+
+notificationSchema.statics.markAllAsRead = function(recipientId) {
+  return this.updateMany(
+    {
+      recipient: recipientId,
+      status: { $in: ['pending', 'sent', 'delivered'] }
+    },
+    {
+      status: 'read',
+      readAt: new Date()
+    }
+  );
+};
+
+notificationSchema.statics.cleanupExpired = function() {
+  return this.deleteMany({
+    expiresAt: { $lt: new Date() }
   });
 };
 
