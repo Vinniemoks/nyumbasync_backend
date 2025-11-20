@@ -1,0 +1,63 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-success">
+  <strong>🎉 Congratulations!</strong><br>
+  Your rental application has been approved!
+</div>
+
+<div class="message">
+  <p>We're pleased to inform you that your application for <strong>{{propertyAddress}}</strong> has been approved.</p>
+</div>
+
+<div class="info-box">
+  <h3>Next Steps</h3>
+  <div class="info-row">
+    <span class="info-label">1. Review Lease:</span>
+    <span class="info-value">Read your lease agreement carefully</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">2. Sign Lease:</span>
+    <span class="info-value">E-sign your lease online</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">3. Pay Deposit:</span>
+    <span class="info-value">KES {{securityDeposit}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">4. Move-in Date:</span>
+    <span class="info-value">{{moveInDate}}</span>
+  </div>
+</div>
+
+<a href="{{leaseUrl}}" class="button">View & Sign Lease</a>
+
+<div class="info-box">
+  <h3>Payment Required</h3>
+  <div class="info-row">
+    <span class="info-label">Security Deposit:</span>
+    <span class="info-value">KES {{securityDeposit}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">First Month Rent:</span>
+    <span class="info-value">KES {{monthlyRent}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Total Due:</span>
+    <span class="info-value"><strong>KES {{totalDue}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Due By:</span>
+    <span class="info-value">{{paymentDueDate}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Important:</strong> Please complete the lease signing and payment within 7 days to secure your unit.</p>
+</div>
+
+<div class="message">
+  <p>We're excited to welcome you as our new tenant!</p>
+  <p>If you have any questions, please don't hesitate to contact us.</p>
+</div>

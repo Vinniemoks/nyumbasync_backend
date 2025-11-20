@@ -1,0 +1,22 @@
+<div class="greeting">
+  Hi {{recipientName}},
+</div>
+
+<div class="message">
+  <p>{{message}}</p>
+</div>
+
+{{#if actionUrl}}
+<a href="{{actionUrl}}" class="button">{{actionLabel}}</a>
+{{/if}}
+
+{{#if additionalInfo}}
+<div class="info-box">
+  <h3>Additional Information</h3>
+  {{{additionalInfo}}}
+</div>
+{{/if}}
+
+<div class="message">
+  <p>If you have any questions, please don't hesitate to contact us.</p>
+</div>

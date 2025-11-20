@@ -17,10 +17,31 @@ const createTransporter = () => {
   });
 };
 
-// Load and compile email template
+// Register Handlebars helpers
+handlebars.registerHelper('eq', function(a, b) {
+  return a === b;
+});
+
+handlebars.registerHelper('formatCurrency', function(amount) {
+  return new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES'
+  }).format(amount);
+});
+
+handlebars.registerHelper('formatDate', function(date) {
+  return new Date(date).toLocaleDateString('en-KE', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+});
+
+// Load and compile email template with layout
 const loadTemplate = (templateName, data) => {
   try {
     const templatePath = path.join(__dirname, '../views/emails', `${templateName}.hbs`);
+    const layoutPath = path.join(__dirname, '../views/emails', '_layout.hbs');
     
     // Check if template exists
     if (!fs.existsSync(templatePath)) {
@@ -28,9 +49,26 @@ const loadTemplate = (templateName, data) => {
       return createDefaultTemplate(data);
     }
     
+    // Load template content
     const templateSource = fs.readFileSync(templatePath, 'utf8');
     const template = handlebars.compile(templateSource);
-    return template(data);
+    const bodyContent = template(data);
+    
+    // Load layout if exists
+    if (fs.existsSync(layoutPath)) {
+      const layoutSource = fs.readFileSync(layoutPath, 'utf8');
+      const layoutTemplate = handlebars.compile(layoutSource);
+      
+      return layoutTemplate({
+        ...data,
+        body: bodyContent,
+        year: new Date().getFullYear(),
+        appUrl: process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'
+      });
+    }
+    
+    // Return just the body if no layout
+    return bodyContent;
   } catch (error) {
     logger.error(`Error loading email template ${templateName}:`, error);
     return createDefaultTemplate(data);

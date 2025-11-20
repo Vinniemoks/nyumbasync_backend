@@ -1,0 +1,80 @@
+<div class="greeting">
+  Hi {{landlordName}},
+</div>
+
+<div class="alert {{#if isEmergency}}alert-danger{{else}}alert-warning{{/if}}">
+  <strong>{{#if isEmergency}}🚨 Emergency{{else}}🔧{{/if}} Maintenance Request</strong><br>
+  A tenant has submitted a {{#if isEmergency}}emergency {{/if}}maintenance request.
+</div>
+
+<div class="info-box">
+  <h3>Request Details</h3>
+  <div class="info-row">
+    <span class="info-label">Request #:</span>
+    <span class="info-value"><strong>{{requestNumber}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Property:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Unit:</span>
+    <span class="info-value">{{unit}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Tenant:</span>
+    <span class="info-value">{{tenantName}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Category:</span>
+    <span class="info-value">{{category}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Priority:</span>
+    <span class="info-value"><strong>{{priority}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Location:</span>
+    <span class="info-value">{{location}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Issue Description:</strong></p>
+  <p style="background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{description}}</p>
+</div>
+
+{{#if photos}}
+<div class="message">
+  <p><strong>Photos Attached:</strong> {{photoCount}} photo(s)</p>
+</div>
+{{/if}}
+
+{{#if isEmergency}}
+<div class="alert alert-danger">
+  <strong>⚠️ Immediate Action Required</strong><br>
+  This is an emergency request. Please respond within 4 hours to avoid tenant dissatisfaction and potential liability.
+</div>
+{{/if}}
+
+<a href="{{requestUrl}}" class="button">View & Assign</a>
+
+<div class="message">
+  <p><strong>Recommended Actions:</strong></p>
+  <ul>
+    <li>Review the request and photos</li>
+    <li>Assign to a qualified vendor</li>
+    <li>Schedule the repair</li>
+    <li>Keep the tenant updated</li>
+  </ul>
+</div>
+
+<div class="message">
+  <p><strong>Response Time SLA:</strong></p>
+  <ul>
+    <li>Emergency: 4 hours</li>
+    <li>High Priority: 24 hours</li>
+    <li>Medium Priority: 72 hours</li>
+    <li>Low Priority: 7 days</li>
+  </ul>
+</div>

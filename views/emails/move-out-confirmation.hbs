@@ -1,0 +1,90 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-info">
+  <strong>📦 Move-Out Notice Received</strong><br>
+  We've received your notice to vacate the property.
+</div>
+
+<div class="info-box">
+  <h3>Move-Out Details</h3>
+  <div class="info-row">
+    <span class="info-label">Property:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Notice Date:</span>
+    <span class="info-value">{{noticeDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Intended Move-Out:</span>
+    <span class="info-value"><strong>{{moveOutDate}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Lease End Date:</span>
+    <span class="info-value">{{leaseEndDate}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Move-Out Process:</strong></p>
+  <ol>
+    <li><strong>Schedule Inspection:</strong> We'll contact you to schedule a move-out inspection</li>
+    <li><strong>Clean & Repair:</strong> Ensure the unit is clean and any damages are repaired</li>
+    <li><strong>Final Inspection:</strong> Walk-through with property manager</li>
+    <li><strong>Key Return:</strong> Return all keys and access cards</li>
+    <li><strong>Security Deposit:</strong> Refund processed within 30 days</li>
+  </ol>
+</div>
+
+<div class="info-box">
+  <h3>Move-Out Checklist</h3>
+  <div class="info-row">
+    <span class="info-label">✓ Clean all rooms thoroughly</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">✓ Repair any damages</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">✓ Remove all personal belongings</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">✓ Clean appliances</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">✓ Return all keys</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">✓ Provide forwarding address</span>
+  </div>
+</div>
+
+<a href="{{moveOutGuideUrl}}" class="button">View Complete Move-Out Guide</a>
+
+<div class="info-box">
+  <h3>Security Deposit Information</h3>
+  <div class="info-row">
+    <span class="info-label">Deposit Amount:</span>
+    <span class="info-value">KES {{depositAmount}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Refund Timeline:</span>
+    <span class="info-value">Within 30 days of move-out</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Deductions may be made for:</strong></p>
+  <ul>
+    <li>Unpaid rent or utilities</li>
+    <li>Damages beyond normal wear and tear</li>
+    <li>Cleaning fees if unit is not clean</li>
+    <li>Unreturned keys or access cards</li>
+  </ul>
+</div>
+
+<div class="message">
+  <p>We'll send you a detailed itemization of any deductions along with your refund.</p>
+  <p>Thank you for being our tenant. We wish you all the best in your new home!</p>
+</div>

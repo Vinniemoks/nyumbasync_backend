@@ -1,0 +1,43 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-success">
+  <strong>✓ Work Completed</strong><br>
+  The maintenance work on your request has been completed.
+</div>
+
+<div class="info-box">
+  <h3>Completed Request #{{requestNumber}}</h3>
+  <div class="info-row">
+    <span class="info-label">Issue:</span>
+    <span class="info-value">{{title}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Completed On:</span>
+    <span class="info-value">{{completedDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Technician:</span>
+    <span class="info-value">{{technicianName}}</span>
+  </div>
+</div>
+
+{{#if workPerformed}}
+<div class="message">
+  <p><strong>Work Performed:</strong></p>
+  <p style="background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{workPerformed}}</p>
+</div>
+{{/if}}
+
+<div class="message">
+  <p><strong>We'd love your feedback!</strong></p>
+  <p>Please take a moment to rate the service you received. Your feedback helps us improve.</p>
+</div>
+
+<a href="{{feedbackUrl}}" class="button">Rate This Service</a>
+
+<div class="message">
+  <p>If you notice any issues with the completed work, please let us know immediately.</p>
+  <p>Thank you for your patience while we addressed this issue!</p>
+</div>

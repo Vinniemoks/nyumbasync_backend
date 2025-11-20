@@ -1,0 +1,61 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-success">
+  <strong>✓ Request Received</strong><br>
+  We've received your maintenance request and will address it promptly.
+</div>
+
+<div class="info-box">
+  <h3>Request Details</h3>
+  <div class="info-row">
+    <span class="info-label">Request Number:</span>
+    <span class="info-value"><strong>{{requestNumber}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Category:</span>
+    <span class="info-value">{{category}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Priority:</span>
+    <span class="info-value">{{priority}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Location:</span>
+    <span class="info-value">{{location}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Submitted:</span>
+    <span class="info-value">{{submittedDate}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Issue Description:</strong></p>
+  <p style="background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{description}}</p>
+</div>
+
+<div class="message">
+  <p><strong>What happens next?</strong></p>
+  <ol>
+    <li>Our team will review your request</li>
+    <li>We'll schedule a visit if needed</li>
+    <li>You'll receive updates via email and SMS</li>
+    <li>We'll notify you when the work is complete</li>
+  </ol>
+</div>
+
+{{#if isEmergency}}
+<div class="alert alert-warning">
+  <strong>Emergency Request</strong><br>
+  This has been flagged as an emergency. Our team will respond within 4 hours.
+</div>
+{{/if}}
+
+<a href="{{requestUrl}}" class="button">Track Request Status</a>
+
+<div class="message">
+  <p>You can track the progress of your request anytime in your tenant portal.</p>
+  <p>Need urgent assistance? Call us at <strong>0700NYUMBA</strong></p>
+</div>

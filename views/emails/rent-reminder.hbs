@@ -1,0 +1,43 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="message">
+  <p>This is a friendly reminder that your rent payment is due soon.</p>
+</div>
+
+<div class="info-box">
+  <h3>Payment Details</h3>
+  <div class="info-row">
+    <span class="info-label">Amount Due:</span>
+    <span class="info-value"><strong>KES {{amount}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Due Date:</span>
+    <span class="info-value">{{dueDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Property:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p>To avoid late fees, please make your payment before the due date.</p>
+</div>
+
+<a href="{{paymentUrl}}" class="button">Pay Now</a>
+
+<div class="message">
+  <p><strong>Payment Methods:</strong></p>
+  <ul>
+    <li>M-Pesa: Pay via STK Push in the portal</li>
+    <li>Bank Transfer: Use your unique reference number</li>
+    <li>Cash: Visit our office during business hours</li>
+  </ul>
+</div>
+
+<div class="message">
+  <p>If you've already made this payment, please disregard this reminder.</p>
+  <p>Need help? Contact us at <a href="mailto:support@nyumbasync.co.ke">support@nyumbasync.co.ke</a> or call 0700NYUMBA.</p>
+</div>

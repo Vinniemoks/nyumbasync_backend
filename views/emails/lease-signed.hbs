@@ -1,0 +1,52 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-success">
+  <strong>✓ Lease Agreement Signed</strong><br>
+  Your lease has been successfully signed and executed.
+</div>
+
+<div class="message">
+  <p>Congratulations! Your lease for <strong>{{propertyAddress}}</strong> is now official.</p>
+</div>
+
+<div class="info-box">
+  <h3>Lease Summary</h3>
+  <div class="info-row">
+    <span class="info-label">Property:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Lease Start:</span>
+    <span class="info-value">{{leaseStartDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Lease End:</span>
+    <span class="info-value">{{leaseEndDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Monthly Rent:</span>
+    <span class="info-value">KES {{monthlyRent}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Security Deposit:</span>
+    <span class="info-value">KES {{securityDeposit}}</span>
+  </div>
+</div>
+
+<a href="{{leaseDocumentUrl}}" class="button">Download Signed Lease</a>
+
+<div class="message">
+  <p><strong>Next Steps:</strong></p>
+  <ol>
+    <li>Download and save your signed lease for your records</li>
+    <li>Complete your move-in payment if not already done</li>
+    <li>Schedule your move-in inspection</li>
+    <li>Set up your tenant portal account</li>
+  </ol>
+</div>
+
+<div class="message">
+  <p>We're excited to welcome you to your new home on {{moveInDate}}!</p>
+</div>

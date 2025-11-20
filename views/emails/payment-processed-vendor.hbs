@@ -1,0 +1,43 @@
+<div class="greeting">
+  Hi {{vendorName}},
+</div>
+
+<div class="alert alert-success">
+  <strong>✓ Payment Processed</strong><br>
+  Your payment has been processed successfully.
+</div>
+
+<div class="info-box">
+  <h3>Payment Details</h3>
+  <div class="info-row">
+    <span class="info-label">Amount:</span>
+    <span class="info-value"><strong>KES {{amount}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Work Order:</span>
+    <span class="info-value">{{workOrderNumber}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Payment Date:</span>
+    <span class="info-value">{{paymentDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Payment Method:</span>
+    <span class="info-value">{{paymentMethod}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Reference:</span>
+    <span class="info-value">{{referenceNumber}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Work Completed:</strong></p>
+  <p style="background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{workDescription}}</p>
+</div>
+
+<a href="{{invoiceUrl}}" class="button">Download Invoice</a>
+
+<div class="message">
+  <p>Thank you for your excellent service! We look forward to working with you again.</p>
+</div>

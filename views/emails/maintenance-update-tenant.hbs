@@ -1,0 +1,57 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-info">
+  <strong>📋 Status Update</strong><br>
+  Your maintenance request has been updated.
+</div>
+
+<div class="info-box">
+  <h3>Request #{{requestNumber}}</h3>
+  <div class="info-row">
+    <span class="info-label">Issue:</span>
+    <span class="info-value">{{title}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">New Status:</span>
+    <span class="info-value"><strong>{{status}}</strong></span>
+  </div>
+  {{#if scheduledDate}}
+  <div class="info-row">
+    <span class="info-label">Scheduled For:</span>
+    <span class="info-value">{{scheduledDate}} at {{scheduledTime}}</span>
+  </div>
+  {{/if}}
+  {{#if assignedVendor}}
+  <div class="info-row">
+    <span class="info-label">Assigned To:</span>
+    <span class="info-value">{{assignedVendor}}</span>
+  </div>
+  {{/if}}
+</div>
+
+{{#if updateMessage}}
+<div class="message">
+  <p><strong>Update:</strong></p>
+  <p style="background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{updateMessage}}</p>
+</div>
+{{/if}}
+
+{{#if scheduledDate}}
+<div class="message">
+  <p><strong>Appointment Details:</strong></p>
+  <ul>
+    <li>Date: {{scheduledDate}}</li>
+    <li>Time: {{scheduledTime}}</li>
+    <li>Technician: {{assignedVendor}}</li>
+  </ul>
+  <p>Please ensure someone is available to provide access to the property.</p>
+</div>
+{{/if}}
+
+<a href="{{requestUrl}}" class="button">View Full Details</a>
+
+<div class="message">
+  <p>If you have any questions or concerns, please reply to this email or contact us at 0700NYUMBA.</p>
+</div>

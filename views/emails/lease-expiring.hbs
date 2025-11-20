@@ -1,0 +1,71 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-warning">
+  <strong>⏰ Lease Expiring Soon</strong><br>
+  Your lease is expiring in {{daysUntilExpiry}} days.
+</div>
+
+<div class="info-box">
+  <h3>Lease Information</h3>
+  <div class="info-row">
+    <span class="info-label">Property:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Lease End Date:</span>
+    <span class="info-value"><strong>{{leaseEndDate}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Days Remaining:</span>
+    <span class="info-value"><strong>{{daysUntilExpiry}} days</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Current Rent:</span>
+    <span class="info-value">KES {{currentRent}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Would you like to renew your lease?</strong></p>
+  <p>We'd love to have you stay! Please let us know your intentions as soon as possible.</p>
+</div>
+
+{{#if renewalOffer}}
+<div class="info-box">
+  <h3>Renewal Offer</h3>
+  <div class="info-row">
+    <span class="info-label">New Monthly Rent:</span>
+    <span class="info-value">KES {{newRent}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Lease Term:</span>
+    <span class="info-value">{{leaseTerm}} months</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Offer Valid Until:</span>
+    <span class="info-value">{{offerExpiry}}</span>
+  </div>
+</div>
+
+<a href="{{renewalUrl}}" class="button">Renew Lease</a>
+{{/if}}
+
+<div class="message">
+  <p><strong>Your Options:</strong></p>
+  <ol>
+    <li><strong>Renew:</strong> Continue living here with a new lease</li>
+    <li><strong>Move Out:</strong> Provide 30-day notice and schedule move-out inspection</li>
+  </ol>
+</div>
+
+<div class="message">
+  <p><strong>Important:</strong> If you plan to move out, you must provide written notice at least 30 days before your lease end date as per your lease agreement.</p>
+</div>
+
+<a href="{{contactUrl}}" class="button">Contact Us</a>
+
+<div class="message">
+  <p>Please respond by {{responseDeadline}} to avoid any complications.</p>
+</div>

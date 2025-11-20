@@ -1,0 +1,50 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-danger">
+  <strong>⚠️ Payment Overdue</strong><br>
+  Your rent payment is now overdue. Please make payment immediately to avoid additional late fees.
+</div>
+
+<div class="info-box">
+  <h3>Overdue Payment Details</h3>
+  <div class="info-row">
+    <span class="info-label">Amount Due:</span>
+    <span class="info-value"><strong>KES {{amount}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Original Due Date:</span>
+    <span class="info-value">{{dueDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Days Overdue:</span>
+    <span class="info-value"><strong>{{daysOverdue}} days</strong></span>
+  </div>
+  {{#if lateFee}}
+  <div class="info-row">
+    <span class="info-label">Late Fee:</span>
+    <span class="info-value">KES {{lateFee}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Total Amount:</span>
+    <span class="info-value"><strong>KES {{totalAmount}}</strong></span>
+  </div>
+  {{/if}}
+</div>
+
+<a href="{{paymentUrl}}" class="button">Pay Now</a>
+
+<div class="message">
+  <p><strong>Important:</strong> Continued non-payment may result in:</p>
+  <ul>
+    <li>Additional late fees</li>
+    <li>Negative impact on your rental history</li>
+    <li>Legal action as per your lease agreement</li>
+  </ul>
+</div>
+
+<div class="message">
+  <p>If you're experiencing financial difficulties, please contact us immediately to discuss payment arrangements.</p>
+  <p><strong>Contact:</strong> 0700NYUMBA or <a href="mailto:support@nyumbasync.co.ke">support@nyumbasync.co.ke</a></p>
+</div>

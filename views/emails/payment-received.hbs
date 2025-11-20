@@ -1,0 +1,45 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="alert alert-success">
+  <strong>✓ Payment Received Successfully</strong><br>
+  Thank you! Your payment has been received and processed.
+</div>
+
+<div class="info-box">
+  <h3>Payment Receipt</h3>
+  <div class="info-row">
+    <span class="info-label">Amount Paid:</span>
+    <span class="info-value"><strong>KES {{amount}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Transaction ID:</span>
+    <span class="info-value">{{transactionId}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Payment Date:</span>
+    <span class="info-value">{{paymentDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Payment Method:</span>
+    <span class="info-value">{{paymentMethod}}</span>
+  </div>
+  {{#if receiptNumber}}
+  <div class="info-row">
+    <span class="info-label">Receipt Number:</span>
+    <span class="info-value">{{receiptNumber}}</span>
+  </div>
+  {{/if}}
+</div>
+
+<div class="message">
+  <p>Your payment has been applied to your account. You can view your payment history and download receipts anytime from your tenant portal.</p>
+</div>
+
+<a href="{{portalUrl}}/payments" class="button">View Payment History</a>
+
+<div class="message">
+  <p>Thank you for your prompt payment. We appreciate you as a tenant!</p>
+  <p>If you have any questions about this payment, please contact us.</p>
+</div>

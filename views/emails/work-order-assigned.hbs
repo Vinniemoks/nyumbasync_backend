@@ -1,0 +1,95 @@
+<div class="greeting">
+  Hi {{vendorName}},
+</div>
+
+<div class="alert {{#if isEmergency}}alert-danger{{else}}alert-info{{/if}}">
+  <strong>{{#if isEmergency}}🚨 Emergency{{else}}🔧{{/if}} Work Order Assigned</strong><br>
+  You have been assigned a new {{#if isEmergency}}emergency {{/if}}work order.
+</div>
+
+<div class="info-box">
+  <h3>Work Order #{{workOrderNumber}}</h3>
+  <div class="info-row">
+    <span class="info-label">Property:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Unit:</span>
+    <span class="info-value">{{unit}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Category:</span>
+    <span class="info-value">{{category}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Priority:</span>
+    <span class="info-value"><strong>{{priority}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Assigned Date:</span>
+    <span class="info-value">{{assignedDate}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Issue Description:</strong></p>
+  <p style="background-color: #f8f9fa; padding: 15px; border-radius: 4px;">{{description}}</p>
+</div>
+
+{{#if photos}}
+<div class="message">
+  <p><strong>Photos:</strong> {{photoCount}} photo(s) attached</p>
+</div>
+{{/if}}
+
+<div class="info-box">
+  <h3>Contact Information</h3>
+  <div class="info-row">
+    <span class="info-label">Tenant:</span>
+    <span class="info-value">{{tenantName}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Phone:</span>
+    <span class="info-value">{{tenantPhone}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Property Manager:</span>
+    <span class="info-value">{{managerName}} - {{managerPhone}}</span>
+  </div>
+</div>
+
+{{#if accessInstructions}}
+<div class="message">
+  <p><strong>Access Instructions:</strong></p>
+  <p style="background-color: #fff3cd; padding: 15px; border-radius: 4px;">{{accessInstructions}}</p>
+</div>
+{{/if}}
+
+<a href="{{workOrderUrl}}" class="button">View Full Details</a>
+
+<div class="message">
+  <p><strong>Next Steps:</strong></p>
+  <ol>
+    <li>Review the work order details</li>
+    <li>Contact the tenant to schedule</li>
+    <li>Complete the work</li>
+    <li>Submit completion report with photos</li>
+    <li>Submit invoice for payment</li>
+  </ol>
+</div>
+
+{{#if isEmergency}}
+<div class="alert alert-danger">
+  <strong>⚠️ Emergency Response Required</strong><br>
+  Please respond within 4 hours and complete work within 24 hours.
+</div>
+{{/if}}
+
+<div class="message">
+  <p><strong>Response Time SLA:</strong></p>
+  <ul>
+    <li>Emergency: 4 hours response, 24 hours completion</li>
+    <li>High Priority: 24 hours response, 3 days completion</li>
+    <li>Medium Priority: 72 hours response, 7 days completion</li>
+  </ul>
+</div>

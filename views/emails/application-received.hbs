@@ -1,0 +1,53 @@
+<div class="greeting">
+  Hi {{landlordName}},
+</div>
+
+<div class="alert alert-info">
+  <strong>📝 New Application</strong><br>
+  You have received a new rental application for your property.
+</div>
+
+<div class="info-box">
+  <h3>Applicant Information</h3>
+  <div class="info-row">
+    <span class="info-label">Name:</span>
+    <span class="info-value"><strong>{{applicantName}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Email:</span>
+    <span class="info-value">{{applicantEmail}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Phone:</span>
+    <span class="info-value">{{applicantPhone}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Applied For:</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Desired Move-in:</span>
+    <span class="info-value">{{moveInDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Monthly Income:</span>
+    <span class="info-value">KES {{monthlyIncome}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p><strong>Next Steps:</strong></p>
+  <ol>
+    <li>Review the complete application</li>
+    <li>Check employment and income verification</li>
+    <li>Contact references</li>
+    <li>Run background check</li>
+    <li>Make your decision</li>
+  </ol>
+</div>
+
+<a href="{{applicationUrl}}" class="button">Review Application</a>
+
+<div class="message">
+  <p><strong>Reminder:</strong> Applications should be reviewed within 48 hours to maintain good tenant relations.</p>
+</div>
