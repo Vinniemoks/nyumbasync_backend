@@ -1,186 +1,122 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to NyumbaSync</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f8f9fa;
-            margin: 0;
-            padding: 0;
-            color: #333;
-            line-height: 1.6;
-        }
-        
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-        
-        .header {
-            background-color: #3498db;
-            padding: 30px 20px;
-            text-align: center;
-            color: white;
-        }
-        
-        .logo {
-            height: 50px;
-            margin-bottom: 15px;
-        }
-        
-        h1 {
-            margin: 0;
-            font-size: 24px;
-            font-weight: 600;
-        }
-        
-        .content {
-            padding: 30px;
-        }
-        
-        .welcome-message {
-            font-size: 18px;
-            margin-bottom: 25px;
-        }
-        
-        .features {
-            margin: 25px 0;
-        }
-        
-        .feature {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 15px;
-        }
-        
-        .feature-icon {
-            color: #3498db;
-            font-size: 20px;
-            margin-right: 15px;
-            margin-top: 3px;
-        }
-        
-        .feature-text {
-            flex: 1;
-        }
-        
-        .cta-button {
-            display: inline-block;
-            background-color: #3498db;
-            color: white;
-            text-decoration: none;
-            padding: 12px 30px;
-            border-radius: 4px;
-            font-weight: 500;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .cta-button:hover {
-            background-color: #2980b9;
-        }
-        
-        .verification-note {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 25px 0;
-            font-size: 14px;
-        }
-        
-        .footer {
-            text-align: center;
-            padding: 20px;
-            font-size: 12px;
-            color: #7f8c8d;
-            border-top: 1px solid #eee;
-        }
-        
-        .social-links {
-            margin: 15px 0;
-        }
-        
-        .social-link {
-            display: inline-block;
-            margin: 0 10px;
-            color: #3498db;
-            text-decoration: none;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+    }
+    .container {
+      max-width: 600px;
+      margin: 20px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header {
+      background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+      color: white;
+      padding: 30px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .content {
+      padding: 30px 20px;
+    }
+    .content h2 {
+      color: #4CAF50;
+      margin-top: 0;
+    }
+    .button {
+      display: inline-block;
+      padding: 12px 30px;
+      background-color: #4CAF50;
+      color: white !important;
+      text-decoration: none;
+      border-radius: 5px;
+      margin: 20px 0;
+      font-weight: bold;
+    }
+    .button:hover {
+      background-color: #45a049;
+    }
+    .features {
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 5px;
+      margin: 20px 0;
+    }
+    .features ul {
+      list-style: none;
+      padding: 0;
+    }
+    .features li {
+      padding: 8px 0;
+      padding-left: 25px;
+      position: relative;
+    }
+    .features li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    .footer {
+      background-color: #f4f4f4;
+      padding: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <img src="https://nyumbasync.com/logo-white.png" alt="NyumbaSync Logo" class="logo">
-            <h1>Welcome to NyumbaSync!</h1>
-        </div>
-        
-        <div class="content">
-            <p class="welcome-message">Hi {{firstName}},</p>
-            <p>Thank you for joining NyumbaSync - your all-in-one property management solution. We're excited to have you on board!</p>
-            
-            <div class="features">
-                <div class="feature">
-                    <div class="feature-icon">✓</div>
-                    <div class="feature-text">
-                        <strong>Manage Properties Easily</strong>
-                        <p>Track all your properties in one place with our intuitive dashboard.</p>
-                    </div>
-                </div>
-                
-                <div class="feature">
-                    <div class="feature-icon">✓</div>
-                    <div class="feature-text">
-                        <strong>Automate Rent Collection</strong>
-                        <p>Set up automatic rent payments and never worry about late payments again.</p>
-                    </div>
-                </div>
-                
-                <div class="feature">
-                    <div class="feature-icon">✓</div>
-                    <div class="feature-text">
-                        <strong>Maintenance Tracking</strong>
-                        <p>Receive and manage maintenance requests from tenants seamlessly.</p>
-                    </div>
-                </div>
-            </div>
-            
-            {{#if requiresVerification}}
-            <div class="verification-note">
-                <p><strong>One more step:</strong> Please verify your email address to complete your registration. Check your inbox for a verification email from us.</p>
-                <p>Didn't receive the email? <a href="{{resendLink}}" style="color: #3498db;">Resend verification email</a></p>
-            </div>
-            {{/if}}
-            
-            <div style="text-align: center;">
-                <a href="{{dashboardLink}}" class="cta-button">Go to Your Dashboard</a>
-            </div>
-            
-            <p>If you have any questions or need help getting started, don't hesitate to reach out to our support team at <a href="mailto:support@nyumbasync.com" style="color: #3498db;">support@nyumbasync.com</a>.</p>
-            
-            <p>Welcome aboard,<br>
-            The NyumbaSync Team</p>
-        </div>
-        
-        <div class="footer">
-            <div class="social-links">
-                <a href="https://facebook.com/nyumbasync" class="social-link">Facebook</a>
-                <a href="https://twitter.com/nyumbasync" class="social-link">Twitter</a>
-                <a href="https://instagram.com/nyumbasync" class="social-link">Instagram</a>
-            </div>
-            <p>&copy; {{currentYear}} NyumbaSync. All rights reserved.</p>
-            <p>
-                <a href="{{privacyPolicyLink}}" style="color: #7f8c8d; text-decoration: none;">Privacy Policy</a> | 
-                <a href="{{termsLink}}" style="color: #7f8c8d; text-decoration: none;">Terms of Service</a>
-            </p>
-        </div>
+  <div class="container">
+    <div class="header">
+      <h1>🏠 NyumbaSync</h1>
+      <p>Property Management Made Easy</p>
     </div>
+    <div class="content">
+      <h2>Karibu {{name}}! 🎉</h2>
+      <p>Welcome to NyumbaSync, Kenya's leading property management platform. We're excited to have you on board!</p>
+      
+      <div class="features">
+        <p><strong>What you can do with NyumbaSync:</strong></p>
+        <ul>
+          <li>Manage your properties effortlessly</li>
+          <li>Track rent payments with M-Pesa integration</li>
+          <li>Submit and track maintenance requests</li>
+          <li>Communicate with landlords/tenants</li>
+          <li>Access important documents anytime</li>
+          <li>Get real-time notifications</li>
+        </ul>
+      </div>
+      
+      <p>Ready to get started?</p>
+      <center>
+        <a href="{{appUrl}}" class="button">Access Your Dashboard</a>
+      </center>
+      
+      <p>If you have any questions, feel free to reach out to our support team.</p>
+      
+      <p>Best regards,<br>
+      The NyumbaSync Team</p>
+    </div>
+    <div class="footer">
+      <p>&copy; {{year}} NyumbaSync. All rights reserved.</p>
+      <p>Nairobi, Kenya | <a href="mailto:support@nyumbasync.co.ke">support@nyumbasync.co.ke</a></p>
+    </div>
+  </div>
 </body>
 </html>

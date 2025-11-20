@@ -1,338 +1,246 @@
 const nodemailer = require('nodemailer');
 const handlebars = require('handlebars');
-const path = require('path');
 const fs = require('fs');
-const config = require('../config/config');
+const path = require('path');
 const logger = require('../utils/logger');
 
-class EmailService {
-  constructor() {
-    try {
-      // Validate email configuration
-      if (!config.email || !config.email.smtp) {
-        logger.warn('Email configuration is missing - creating stub service');
-        this.isStub = true;
-        return;
-      }
-
-      // Create transporter
-      this.transporter = nodemailer.createTransport({
-        host: config.email.smtp.host,
-        port: config.email.smtp.port,
-        secure: config.email.smtp.secure, // true for 465, false for other ports
-        auth: {
-          user: config.email.smtp.auth.user,
-          pass: config.email.smtp.auth.pass
-        }
-      });
-
-      // Verify transporter connection
-      this.transporter.verify((error) => {
-        if (error) {
-          logger.error('Error verifying email transporter:', error);
-        } else {
-          logger.info('Email transporter is ready');
-        }
-      });
-
-      // Try to configure Handlebars templates with error handling
-      try {
-        const hbs = require('nodemailer-express-handlebars');
-        
-        const handlebarsOptions = {
-          viewEngine: {
-            handlebars: handlebars,
-            extname: '.hbs',
-            partialsDir: path.join(__dirname, '../views/emails/partials'),
-            layoutsDir: path.join(__dirname, '../views/emails/layouts'),
-            defaultLayout: 'main',
-          },
-          viewPath: path.join(__dirname, '../views/emails'),
-          extName: '.hbs',
-        };
-
-        this.transporter.use('compile', hbs(handlebarsOptions));
-        this.templatesEnabled = true;
-        logger.info('Email templates configured successfully');
-      } catch (hbsError) {
-        logger.warn('Failed to configure email templates, falling back to plain text:', hbsError.message);
-        this.templatesEnabled = false;
-      }
-
-      logger.info('EmailService initialized successfully');
-    } catch (error) {
-      logger.error('EmailService initialization failed:', error);
-      this.isStub = true;
+// Create transporter
+const createTransporter = () => {
+  return nodemailer.createTransporter({
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.EMAIL_PORT || '587'),
+    secure: process.env.EMAIL_SECURE === 'true',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD
     }
-  }
+  });
+};
 
-  /**
-   * Check if service is available
-   * @returns {Boolean}
-   */
-  isAvailable() {
-    return !this.isStub && this.transporter;
-  }
-
-  /**
-   * Verify if template exists
-   * @param {String} templateName - Name of the template (without extension)
-   * @returns {Promise<Boolean>}
-   */
-  async verifyTemplateExists(templateName) {
-    if (!this.templatesEnabled) return false;
+// Load and compile email template
+const loadTemplate = (templateName, data) => {
+  try {
+    const templatePath = path.join(__dirname, '../views/emails', `${templateName}.hbs`);
     
-    try {
-      const templatePath = path.join(__dirname, `../views/emails/${templateName}.hbs`);
-      await fs.promises.access(templatePath, fs.constants.F_OK);
-      return true;
-    } catch (error) {
-      logger.warn(`Template ${templateName} not found: ${error.message}`);
-      return false;
+    // Check if template exists
+    if (!fs.existsSync(templatePath)) {
+      logger.warn(`Email template not found: ${templateName}, using default`);
+      return createDefaultTemplate(data);
     }
-  }
-
-  /**
-   * Send email with template validation
-   * @param {Object} mailOptions - Email options
-   * @returns {Promise}
-   */
-  async sendEmail(mailOptions) {
-    if (this.isStub) {
-      logger.warn('Email service is not available - email not sent');
-      return { messageId: 'stub-' + Date.now() };
-    }
-
-    try {
-      let emailContent = {};
-
-      // If templates are enabled and template is specified
-      if (this.templatesEnabled && mailOptions.template) {
-        const templateExists = await this.verifyTemplateExists(mailOptions.template);
-        if (templateExists) {
-          emailContent = {
-            template: mailOptions.template,
-            context: mailOptions.context || {}
-          };
-        } else {
-          // Fallback to plain text/HTML
-          emailContent = {
-            text: mailOptions.text || 'Email content not available',
-            html: mailOptions.html || mailOptions.text || 'Email content not available'
-          };
-        }
-      } else {
-        // Use plain text/HTML
-        emailContent = {
-          text: mailOptions.text || 'Email content not available',
-          html: mailOptions.html || mailOptions.text || 'Email content not available'
-        };
-      }
-
-      const result = await this.transporter.sendMail({
-        from: mailOptions.from || `"NyumbaSync" <${config.email.from}>`,
-        to: mailOptions.to,
-        subject: mailOptions.subject,
-        ...emailContent
-      });
-
-      logger.info(`Email sent to ${mailOptions.to} - MessageID: ${result.messageId}`);
-      return result;
-    } catch (error) {
-      logger.error(`Failed to send email to ${mailOptions.to}: ${error.message}`);
-      throw new Error(`Failed to send email: ${error.message}`);
-    }
-  }
-
-  /**
-   * Send email verification
-   * @param {String} to - Recipient email
-   * @param {String} name - Recipient name
-   * @param {String} token - Verification token
-   * @returns {Promise}
-   */
-  async sendVerificationEmail(to, name, token) {
-    const verificationUrl = `${config.client?.url || 'http://localhost:3000'}/verify-email?token=${token}`;
     
-    return this.sendEmail({
-      to,
-      subject: 'Verify Your Email Address',
-      template: 'verifyEmail',
-      text: `Hello ${name},\n\nPlease verify your email address by clicking the link below:\n${verificationUrl}\n\nIf you didn't create an account with NyumbaSync, please ignore this email.`,
-      html: `
-        <h2>Email Verification</h2>
-        <p>Hello ${name},</p>
-        <p>Please verify your email address by clicking the link below:</p>
-        <a href="${verificationUrl}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Verify Email</a>
-        <p>If you didn't create an account with NyumbaSync, please ignore this email.</p>
-      `,
-      context: {
-        name,
-        verificationUrl,
-        supportEmail: config.email?.support || 'support@nyumbasync.com'
-      }
-    });
+    const templateSource = fs.readFileSync(templatePath, 'utf8');
+    const template = handlebars.compile(templateSource);
+    return template(data);
+  } catch (error) {
+    logger.error(`Error loading email template ${templateName}:`, error);
+    return createDefaultTemplate(data);
   }
+};
 
-  /**
-   * Send password reset email
-   * @param {String} to - Recipient email
-   * @param {String} name - Recipient name
-   * @param {String} token - Reset token
-   * @returns {Promise}
-   */
-  async sendPasswordResetEmail(to, name, token) {
-    const resetUrl = `${config.client?.url || 'http://localhost:3000'}/reset-password?token=${token}`;
+// Create default template if custom template doesn't exist
+const createDefaultTemplate = (data) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .footer { padding: 20px; text-align: center; font-size: 12px; color: #666; }
+        .button { display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>NyumbaSync</h1>
+        </div>
+        <div class="content">
+          ${data.content || '<p>You have a new notification from NyumbaSync.</p>'}
+        </div>
+        <div class="footer">
+          <p>&copy; ${new Date().getFullYear()} NyumbaSync. All rights reserved.</p>
+          <p>Nairobi, Kenya</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+// Send email function
+const sendEmail = async (to, subject, template, data) => {
+  try {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+      logger.warn('Email credentials not configured, skipping email send');
+      return { success: false, message: 'Email not configured' };
+    }
     
-    return this.sendEmail({
+    const transporter = createTransporter();
+    const html = loadTemplate(template, data);
+    
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || 'NyumbaSync <noreply@nyumbasync.co.ke>',
       to,
-      subject: 'Password Reset Request',
-      template: 'passwordReset',
-      text: `Hello ${name},\n\nYou requested a password reset. Click the link below to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, please ignore this email.`,
-      html: `
-        <h2>Password Reset</h2>
-        <p>Hello ${name},</p>
-        <p>You requested a password reset. Click the link below to reset your password:</p>
-        <a href="${resetUrl}" style="background-color: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
-        <p>This link expires in 1 hour. If you didn't request this, please ignore this email.</p>
-      `,
-      context: {
-        name,
-        resetUrl,
-        expiresIn: '1 hour',
-        supportEmail: config.email?.support || 'support@nyumbasync.com'
-      }
-    });
+      subject,
+      html
+    };
+    
+    const info = await transporter.sendMail(mailOptions);
+    
+    logger.info(`Email sent successfully to ${to}: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error(`Error sending email to ${to}:`, error);
+    throw error;
   }
+};
 
-  /**
-   * Send welcome email
-   * @param {String} to - Recipient email
-   * @param {String} name - Recipient name
-   * @returns {Promise}
-   */
-  async sendWelcomeEmail(to, name) {
-    return this.sendEmail({
-      to,
-      subject: 'Welcome to NyumbaSync!',
-      template: 'welcome',
-      text: `Welcome to NyumbaSync, ${name}!\n\nThank you for joining our platform. You can now manage your property rentals with ease.\n\nLogin at: ${config.client?.url || 'http://localhost:3000'}/login`,
-      html: `
-        <h2>Welcome to NyumbaSync!</h2>
-        <p>Hello ${name},</p>
-        <p>Thank you for joining our platform. You can now manage your property rentals with ease.</p>
-        <a href="${config.client?.url || 'http://localhost:3000'}/login" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login Now</a>
-        <p>If you have any questions, feel free to contact our support team.</p>
-      `,
-      context: {
-        name,
-        loginUrl: `${config.client?.url || 'http://localhost:3000'}/login`,
-        supportEmail: config.email?.support || 'support@nyumbasync.com'
-      }
-    });
-  }
+// Specific email functions
+const sendWelcomeEmail = async (user) => {
+  return sendEmail(
+    user.email,
+    'Welcome to NyumbaSync',
+    'welcome',
+    {
+      name: user.firstName || 'User',
+      email: user.email,
+      appUrl: process.env.FRONTEND_URL || 'https://nyumbasync.co.ke',
+      content: `
+        <h2>Welcome to NyumbaSync, ${user.firstName}!</h2>
+        <p>Thank you for joining NyumbaSync, Kenya's leading property management platform.</p>
+        <p>You can now:</p>
+        <ul>
+          <li>Manage your properties</li>
+          <li>Track rent payments</li>
+          <li>Submit maintenance requests</li>
+          <li>Communicate with your landlord/tenants</li>
+        </ul>
+        <p><a href="${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}" class="button">Get Started</a></p>
+      `
+    }
+  );
+};
 
-  /**
-   * Send payment receipt
-   * @param {String} to - Recipient email
-   * @param {String} name - Recipient name
-   * @param {Object} paymentDetails - Payment information
-   * @returns {Promise}
-   */
-  async sendPaymentReceipt(to, name, paymentDetails) {
-    return this.sendEmail({
-      to,
-      subject: 'Your Payment Receipt',
-      template: 'paymentReceipt',
-      text: `Hello ${name},\n\nYour payment has been received successfully.\n\nAmount: KES ${paymentDetails.amount}\nTransaction ID: ${paymentDetails.transactionId}\nDate: ${new Date().toLocaleDateString()}`,
-      html: `
-        <h2>Payment Receipt</h2>
-        <p>Hello ${name},</p>
-        <p>Your payment has been received successfully.</p>
-        <table style="border-collapse: collapse; width: 100%;">
-          <tr><td style="border: 1px solid #ddd; padding: 8px;"><strong>Amount:</strong></td><td style="border: 1px solid #ddd; padding: 8px;">KES ${paymentDetails.amount}</td></tr>
-          <tr><td style="border: 1px solid #ddd; padding: 8px;"><strong>Transaction ID:</strong></td><td style="border: 1px solid #ddd; padding: 8px;">${paymentDetails.transactionId}</td></tr>
-          <tr><td style="border: 1px solid #ddd; padding: 8px;"><strong>Date:</strong></td><td style="border: 1px solid #ddd; padding: 8px;">${new Date().toLocaleDateString()}</td></tr>
-        </table>
-      `,
-      context: {
-        name,
-        ...paymentDetails,
-        date: new Date().toLocaleDateString(),
-        supportEmail: config.email?.support || 'support@nyumbasync.com'
-      }
-    });
-  }
-
-  /**
-   * Send maintenance request confirmation
-   * @param {String} to - Recipient email
-   * @param {String} name - Recipient name
-   * @param {Object} requestDetails - Maintenance request details
-   * @returns {Promise}
-   */
-  async sendMaintenanceConfirmation(to, name, requestDetails) {
-    return this.sendEmail({
-      to,
-      subject: 'Maintenance Request Received',
-      template: 'maintenanceConfirmation',
-      text: `Hello ${name},\n\nYour maintenance request has been received and is being processed.\n\nRequest ID: ${requestDetails.requestId}\nDescription: ${requestDetails.description}\nDate: ${new Date().toLocaleDateString()}`,
-      html: `
-        <h2>Maintenance Request Confirmation</h2>
-        <p>Hello ${name},</p>
-        <p>Your maintenance request has been received and is being processed.</p>
-        <table style="border-collapse: collapse; width: 100%;">
-          <tr><td style="border: 1px solid #ddd; padding: 8px;"><strong>Request ID:</strong></td><td style="border: 1px solid #ddd; padding: 8px;">${requestDetails.requestId}</td></tr>
-          <tr><td style="border: 1px solid #ddd; padding: 8px;"><strong>Description:</strong></td><td style="border: 1px solid #ddd; padding: 8px;">${requestDetails.description}</td></tr>
-          <tr><td style="border: 1px solid #ddd; padding: 8px;"><strong>Date:</strong></td><td style="border: 1px solid #ddd; padding: 8px;">${new Date().toLocaleDateString()}</td></tr>
-        </table>
-      `,
-      context: {
-        name,
-        ...requestDetails,
-        date: new Date().toLocaleDateString(),
-        supportEmail: config.email?.support || 'support@nyumbasync.com'
-      }
-    });
-  }
-}
-
-// Create singleton instance with comprehensive error handling
-let emailServiceInstance;
-try {
-  emailServiceInstance = new EmailService();
-  logger.info('EmailService instance created successfully');
-} catch (error) {
-  logger.error('Failed to create EmailService instance:', error);
+const sendPasswordResetEmail = async (user, resetToken) => {
+  const resetUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/reset-password?token=${resetToken}`;
   
-  // Create a stub instance that won't crash the app
-  emailServiceInstance = {
-    isAvailable: () => false,
-    sendEmail: (mailOptions) => {
-      logger.warn(`Email service unavailable - would have sent email to: ${mailOptions.to}`);
-      return Promise.resolve({ messageId: 'unavailable-' + Date.now() });
-    },
-    sendVerificationEmail: (to, name, token) => {
-      logger.warn(`Email service unavailable - would have sent verification email to: ${to}`);
-      return Promise.resolve({ messageId: 'unavailable-' + Date.now() });
-    },
-    sendPasswordResetEmail: (to, name, token) => {
-      logger.warn(`Email service unavailable - would have sent password reset email to: ${to}`);
-      return Promise.resolve({ messageId: 'unavailable-' + Date.now() });
-    },
-    sendWelcomeEmail: (to, name) => {
-      logger.warn(`Email service unavailable - would have sent welcome email to: ${to}`);
-      return Promise.resolve({ messageId: 'unavailable-' + Date.now() });
-    },
-    sendPaymentReceipt: (to, name, paymentDetails) => {
-      logger.warn(`Email service unavailable - would have sent payment receipt to: ${to}`);
-      return Promise.resolve({ messageId: 'unavailable-' + Date.now() });
-    },
-    sendMaintenanceConfirmation: (to, name, requestDetails) => {
-      logger.warn(`Email service unavailable - would have sent maintenance confirmation to: ${to}`);
-      return Promise.resolve({ messageId: 'unavailable-' + Date.now() });
-    },
-  };
-}
+  return sendEmail(
+    user.email,
+    'Password Reset Request - NyumbaSync',
+    'password-reset',
+    {
+      name: user.firstName || 'User',
+      resetUrl,
+      resetToken,
+      expiryTime: '10 minutes',
+      content: `
+        <h2>Password Reset Request</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>You requested to reset your password. Click the button below to reset it:</p>
+        <p><a href="${resetUrl}" class="button">Reset Password</a></p>
+        <p>Or copy this link: ${resetUrl}</p>
+        <p>This link will expire in 10 minutes.</p>
+        <p>If you didn't request this, please ignore this email.</p>
+      `
+    }
+  );
+};
 
-module.exports = emailServiceInstance;
+const sendPaymentConfirmation = async (user, payment) => {
+  return sendEmail(
+    user.email,
+    'Payment Confirmation - NyumbaSync',
+    'payment-confirmation',
+    {
+      name: user.firstName || 'User',
+      amount: payment.amount,
+      transactionId: payment.transactionId,
+      date: new Date(payment.date).toLocaleDateString('en-KE'),
+      content: `
+        <h2>Payment Received</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>We have received your payment of <strong>KES ${payment.amount.toLocaleString()}</strong>.</p>
+        <p><strong>Transaction ID:</strong> ${payment.transactionId}</p>
+        <p><strong>Date:</strong> ${new Date(payment.date).toLocaleDateString('en-KE')}</p>
+        <p>Thank you for your payment!</p>
+      `
+    }
+  );
+};
+
+const sendMaintenanceUpdate = async (user, maintenance) => {
+  return sendEmail(
+    user.email,
+    `Maintenance Request Update - ${maintenance.ticketNumber}`,
+    'maintenance-update',
+    {
+      name: user.firstName || 'User',
+      ticketNumber: maintenance.ticketNumber,
+      status: maintenance.status,
+      title: maintenance.title,
+      content: `
+        <h2>Maintenance Request Update</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>Your maintenance request has been updated:</p>
+        <p><strong>Ticket:</strong> ${maintenance.ticketNumber}</p>
+        <p><strong>Issue:</strong> ${maintenance.title}</p>
+        <p><strong>Status:</strong> ${maintenance.status}</p>
+        <p>We'll keep you updated on the progress.</p>
+      `
+    }
+  );
+};
+
+const sendLeaseReminder = async (user, lease) => {
+  const daysUntilExpiry = Math.ceil((new Date(lease.endDate) - new Date()) / (1000 * 60 * 60 * 24));
+  
+  return sendEmail(
+    user.email,
+    'Lease Expiry Reminder - NyumbaSync',
+    'lease-reminder',
+    {
+      name: user.firstName || 'User',
+      daysUntilExpiry,
+      endDate: new Date(lease.endDate).toLocaleDateString('en-KE'),
+      content: `
+        <h2>Lease Expiry Reminder</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>Your lease is expiring in <strong>${daysUntilExpiry} days</strong> on ${new Date(lease.endDate).toLocaleDateString('en-KE')}.</p>
+        <p>Please contact your landlord if you wish to renew your lease.</p>
+      `
+    }
+  );
+};
+
+const sendRentReminder = async (user, payment) => {
+  return sendEmail(
+    user.email,
+    'Rent Payment Reminder - NyumbaSync',
+    'rent-reminder',
+    {
+      name: user.firstName || 'User',
+      amount: payment.amount,
+      dueDate: new Date(payment.dueDate).toLocaleDateString('en-KE'),
+      content: `
+        <h2>Rent Payment Reminder</h2>
+        <p>Hi ${user.firstName},</p>
+        <p>This is a reminder that your rent payment of <strong>KES ${payment.amount.toLocaleString()}</strong> is due on ${new Date(payment.dueDate).toLocaleDateString('en-KE')}.</p>
+        <p>Please make your payment on time to avoid late fees.</p>
+        <p><a href="${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/payments" class="button">Pay Now</a></p>
+      `
+    }
+  );
+};
+
+module.exports = {
+  sendEmail,
+  sendWelcomeEmail,
+  sendPasswordResetEmail,
+  sendPaymentConfirmation,
+  sendMaintenanceUpdate,
+  sendLeaseReminder,
+  sendRentReminder
+};

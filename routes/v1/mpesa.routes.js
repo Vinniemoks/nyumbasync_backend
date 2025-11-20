@@ -19,7 +19,7 @@ const { authenticate } = require('../../middlewares/auth.middleware');
  *     security:
  *       - bearerAuth: []
  */
-router.post('/stkpush', authenticate, mpesaController.initiateSTKPush);
+router.post('/stkpush', authenticate(), mpesaController.initiateSTKPush);
 
 /**
  * @swagger
@@ -39,7 +39,7 @@ router.post('/callback', mpesaController.handleCallback);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/query', authenticate, mpesaController.queryTransactionStatus);
+router.post('/query', authenticate(), mpesaController.queryTransactionStatus);
 
 /**
  * @swagger
@@ -50,6 +50,6 @@ router.post('/query', authenticate, mpesaController.queryTransactionStatus);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/b2c', authenticate, mpesaController.initiateB2CPayment);
+router.post('/b2c', authenticate(), mpesaController.initiateB2CPayment);
 
 module.exports = router;

@@ -2,7 +2,13 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const User = require('../models/user.model');
 const Lease = require('../models/lease.model');
-const { logAuthAttempt } = require('../utils/logger');
+const logger = require('../utils/logger');
+const { isBlacklisted } = require('../services/token-blacklist.service');
+
+// Helper function for logging auth attempts
+const logAuthAttempt = (identifier, event, details = '') => {
+  logger.info(`Auth: ${event} - ${identifier} ${details}`);
+};
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 
 // Rate limiting for authentication attempts
@@ -18,14 +24,16 @@ const rateLimiter = new RateLimiterMemory({
 const authenticate = (roles = 'any') => {
   return async (req, res, next) => {
     try {
-      // Rate limiting check
-      try {
-        await rateLimiter.consume(req.ip);
-      } catch (rateLimiterRes) {
-        logAuthAttempt(req.ip, 'RATE_LIMIT_EXCEEDED');
-        return res.status(429).json({ 
-          error: 'Too many requests. Please try again later.' 
-        });
+      // Rate limiting check (skip in test environment)
+      if (process.env.NODE_ENV !== 'test') {
+        try {
+          await rateLimiter.consume(req.ip);
+        } catch (rateLimiterRes) {
+          logAuthAttempt(req.ip, 'RATE_LIMIT_EXCEEDED');
+          return res.status(429).json({ 
+            error: 'Too many requests. Please try again later.' 
+          });
+        }
       }
 
       const token = req.header('Authorization')?.replace('Bearer ', '') || 
@@ -37,6 +45,15 @@ const authenticate = (roles = 'any') => {
         logAuthAttempt(req.ip, 'MISSING_TOKEN');
         return res.status(401).json({ 
           error: 'Authentication required. No token provided.' 
+        });
+      }
+
+      // Check if token is blacklisted
+      const blacklisted = await isBlacklisted(token);
+      if (blacklisted) {
+        logAuthAttempt(req.ip, 'BLACKLISTED_TOKEN');
+        return res.status(401).json({ 
+          error: 'Token has been revoked. Please log in again.' 
         });
       }
 
