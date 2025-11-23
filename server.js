@@ -1301,54 +1301,6 @@ const validateMiddlewareStack = () => {
     throw new Error(`Missing required middleware: ${missingMiddleware.join(', ')}`);
   }
 
-  logger.info('✅ All required middleware validated');
-  return true;
-};
-
-// Start Server with graceful shutdown
-const server = app.listen(PORT, '0.0.0.0', () => {
-  try {
-    validateMiddlewareStack();
-  } catch (error) {
-    logger.error('❌ Middleware validation failed:', error.message);
-    // Log warning but don't exit - allow server to start
-    logger.warn('⚠️ Server will continue despite middleware validation errors');
-  }
-
-  const currentTime = new Date().toLocaleString('en-KE', {
-    timeZone: 'Africa/Nairobi',
-    hour12: true,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-
-  logger.info(`🚀 Server successfully started on port ${PORT}`);
-  logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`💳 M-Pesa Mode: ${process.env.MPESA_ENV || 'sandbox'}`);
-  logger.info(`⏰ Current EAT: ${currentTime}`);
-  logger.info(`📁 Logs directory: ${path.join(__dirname, 'logs')}`);
-  logger.info(`📤 Uploads directory: ${path.join(__dirname, 'uploads')}`);
-  logger.info(`🔗 Server running at: http://0.0.0.0:${PORT}`);
-  logger.info(`📖 API Documentation: http://0.0.0.0:${PORT}/api/docs`);
-  logger.info(`🏥 Health Check: http://0.0.0.0:${PORT}/health`);
-  
-  if (cluster.isWorker) {
-    logger.info(`👷 Worker ${cluster.worker.id} is running`);
-  }
-}).on('error', (err) => {
-  logger.error('❌ Server failed to start:', err);
-  process.exit(1);
-});
-
-// Graceful shutdown handling
-const gracefulShutdown = async (signal) => {
-  logger.info(`Received ${signal}. Starting graceful shutdown...`);
-
-  // Stop accepting new connections
   server.close(async () => {
     logger.info('HTTP server closed');
 

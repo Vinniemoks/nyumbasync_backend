@@ -36,6 +36,32 @@ const analyticsController = {
     try {
       const { period = 'month' } = req.query;
       const dateRange = getDateRange(period);
+      const isLandlord = req.user.role === 'landlord';
+      const landlordId = req.user._id;
+
+      let propertyMatch = {};
+      let transactionMatch = {
+        createdAt: {
+          $gte: dateRange.start,
+          $lte: dateRange.end
+        }
+      };
+      let maintenanceMatch = {
+        createdAt: {
+          $gte: dateRange.start,
+          $lte: dateRange.end
+        }
+      };
+
+      if (isLandlord) {
+        // Find all properties owned by this landlord
+        const properties = await Property.find({ landlord: landlordId }).select('_id');
+        const propertyIds = properties.map(p => p._id);
+
+        propertyMatch = { landlord: new mongoose.Types.ObjectId(landlordId) };
+        transactionMatch.property = { $in: propertyIds };
+        maintenanceMatch.property = { $in: propertyIds };
+      }
 
       const [
         userStats,
@@ -43,24 +69,30 @@ const analyticsController = {
         transactionStats,
         maintenanceStats
       ] = await Promise.all([
-        // User Statistics
-        User.aggregate([
-          {
-            $facet: {
-              total: [{ $count: 'count' }],
-              byRole: [
-                { $group: { _id: '$role', count: { $sum: 1 } } }
-              ],
-              recent: [
-                { $match: { createdAt: { $gte: dateRange.start } } },
-                { $count: 'count' }
-              ]
+        // User Statistics (or Tenant Stats for Landlord)
+        isLandlord ?
+          Property.aggregate([
+            { $match: { landlord: new mongoose.Types.ObjectId(landlordId), 'currentTenant.tenantId': { $exists: true } } },
+            { $group: { _id: null, count: { $sum: 1 } } }
+          ]) :
+          User.aggregate([
+            {
+              $facet: {
+                total: [{ $count: 'count' }],
+                byRole: [
+                  { $group: { _id: '$role', count: { $sum: 1 } } }
+                ],
+                recent: [
+                  { $match: { createdAt: { $gte: dateRange.start } } },
+                  { $count: 'count' }
+                ]
+              }
             }
-          }
-        ]),
+          ]),
 
         // Property Statistics
         Property.aggregate([
+          { $match: propertyMatch },
           {
             $facet: {
               total: [{ $count: 'count' }],
@@ -72,10 +104,12 @@ const analyticsController = {
                 { $group: { _id: '$type', count: { $sum: 1 } } }
               ],
               revenue: [
-                { $group: { 
-                  _id: null,
-                  total: { $sum: '$rentAmount' }
-                }}
+                {
+                  $group: {
+                    _id: null,
+                    total: { $sum: '$rentAmount' }
+                  }
+                }
               ]
             }
           }
@@ -83,36 +117,35 @@ const analyticsController = {
 
         // Transaction Statistics
         Transaction.aggregate([
-          {
-            $match: {
-              createdAt: { 
-                $gte: dateRange.start,
-                $lte: dateRange.end
-              }
-            }
-          },
+          { $match: transactionMatch },
           {
             $facet: {
               total: [
-                { $group: {
-                  _id: null,
-                  count: { $sum: 1 },
-                  amount: { $sum: '$amount' }
-                }}
+                {
+                  $group: {
+                    _id: null,
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                }
               ],
               byStatus: [
-                { $group: {
-                  _id: '$status',
-                  count: { $sum: 1 },
-                  amount: { $sum: '$amount' }
-                }}
+                {
+                  $group: {
+                    _id: '$status',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                }
               ],
               daily: [
-                { $group: {
-                  _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-                  count: { $sum: 1 },
-                  amount: { $sum: '$amount' }
-                }}
+                {
+                  $group: {
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                }
               ]
             }
           }
@@ -120,14 +153,7 @@ const analyticsController = {
 
         // Maintenance Statistics
         Maintenance.aggregate([
-          {
-            $match: {
-              createdAt: {
-                $gte: dateRange.start,
-                $lte: dateRange.end
-              }
-            }
-          },
+          { $match: maintenanceMatch },
           {
             $facet: {
               total: [{ $count: 'count' }],
@@ -165,7 +191,11 @@ const analyticsController = {
           start: dateRange.start,
           end: dateRange.end
         },
-        users: {
+        users: isLandlord ? {
+          total: userStats[0]?.count || 0,
+          byRole: [], // Not applicable for landlord
+          newUsers: 0
+        } : {
           total: userStats[0].total[0]?.count || 0,
           byRole: userStats[0].byRole,
           newUsers: userStats[0].recent[0]?.count || 0
@@ -259,10 +289,12 @@ const analyticsController = {
                 {
                   $divide: [
                     { $size: '$transactions' },
-                    { $subtract: [
-                      { $dayOfMonth: dateRange.end },
-                      { $dayOfMonth: dateRange.start }
-                    ]}
+                    {
+                      $subtract: [
+                        { $dayOfMonth: dateRange.end },
+                        { $dayOfMonth: dateRange.start }
+                      ]
+                    }
                   ]
                 },
                 100
@@ -278,10 +310,12 @@ const analyticsController = {
               $multiply: [
                 {
                   $divide: [
-                    { $subtract: [
-                      { $sum: '$transactions.amount' },
-                      { $sum: '$maintenance.cost' }
-                    ]},
+                    {
+                      $subtract: [
+                        { $sum: '$transactions.amount' },
+                        { $sum: '$maintenance.cost' }
+                      ]
+                    },
                     { $sum: '$transactions.amount' }
                   ]
                 },

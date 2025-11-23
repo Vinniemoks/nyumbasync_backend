@@ -17,7 +17,7 @@ const validatePeriod = [
 // Dashboard Overview
 router.get(
   '/dashboard',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'superadmin', 'landlord']),
   validatePeriod,
   analyticsController.getDashboardStats
 );
