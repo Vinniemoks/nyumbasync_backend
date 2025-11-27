@@ -97,12 +97,12 @@ const createRouterFromConfig = (routeConfigs) => {
       throw new Error(`Invalid route config at index ${index}: missing method, path, or handler`);
     }
 
-     if (typeof path !== 'string' || !path.startsWith('/') || path.includes('://')) {
-    throw new Error(`Invalid route path at index ${index}: "${path}"`);
-  }
+    if (typeof path !== 'string' || !path.startsWith('/') || path.includes('://')) {
+      throw new Error(`Invalid route path at index ${index}: "${path}"`);
+    }
 
     const httpMethod = method.toLowerCase();
-    
+
     // Validate HTTP method
     if (!['get', 'post', 'put', 'patch', 'delete', 'options', 'head'].includes(httpMethod)) {
       throw new Error(`Invalid HTTP method: ${method}`);
@@ -114,28 +114,10 @@ const createRouterFromConfig = (routeConfigs) => {
     // Register the route
     try {
       router[httpMethod](path, ...handlers);
-      logger.debug(`  📍 Route registered: ${method.toUpperCase()} ${path}`);
-    } catch (error) {
-      throw new Error(`Failed to register route ${method} ${path}: ${error.message}`);
-    }
-  });
-
-  return router;
-};
-
-// Enhanced Route Loader Function with Array Config Support
-const loadRoute = (routeName) => {
-  const routePath = path.join(__dirname, 'routes', 'v1', `${routeName}.routes.js`);
-  
-  logger.info(`🔄 Attempting to load ${routeName} routes from: ${routePath}`);
-  
-  try {
-    // Check if file exists first
-    if (!fs.existsSync(routePath)) {
       logger.error(`❌ Route file does not exist: ${routePath}`);
       return null;
     }
-    
+
     // Check file permissions
     try {
       fs.accessSync(routePath, fs.constants.R_OK);
@@ -144,62 +126,62 @@ const loadRoute = (routeName) => {
       logger.error(`❌ File is not readable: ${routePath}`, accessErr.message);
       return null;
     }
-    
+
     // Get file stats for debugging
     const stats = fs.statSync(routePath);
     logger.debug(`📊 File stats for ${routeName}: Size: ${stats.size} bytes, Modified: ${stats.mtime}`);
-    
+
     // Clear require cache in development to avoid stale modules
     if (process.env.NODE_ENV === 'development') {
       delete require.cache[require.resolve(routePath)];
       logger.debug(`🧹 Cleared require cache for: ${routePath}`);
     }
-    
+
     // Attempt to require the route
     const routeConfig = require(routePath);
-    
+
     // Validate the loaded route
     if (!routeConfig) {
       logger.error(`❌ ${routeName} route file exists but exports null/undefined`);
       return null;
     }
-    
+
     // Check if it's already an Express router
     if (routeConfig && routeConfig.stack && Array.isArray(routeConfig.stack)) {
       logger.info(`✅ ${routeName} routes loaded successfully with ${routeConfig.stack.length} route(s)`);
       return routeConfig;
     }
-    
+
     // Check if it's an array configuration (your current format)
     if (Array.isArray(routeConfig)) {
       logger.info(`🏭 Converting ${routeName} array config to Express router...`);
       try {
         const router = createRouterFromConfig(routeConfig);
         logger.info(`✅ ${routeName} routes converted successfully with ${routeConfig.length} route(s)`);
-        
+
         // Log individual routes in debug mode
         if (process.env.LOG_LEVEL === 'debug') {
           routeConfig.forEach((config, index) => {
             logger.debug(`  📍 Route ${index + 1}: ${config.method.toUpperCase()} ${config.path}`);
           });
         }
-        
+
         return router;
       } catch (conversionError) {
         logger.error(`❌ Failed to convert ${routeName} array config:`, conversionError.message);
         return null;
       }
     }
-    
+
     // If it's a function, assume it's middleware
     if (typeof routeConfig === 'function') {
       logger.info(`✅ ${routeName} middleware function loaded successfully`);
       return routeConfig;
     }
-    
+
     logger.error(`❌ ${routeName} exports unknown type: ${typeof routeConfig}. Expected Express router, array, or function.`);
     return null;
-    
+
   } catch (err) {
     // Detailed error logging based on error type
     if (err.code === 'MODULE_NOT_FOUND') {
@@ -208,7 +190,7 @@ const loadRoute = (routeName) => {
         requireStack: err.requireStack,
         modulePath: routePath
       });
-      
+
       // Check if it's a dependency issue
       if (err.message.includes('Cannot find module') && !err.message.includes(routePath)) {
         const missingModule = err.message.match(/Cannot find module '([^']+)'/);
@@ -236,108 +218,83 @@ const loadRoute = (routeName) => {
         filePath: routePath
       });
     }
-    
+
     return null;
   }
 };
 
 // Route Loading Summary Function
-const loadAllRoutes = () => {
-  logger.info('🚀 Starting route loading process...');
-  
-  const routesToLoad = [
-    'mpesa',
-    'property', 
-    'auth',
-    'upload',
-    'user',
-    'admin',
-    'maintenance',
-    'payment',
-    'transaction',
-    'tenant',
-    'lease',
-    'document',
-    'notification',
-    'message',
-    'vendor',
-    'analytics'
-  ];
-  
-  const loadedRoutes = {};
-  const failedRoutes = [];
-  const routeStats = {
-    total: routesToLoad.length,
-    loaded: 0,
+total: routesToLoad.length,
+  loaded: 0,
     failed: 0
   };
-  
-  // Load each route and track results
-  routesToLoad.forEach(routeName => {
-    logger.info(`\n📂 Loading ${routeName} routes...`);
-    const route = loadRoute(routeName);
-    
-    if (route) {
-      loadedRoutes[routeName] = route;
-      routeStats.loaded++;
-      logger.info(`✅ ${routeName} routes loaded successfully`);
-    } else {
-      failedRoutes.push(routeName);
-      routeStats.failed++;
-      logger.error(`❌ ${routeName} routes failed to load`);
-    }
-  });
-  
-  // Summary logging
-  logger.info('\n📊 Route Loading Summary:');
-  logger.info(`   Total routes attempted: ${routeStats.total}`);
-  logger.info(`   Successfully loaded: ${routeStats.loaded}`);
-  logger.info(`   Failed to load: ${routeStats.failed}`);
-  
-  if (routeStats.loaded > 0) {
-    logger.info(`   ✅ Loaded routes: ${Object.keys(loadedRoutes).join(', ')}`);
-  }
-  
-  if (failedRoutes.length > 0) {
-    logger.error(`   ❌ Failed routes: ${failedRoutes.join(', ')}`);
-    logger.error('   💡 Check the individual error messages above for details');
-  }
-  
-  if (routeStats.failed === 0) {
-    logger.info('🎉 All routes loaded successfully!');
-  } else if (routeStats.loaded === 0) {
-    logger.error('🚨 No routes were loaded! Check your routes directory structure.');
+
+// Load each route and track results
+routesToLoad.forEach(routeName => {
+  logger.info(`\n📂 Loading ${routeName} routes...`);
+  const route = loadRoute(routeName);
+
+  if (route) {
+    loadedRoutes[routeName] = route;
+    routeStats.loaded++;
+    logger.info(`✅ ${routeName} routes loaded successfully`);
   } else {
-    logger.warn(`⚠️ Partial success: ${routeStats.loaded}/${routeStats.total} routes loaded`);
+    failedRoutes.push(routeName);
+    routeStats.failed++;
+    logger.error(`❌ ${routeName} routes failed to load`);
   }
-  
-  return loadedRoutes;
+});
+
+// Summary logging
+logger.info('\n📊 Route Loading Summary:');
+logger.info(`   Total routes attempted: ${routeStats.total}`);
+logger.info(`   Successfully loaded: ${routeStats.loaded}`);
+logger.info(`   Failed to load: ${routeStats.failed}`);
+
+if (routeStats.loaded > 0) {
+  logger.info(`   ✅ Loaded routes: ${Object.keys(loadedRoutes).join(', ')}`);
+}
+
+if (failedRoutes.length > 0) {
+  logger.error(`   ❌ Failed routes: ${failedRoutes.join(', ')}`);
+  logger.error('   💡 Check the individual error messages above for details');
+}
+
+if (routeStats.failed === 0) {
+  logger.info('🎉 All routes loaded successfully!');
+} else if (routeStats.loaded === 0) {
+  logger.error('🚨 No routes were loaded! Check your routes directory structure.');
+} else {
+  logger.warn(`⚠️ Partial success: ${routeStats.loaded}/${routeStats.total} routes loaded`);
+}
+
+return loadedRoutes;
 };
 
 // Directory Structure Checker
 const checkRouteDirectoryStructure = () => {
   const routesDir = path.join(__dirname, 'routes');
   const v1Dir = path.join(routesDir, 'v1');
-  
+
   logger.info('🔍 Checking route directory structure...');
-  
+
   if (!fs.existsSync(routesDir)) {
     logger.error('❌ Routes directory does not exist:', routesDir);
     logger.error('💡 Create the directory structure: routes/v1/');
     return false;
   }
-  
+
   if (!fs.existsSync(v1Dir)) {
     logger.error('❌ v1 routes directory does not exist:', v1Dir);
     logger.error('💡 Create the directory: routes/v1/');
     return false;
   }
-  
+
   // List all files in the v1 directory
   try {
     const files = fs.readdirSync(v1Dir);
     const routeFiles = files.filter(file => file.endsWith('.routes.js'));
-    
+
     logger.info(`📁 Found ${files.length} file(s) in routes/v1/:`);
     files.forEach(file => {
       const filePath = path.join(v1Dir, file);
@@ -345,12 +302,12 @@ const checkRouteDirectoryStructure = () => {
       const isRouteFile = file.endsWith('.routes.js');
       logger.info(`   ${isRouteFile ? '📄' : '📋'} ${file} (${stats.size} bytes)`);
     });
-    
+
     logger.info(`🎯 Found ${routeFiles.length} route file(s):`);
     routeFiles.forEach(file => {
       logger.info(`   📄 ${file}`);
     });
-    
+
     return true;
   } catch (err) {
     logger.error('❌ Error reading routes directory:', err.message);
@@ -381,7 +338,7 @@ const validateRouteHandlers = (routes) => {
   if (validationErrors.length > 0) {
     throw new Error(`Route validation failed:\n${validationErrors.join('\n')}`);
   }
-  
+
   return true;
 };
 
@@ -427,17 +384,17 @@ const authenticateToken = (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ 
+    return res.status(401).json({
       error: 'Access token required',
-      timestamp: res.locals.currentTime 
+      timestamp: res.locals.currentTime
     });
   }
 
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: 'Invalid or expired token',
-        timestamp: res.locals.currentTime 
+        timestamp: res.locals.currentTime
       });
     }
     req.user = user;
@@ -466,16 +423,16 @@ const optionalAuth = (req, res, next) => {
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         error: 'Access token required',
-        timestamp: res.locals.currentTime 
+        timestamp: res.locals.currentTime
       });
     }
 
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: 'Insufficient permissions',
-        timestamp: res.locals.currentTime 
+        timestamp: res.locals.currentTime
       });
     }
 
@@ -491,7 +448,7 @@ const connectWithRetry = () => {
   }
 
   mongoose.set('strictQuery', false);
-  
+
   // Skip MongoDB connection in test environment (tests handle their own connection)
   if (process.env.NODE_ENV !== 'test') {
     logger.info('🔄 Attempting MongoDB connection...');
@@ -507,9 +464,9 @@ const connectWithRetry = () => {
     })
       .then(() => {
         logger.info('✅ Connected to MongoDB');
-      // Create indexes if needed
-      createIndexes();
-    })
+        // Create indexes if needed
+        createIndexes();
+      })
       .catch(err => {
         logger.error(`❌ MongoDB connection failed: ${err.message}`);
         logger.info('⏳ Retrying connection in 5 seconds...');
@@ -537,7 +494,7 @@ const createIndexes = async () => {
     require('./models/admin-user.model');
     require('./models/tenant.model');
     require('./models/property-approval.model');
-    
+
     // Create indexes
     await mongoose.connection.db.collection('properties').createIndex({ location: '2dsphere' });
     await mongoose.connection.db.collection('users').createIndex({ email: 1 }, { unique: true });
@@ -545,7 +502,7 @@ const createIndexes = async () => {
     await mongoose.connection.db.collection('maintenance').createIndex({ propertyId: 1 });
     await mongoose.connection.db.collection('transactions').createIndex({ createdAt: -1 });
     await mongoose.connection.db.collection('audits').createIndex({ timestamp: -1 });
-    
+
     logger.info('✅ Database indexes created successfully');
     logger.info('✅ All models loaded successfully');
   } catch (error) {
@@ -576,12 +533,12 @@ app.use(helmet({
 if (cluster.isWorker && workerHealth) {
   app.use((req, res, next) => {
     const startTime = Date.now();
-    
+
     // Track response completion
     res.on('finish', () => {
       const duration = Date.now() - startTime;
       workerHealth.trackRequest(duration, res.statusCode >= 400);
-      
+
       // Send health update to primary process
       if (process.send) {
         process.send({
@@ -590,7 +547,7 @@ if (cluster.isWorker && workerHealth) {
         });
       }
     });
-    
+
     next();
   });
 }
@@ -600,7 +557,7 @@ if (cluster.isWorker && workerRateLimiter) {
   app.use((req, res, next) => {
     const clientIP = req.ip || req.connection.remoteAddress;
     const rateLimit = workerRateLimiter.checkLimit(clientIP);
-    
+
     if (!rateLimit.allowed) {
       return res.status(429).json({
         error: 'Too many requests',
@@ -608,14 +565,14 @@ if (cluster.isWorker && workerRateLimiter) {
         retryAfter: rateLimit.resetIn
       });
     }
-    
+
     // Add rate limit info to response headers
     res.set({
       'X-RateLimit-Limit': workerRateLimiter.maxRequestsPerIP,
       'X-RateLimit-Remaining': rateLimit.remaining.ip,
       'X-RateLimit-Reset': workerRateLimiter.lastReset + workerRateLimiter.windowMs
     });
-    
+
     next();
   });
 }
@@ -805,7 +762,7 @@ app.get('/api/status', (req, res) => {
 // Enhanced Route Registration with Debug Logging
 const registerRoutes = () => {
   logger.info('\n🔗 Registering routes with Express app...');
-  
+
   // Auth routes with rate limiting
   if (authRoutes) {
     try {
@@ -826,6 +783,9 @@ const registerRoutes = () => {
     const mfaRoutes = require('./routes/v1/mfa.routes');
     app.use('/api/v1/auth/mfa', mfaRoutes);
     logger.info('✅ MFA routes registered at /api/v1/auth/mfa');
+    const biometricRoutes = require('./routes/v1/biometric.routes');
+    app.use('/api/v1/auth/biometric', biometricRoutes);
+    logger.info('✅ Biometric routes registered at /api/v1/auth/biometric');
   } catch (err) {
     logger.error('❌ Failed to register MFA routes:', err.message);
   }
@@ -846,7 +806,7 @@ const registerRoutes = () => {
   if (mpesaRoutes) {
     try {
       app.use('/api/v1/mpesa', authenticateToken, mpesaRoutes);
-      logger.info('✅ M-Pesa routes registered with authentication at /api/v1/mpesa');    
+      logger.info('✅ M-Pesa routes registered with authentication at /api/v1/mpesa');
     } catch (err) {
       logger.error('❌ Failed to register M-Pesa routes:', err.message);
     }
@@ -965,390 +925,264 @@ const registerRoutes = () => {
   // Notification routes
   if (notificationRoutes) {
     try {
-      app.use('/api/v1/notifications', authenticateToken, notificationRoutes);
-      logger.info('✅ Notification routes registered with authentication at /api/v1/notifications');
-    } catch (err) {
-      logger.error('❌ Failed to register notification routes:', err.message);
-    }
-  } else {
-    logger.warn('⚠️ Notification routes not registered - route loading failed');
-  }
-
-  // Message routes
-  if (messageRoutes) {
-    try {
-      app.use('/api/v1/messages', authenticateToken, messageRoutes);
-      logger.info('✅ Message routes registered with authentication at /api/v1/messages');
-    } catch (err) {
-      logger.error('❌ Failed to register message routes:', err.message);
-    }
-  } else {
-    logger.warn('⚠️ Message routes not registered - route loading failed');
-  }
-
-  // Vendor routes
-  if (vendorRoutes) {
-    try {
-      app.use('/api/v1/vendors', authenticateToken, vendorRoutes);
-      logger.info('✅ Vendor routes registered with authentication at /api/v1/vendors');
-    } catch (err) {
-      logger.error('❌ Failed to register vendor routes:', err.message);
-    }
-  } else {
-    logger.warn('⚠️ Vendor routes not registered - route loading failed');
-  }
-
-  // Analytics routes
-  if (analyticsRoutes) {
-    try {
-      app.use('/api/v1/analytics', authenticateToken, analyticsRoutes);
-      logger.info('✅ Analytics routes registered with authentication at /api/v1/analytics');
-    } catch (err) {
-      logger.error('❌ Failed to register analytics routes:', err.message);
-    }
-  } else {
-    logger.warn('⚠️ Analytics routes not registered - route loading failed');
-  }
-
-  logger.info('🎯 Route registration process completed\n');
-};
-
-// Call the route registration function
-registerRoutes();
-
-// Admin routes (if you have admin functionality)
-app.get('/api/v1/admin/stats', authenticateToken, authorize('admin'), (req, res) => {
-  res.json({
-    message: 'Admin statistics',
-    timestamp: res.locals.currentTime,
-    // Add your admin stats here
-  });
-});
-
-// Enhanced Debug Route for Development
-if (process.env.NODE_ENV === 'development') {
-  app.get('/api/debug/routes', (req, res) => {
-    const routeStatus = {
-      system: 'NyumbaSync API',
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-      routeDirectory: path.join(__dirname, 'routes', 'v1'),
-      loadedRoutes: {
-        auth: authRoutes ? 'loaded' : 'failed',
-        mpesa: mpesaRoutes ? 'loaded' : 'failed',
-        property: propertyRoutes ? 'loaded' : 'failed',
-        upload: uploadRoutes ? 'loaded' : 'failed',
-        payment: paymentRoutes ? 'loaded' : 'failed',
-        user: userRoutes ? 'loaded' : 'failed',
-        admin: adminRoutes ? 'loaded' : 'failed',
-        maintenance: maintenanceRoutes ? 'loaded' : 'failed',
-        transaction: transactionRoutes ? 'loaded' : 'failed'
-      },
-      registeredEndpoints: [],
-      recommendations: []
-    };
-
-    // Check which routes are actually registered
-    const loadedCount = Object.values(routeStatus.loadedRoutes).filter(status => status === 'loaded').length;
-    const totalCount = Object.keys(routeStatus.loadedRoutes).length;
-    
-    routeStatus.summary = {
-      total: totalCount,
-      loaded: loadedCount,
-      failed: totalCount - loadedCount,
-      successRate: `${Math.round((loadedCount / totalCount) * 100)}%`
-    };
-
-    // Add recommendations based on failures
-    const failedRoutes = Object.entries(routeStatus.loadedRoutes)
-      .filter(([, status]) => status === 'failed')
-      .map(([route]) => route);
-
-    if (failedRoutes.length > 0) {
-      routeStatus.recommendations.push(
-        `Check if these route files exist: ${failedRoutes.map(r => `routes/v1/${r}.routes.js`).join(', ')}`
-      );
-      routeStatus.recommendations.push('Verify file permissions and syntax in failed route files');
-      routeStatus.recommendations.push('Check server logs for detailed error messages');
+      app.use('/public', express.static(publicDir, {
+        maxAge: '1d',
+        etag: true
+      }));
+      logger.info('✅ Static files served from /public');
+    } else {
+      logger.warn('⚠️ Public directory not found, static files not served');
     }
 
-    // Try to read directory contents for additional info
-    try {
-      const v1Dir = path.join(__dirname, 'routes', 'v1');
-      const files = fs.existsSync(v1Dir) ? fs.readdirSync(v1Dir) : [];
-      routeStatus.filesInDirectory = files;
-      routeStatus.routeFiles = files.filter(f => f.endsWith('.routes.js'));
-    } catch (err) {
-      routeStatus.directoryError = err.message;
+    // Serve uploaded files
+    app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+      maxAge: '7d',
+      etag: true
+    })); */
+
+    // API Documentation (in development)
+    if (process.env.NODE_ENV === 'development') {
+      app.get('/api/docs', (req, res) => {
+        res.json({
+          title: 'NyumbaSync API Documentation',
+          version: '1.0.0',
+          description: 'Property management system API',
+          endpoints: {
+            authentication: {
+              register: 'POST /api/v1/auth/register',
+              login: 'POST /api/v1/auth/login',
+              logout: 'POST /api/v1/auth/logout',
+              refreshToken: 'POST /api/v1/auth/refresh',
+              resetPassword: 'POST /api/v1/auth/reset-password'
+            },
+            properties: {
+              getAll: 'GET /api/v1/properties',
+              getById: 'GET /api/v1/properties/:id',
+              create: 'POST /api/v1/properties',
+              update: 'PUT /api/v1/properties/:id',
+              delete: 'DELETE /api/v1/properties/:id'
+            },
+            mpesa: {
+              initiatePayment: 'POST /api/v1/mpesa/payment',
+              callback: 'POST /api/v1/mpesa/callback',
+              status: 'GET /api/v1/mpesa/status/:id'
+            },
+            upload: {
+              single: 'POST /api/v1/upload',
+              multiple: 'POST /api/v1/upload/multiple'
+            }
+          }
+        });
+      });
     }
 
-    res.json(routeStatus);
-  });
-  
-  logger.info('✅ Enhanced route debugger available at /api/debug/routes');
-}
+    // 404 Handler for unmatched routes
+    app.use('*', (req, res) => {
+      logger.warn(`404 - Route not found: ${req.method} ${req.originalUrl}`);
+      res.status(404).json({
+        error: 'Route not found',
+        path: req.originalUrl,
+        method: req.method,
+        timestamp: new Date().toISOString(),
+        requestId: req.requestId,
+        suggestedRoutes: [
+          '/api/v1/auth',
+          '/api/v1/properties',
+          '/api/v1/mpesa',
+          '/api/v1/upload',
+          '/health',
+          '/api/status'
+        ]
+      });
+    });
 
-/* // Static Files
-const publicDir = path.join(__dirname, 'public');
-if (fs.existsSync(publicDir)) {
-  app.use('/public', express.static(publicDir, {
-    maxAge: '1d',
-    etag: true
-  }));
-  logger.info('✅ Static files served from /public');
-} else {
-  logger.warn('⚠️ Public directory not found, static files not served');
-}
+    // =============================================
+    // GLOBAL ERROR HANDLER MIDDLEWARE
+    // =============================================
+    app.use((err, req, res, next) => {
+      // Log the error with Winston logger
+      logger.error('Global error handler:', {
+        error: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+        user: req.user ? req.user.id : 'anonymous'
+      });
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  maxAge: '7d',
-  etag: true
-})); */
+      // Handle specific error types
+      let statusCode = 500;
+      let message = 'Internal Server Error';
+      let details = null;
 
-// API Documentation (in development)
-if (process.env.NODE_ENV === 'development') {
-  app.get('/api/docs', (req, res) => {
-    res.json({
-      title: 'NyumbaSync API Documentation',
-      version: '1.0.0',
-      description: 'Property management system API',
-      endpoints: {
-        authentication: {
-          register: 'POST /api/v1/auth/register',
-          login: 'POST /api/v1/auth/login',
-          logout: 'POST /api/v1/auth/logout',
-          refreshToken: 'POST /api/v1/auth/refresh',
-          resetPassword: 'POST /api/v1/auth/reset-password'
-        },
-        properties: {
-          getAll: 'GET /api/v1/properties',
-          getById: 'GET /api/v1/properties/:id',
-          create: 'POST /api/v1/properties',
-          update: 'PUT /api/v1/properties/:id',
-          delete: 'DELETE /api/v1/properties/:id'
-        },
-        mpesa: {
-          initiatePayment: 'POST /api/v1/mpesa/payment',
-          callback: 'POST /api/v1/mpesa/callback',
-          status: 'GET /api/v1/mpesa/status/:id'
-        },
-        upload: {
-          single: 'POST /api/v1/upload',
-          multiple: 'POST /api/v1/upload/multiple'
+      if (err.name === 'ValidationError') {
+        statusCode = 400;
+        message = 'Validation Error';
+        details = Object.values(err.errors).map(e => e.message);
+      } else if (err.name === 'UnauthorizedError') {
+        statusCode = 401;
+        message = 'Unauthorized';
+      } else if (err.name === 'ForbiddenError') {
+        statusCode = 403;
+        message = 'Forbidden';
+      } else if (err.name === 'NotFoundError') {
+        statusCode = 404;
+        message = 'Resource Not Found';
+      } else if (err.name === 'MongoError') {
+        // Handle specific MongoDB errors
+        if (err.code === 11000) {
+          statusCode = 409;
+          message = 'Duplicate Key Error';
+          const key = Object.keys(err.keyValue)[0];
+          details = `${key} already exists`;
+        }
+      } else if (err.name === 'CastError') {
+        statusCode = 400;
+        message = `Invalid ${err.path}: ${err.value}`;
+      } else if (err.code === 11000) {
+        statusCode = 400;
+        const field = Object.keys(err.keyValue)[0];
+        message = `Duplicate ${field} value`;
+      } else if (err.name === 'JsonWebTokenError') {
+        statusCode = 401;
+        message = 'Invalid token';
+      } else if (err.name === 'TokenExpiredError') {
+        statusCode = 401;
+        message = 'Token expired';
+      } else if (err.name === 'MulterError') {
+        statusCode = 400;
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          message = 'File size too large';
+        } else if (err.code === 'LIMIT_FILE_COUNT') {
+          message = 'Too many files';
         }
       }
-    });
-  });
-}
 
-// 404 Handler for unmatched routes
-app.use('*', (req, res) => {
-  logger.warn(`404 - Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({
-    error: 'Route not found',
-    path: req.originalUrl,
-    method: req.method,
-    timestamp: new Date().toISOString(),
-    requestId: req.requestId,
-    suggestedRoutes: [
-      '/api/v1/auth',
-      '/api/v1/properties',
-      '/api/v1/mpesa',
-      '/api/v1/upload',
-      '/health',
-      '/api/status'
-    ]
-  });
-});
-
-// =============================================
-// GLOBAL ERROR HANDLER MIDDLEWARE
-// =============================================
-app.use((err, req, res, next) => {
-  // Log the error with Winston logger
-  logger.error('Global error handler:', {
-    error: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    user: req.user ? req.user.id : 'anonymous'
-  });
-
-  // Handle specific error types
-  let statusCode = 500;
-  let message = 'Internal Server Error';
-  let details = null;
-
-  if (err.name === 'ValidationError') {
-    statusCode = 400;
-    message = 'Validation Error';
-    details = Object.values(err.errors).map(e => e.message);
-  } else if (err.name === 'UnauthorizedError') {
-    statusCode = 401;
-    message = 'Unauthorized';
-  } else if (err.name === 'ForbiddenError') {
-    statusCode = 403;
-    message = 'Forbidden';
-  } else if (err.name === 'NotFoundError') {
-    statusCode = 404;
-    message = 'Resource Not Found';
-  } else if (err.name === 'MongoError') {
-    // Handle specific MongoDB errors
-    if (err.code === 11000) {
-      statusCode = 409;
-      message = 'Duplicate Key Error';
-      const key = Object.keys(err.keyValue)[0];
-      details = `${key} already exists`;
-    }
-  } else if (err.name === 'CastError') {
-    statusCode = 400;
-    message = `Invalid ${err.path}: ${err.value}`;
-  } else if (err.code === 11000) {
-    statusCode = 400;
-    const field = Object.keys(err.keyValue)[0];
-    message = `Duplicate ${field} value`;
-  } else if (err.name === 'JsonWebTokenError') {
-    statusCode = 401;
-    message = 'Invalid token';
-  } else if (err.name === 'TokenExpiredError') {
-    statusCode = 401;
-    message = 'Token expired';
-  } else if (err.name === 'MulterError') {
-    statusCode = 400;
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      message = 'File size too large';
-    } else if (err.code === 'LIMIT_FILE_COUNT') {
-      message = 'Too many files';
-    }
-  }
-
-  // Handle M-Pesa specific errors
-  if (err.isMpesaError) {
-    return res.status(503).json({
-      error: 'M-Pesa service temporarily unavailable',
-      action: 'Please try again later',
-      contact: '0700NYUMBA',
-      timestamp: res.locals.currentTime,
-      requestId: req.requestId
-    });
-  }
-
-  // Format the error response
-  const errorResponse = {
-    error: message,
-    timestamp: res.locals.currentTime || new Date().toISOString(),
-    path: req.originalUrl,
-    requestId: req.requestId,
-    ...(details && { details }),
-    ...(process.env.NODE_ENV === 'development' && { 
-      stack: err.stack 
-    })
-  };
-
-  // Send the error response
-  res.status(statusCode).json(errorResponse);
-});
-
-// Database connection event handlers
-mongoose.connection.on('connected', () => {
-  logger.info('✅ Mongoose connected to MongoDB');
-});
-
-mongoose.connection.on('error', (err) => {
-  logger.error(`❌ Mongoose connection error: ${err}`);
-});
-
-mongoose.connection.on('disconnected', () => {
-  logger.warn('⚠️ Mongoose disconnected from MongoDB');
-});
-
-mongoose.connection.on('reconnected', () => {
-  logger.info('✅ Mongoose reconnected to MongoDB');
-});
-
-// Initialize Database Connection
-connectWithRetry();
-
-// Process monitoring (log memory usage every 5 minutes)
-setInterval(() => {
-  const memUsage = process.memoryUsage();
-  logger.info(`📊 Memory usage: ${Math.round(memUsage.rss / 1024 / 1024)}MB RSS, ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB Heap`);
-}, 300000);
-
-// Validate middleware stack before starting server
-const validateMiddlewareStack = () => {
-  const requiredMiddleware = [
-    'helmet',
-    'compression',
-    'cors',
-    'express.json',
-    'express.urlencoded',
-    'mongoSanitize',
-    'xss'
-  ];
-
-  const registeredMiddleware = app._router.stack
-    .filter(layer => layer.name !== '<anonymous>')
-    .map(layer => layer.name);
-
-  const missingMiddleware = requiredMiddleware.filter(
-    middleware => !registeredMiddleware.includes(middleware)
-  );
-
-  if (missingMiddleware.length > 0) {
-    throw new Error(`Missing required middleware: ${missingMiddleware.join(', ')}`);
-  }
-
-  server.close(async () => {
-    logger.info('HTTP server closed');
-
-    // Close database connection
-    try {
-      await mongoose.connection.close();
-      logger.info('Database connection closed');
-    } catch (err) {
-      logger.error('Error closing database connection:', err);
-    }
-
-    // Cleanup cluster resources
-    if (cluster.isWorker) {
-      if (workerHealth) {
-        // Send final health status to primary
-        process.send({
-          type: 'health_status',
-          data: { ...await workerHealth.getHealthStatus(), shutdownInitiated: true }
+      // Handle M-Pesa specific errors
+      if (err.isMpesaError) {
+        return res.status(503).json({
+          error: 'M-Pesa service temporarily unavailable',
+          action: 'Please try again later',
+          contact: '0700NYUMBA',
+          timestamp: res.locals.currentTime,
+          requestId: req.requestId
         });
       }
-    }
 
-    // Final cleanup
-    logger.info('Cleanup completed');
-    process.exit(0);
-  });
+      // Format the error response
+      const errorResponse = {
+        error: message,
+        timestamp: res.locals.currentTime || new Date().toISOString(),
+        path: req.originalUrl,
+        requestId: req.requestId,
+        ...(details && { details }),
+        ...(process.env.NODE_ENV === 'development' && {
+          stack: err.stack
+        })
+      };
 
-  // Force shutdown after timeout
-  setTimeout(() => {
-    logger.error('Forced shutdown due to timeout');
-    process.exit(1);
-  }, process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30000);
-};
+      // Send the error response
+      res.status(statusCode).json(errorResponse);
+    });
 
-// Setup signal handlers
-['SIGTERM', 'SIGINT'].forEach(signal => {
-  process.on(signal, () => gracefulShutdown(signal));
-});
+    // Database connection event handlers
+    mongoose.connection.on('connected', () => {
+      logger.info('✅ Mongoose connected to MongoDB');
+    });
 
-process.on('uncaughtException', (err) => {
-  logger.error('❌ Uncaught Exception:', err);
-  shutdown('uncaughtException');
-});
+    mongoose.connection.on('error', (err) => {
+      logger.error(`❌ Mongoose connection error: ${err}`);
+    });
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit for unhandled rejections, just log them
-});
+    mongoose.connection.on('disconnected', () => {
+      logger.warn('⚠️ Mongoose disconnected from MongoDB');
+    });
 
-// Export for testing
-module.exports = { app, server, authenticateToken, authorize, createRouterFromConfig };
+    mongoose.connection.on('reconnected', () => {
+      logger.info('✅ Mongoose reconnected to MongoDB');
+    });
+
+    // Initialize Database Connection
+    connectWithRetry();
+
+    // Process monitoring (log memory usage every 5 minutes)
+    setInterval(() => {
+      const memUsage = process.memoryUsage();
+      logger.info(`📊 Memory usage: ${Math.round(memUsage.rss / 1024 / 1024)}MB RSS, ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB Heap`);
+    }, 300000);
+
+    // Validate middleware stack before starting server
+    const validateMiddlewareStack = () => {
+      const requiredMiddleware = [
+        'helmet',
+        'compression',
+        'cors',
+        'express.json',
+        'express.urlencoded',
+        'mongoSanitize',
+        'xss'
+      ];
+
+      const registeredMiddleware = app._router.stack
+        .filter(layer => layer.name !== '<anonymous>')
+        .map(layer => layer.name);
+
+      const missingMiddleware = requiredMiddleware.filter(
+        middleware => !registeredMiddleware.includes(middleware)
+      );
+
+      if (missingMiddleware.length > 0) {
+        throw new Error(`Missing required middleware: ${missingMiddleware.join(', ')}`);
+      }
+
+      server.close(async () => {
+        logger.info('HTTP server closed');
+
+        // Close database connection
+        try {
+          await mongoose.connection.close();
+          logger.info('Database connection closed');
+        } catch (err) {
+          logger.error('Error closing database connection:', err);
+        }
+
+        // Cleanup cluster resources
+        if (cluster.isWorker) {
+          if (workerHealth) {
+            // Send final health status to primary
+            process.send({
+              type: 'health_status',
+              data: { ...await workerHealth.getHealthStatus(), shutdownInitiated: true }
+            });
+          }
+        }
+
+        // Final cleanup
+        logger.info('Cleanup completed');
+        process.exit(0);
+      });
+
+      // Force shutdown after timeout
+      setTimeout(() => {
+        logger.error('Forced shutdown due to timeout');
+        process.exit(1);
+      }, process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30000);
+    };
+
+    // Setup signal handlers
+    ['SIGTERM', 'SIGINT'].forEach(signal => {
+      process.on(signal, () => gracefulShutdown(signal));
+    });
+
+    process.on('uncaughtException', (err) => {
+      logger.error('❌ Uncaught Exception:', err);
+      shutdown('uncaughtException');
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+      // Don't exit for unhandled rejections, just log them
+    });
+
+    // Export for testing
+    module.exports = { app, server, authenticateToken, authorize, createRouterFromConfig };

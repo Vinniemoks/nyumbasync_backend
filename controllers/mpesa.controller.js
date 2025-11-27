@@ -1,6 +1,7 @@
 const axios = require('axios');
 const Transaction = require('../models/transaction.model');
 const { generateMpesaPassword, generateTimestamp } = require('../utils/mpesa.utils');
+const emailService = require('../services/emailService');
 
 // Helper function to get M-Pesa auth token
 async function getAuthToken() {
@@ -15,7 +16,7 @@ async function getAuthToken() {
 }
 
 // STK Push (Customer to Paybill)
-exports.initiateSTKPush = async (req, res) => {
+exports.initiateSTK Push = async (req, res) => {
   const { phone, amount, propertyId } = req.body;
 
   // Validate input

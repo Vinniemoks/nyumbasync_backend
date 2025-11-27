@@ -1,5 +1,6 @@
 const Payment = require('../models/payment.model');
 const { initiateSTKPush } = require('../services/mpesa.service');
+const emailService = require('../services/emailService');
 
 // Initiate rent payment
 exports.payRent = async (req, res) => {
@@ -8,8 +9,8 @@ exports.payRent = async (req, res) => {
 
     // Kenyan shilling validation
     if (amount < 100 || !Number.isInteger(amount)) {
-      return res.status(400).json({ 
-        error: 'Amount must be whole KES ≥100' 
+      return res.status(400).json({
+        error: 'Amount must be whole KES ≥100'
       });
     }
 
@@ -23,7 +24,7 @@ exports.payRent = async (req, res) => {
 
     // Trigger M-Pesa STK push
     const mpesaResponse = await initiateSTKPush(
-      phone, 
+      phone,
       amount,
       `Rent for ${propertyId}`
     );
@@ -37,9 +38,9 @@ exports.payRent = async (req, res) => {
       paymentId: payment._id
     });
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Payment initiation failed',
-      fallback: 'Pay via USSD *544#' 
+      fallback: 'Pay via USSD *544#'
     });
   }
 };
@@ -47,7 +48,7 @@ exports.payRent = async (req, res) => {
 // M-Pesa callback handler
 exports.mpesaCallback = async (req, res) => {
   const callbackData = req.body.Body.stkCallback;
-  
+
   try {
     const payment = await Payment.findOne({
       mpesaRequestId: callbackData.CheckoutRequestID
@@ -65,7 +66,16 @@ exports.mpesaCallback = async (req, res) => {
       payment.phoneUsed = metadata.find(i => i.Name === 'PhoneNumber').Value;
       await payment.save();
 
-      // TODO: Trigger receipt SMS
+      // Populate user and property data for email
+      await payment.populate('tenant property');
+
+      // Send payment confirmation email
+      try {
+        await emailService.sendPaymentConfirmation(payment, payment.tenant);
+      } catch (emailError) {
+        console.error('Failed to send payment confirmation email:', emailError);
+        // Don't fail the payment if email fails
+      }
     } else {
       payment.status = 'failed';
       payment.failureReason = callbackData.ResultDesc;

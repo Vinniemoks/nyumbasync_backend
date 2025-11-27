@@ -45,7 +45,9 @@
   },
   "dependencies": {
     "@jest/core": "^29.7.0",
+    "@sendgrid/mail": "^8.1.6",
     "axios": "^1.11.0",
+    "base64url": "^3.0.1",
     "bcryptjs": "^3.0.2",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
@@ -78,6 +80,7 @@
     "qrcode": "^1.5.4",
     "rate-limiter-flexible": "^7.2.0",
     "sharp": "^0.34.3",
+    "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
     "twilio": "^5.8.0",
     "winston": "^3.17.0",

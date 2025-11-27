@@ -4,6 +4,7 @@ const { generateToken } = require('../utils/auth'); // Corrected import name
 const { validatePhone } = require('../utils/kenyanValidators');
 const logger = require('../utils/logger'); // Import shared logger
 const { blacklistToken } = require('../services/token-blacklist.service');
+const emailService = require('../services/emailService');
 
 // Enhanced Kenyan phone registration with M-Pesa verification
 exports.registerWithPhone = async (req, res) => {
@@ -14,7 +15,7 @@ exports.registerWithPhone = async (req, res) => {
 
     // Validate Kenyan phone format
     if (!validatePhone(phone)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Invalid Kenyan phone. Use 2547... or 2541... format',
         example: '254712345678'
       });
@@ -44,7 +45,7 @@ exports.registerWithPhone = async (req, res) => {
     // Create/update user record with temporary placeholder names
     const user = await User.findOneAndUpdate(
       { phone },
-      { 
+      {
         phone,
         role,
         verificationCode,
@@ -55,10 +56,10 @@ exports.registerWithPhone = async (req, res) => {
         lastName: 'Verification', // Temporary - user will update during profile completion
         profileComplete: false // Flag to indicate profile needs completion
       },
-      { 
-        upsert: true, 
+      {
+        upsert: true,
         new: true,
-        setDefaultsOnInsert: true 
+        setDefaultsOnInsert: true
       }
     );
 
@@ -74,7 +75,7 @@ exports.registerWithPhone = async (req, res) => {
 
     // Conditionally include verification code in test environment
     if (process.env.NODE_ENV === 'test') {
-      responseBody.verificationCode = verificationCode; 
+      responseBody.verificationCode = verificationCode;
     }
 
     res.status(202).json(responseBody);
@@ -82,8 +83,8 @@ exports.registerWithPhone = async (req, res) => {
   } catch (err) {
     console.error('Registration error details:', err); // Add detailed error logging
     logger.error(`Registration error for ${req.body.phone}: ${err.message}`); // Use shared logger
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Kuna tatuko kwenye usajili',
       actions: [
         'Tafadhali jaribu tena baada ya dakika chache',
@@ -106,46 +107,24 @@ exports.verifyCode = async (req, res) => {
     });
 
     if (!user || user.verificationCode !== code) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Namba ya uthibitisho si sahihi au imeisha',
         solutions: [
           'Hakikisha umeingiza namba kwa usahihi',
           'Omba namba mpya kupitia M-Pesa'
         ]
-      });
-    }
-
-    // Mark as verified
-    user.mpesaVerified = true;
-    user.verificationCode = undefined;
-    user.codeExpires = undefined;
-    await user.save();
-
-    // Generate JWT token
-    const token = generateToken({
-      id: user._id,
-      phone: user.phone,
-      role: user.role
-    });
-
-    logger.info(`User ${phone} successfully verified`); // Use shared logger
-
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
         id: user._id,
         role: user.role,
         kraPin: user.kraPin || null,
         phone: user.phone
       },
-      mpesaVerified: true
+        mpesaVerified: true
     });
 
   } catch (err) {
     console.error('Verification error details:', err); // Add detailed error logging
     logger.error(`Verification error for ${req.body.phone}: ${err.message}`); // Use shared logger
-    
+
     res.status(500).json({
       error: 'Samahani, kuna tatuko kwenye uthibitisho',
       immediateActions: [
@@ -165,7 +144,7 @@ exports.getProfile = async (req, res) => {
       .lean();
 
     if (!user) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'User profile not found',
         solution: 'Try logging in again'
       });
@@ -263,7 +242,7 @@ exports.completeProfile = async (req, res) => {
   } catch (error) {
     console.error('Profile completion error details:', error);
     logger.error(`Profile completion error for user ${req.user?._id}: ${error.message}`);
-    
+
     res.status(500).json({
       error: 'Failed to complete profile',
       contact: '0700NYUMBA for assistance'
@@ -333,22 +312,22 @@ exports.login = async (req, res) => {
     const { identifier, password } = req.body;
     const accountLockoutService = require('../services/account-lockout.service');
     const mfaService = require('../services/mfa.service');
-    
+
     // Validate required fields
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Email/phone and password are required' });
     }
-    
+
     // Check if account is locked
     const lockStatus = await accountLockoutService.isLocked(identifier);
     if (lockStatus.locked) {
-      return res.status(423).json({ 
+      return res.status(423).json({
         error: 'Account locked',
         message: lockStatus.message,
         lockoutUntil: lockStatus.lockoutUntil
       });
     }
-    
+
     // Find user by email or phone and include password field
     const user = await User.findOne({
       $or: [
@@ -356,36 +335,36 @@ exports.login = async (req, res) => {
         { phone: identifier }
       ]
     }).select('+password +mfaEnabled +mfaSecret');
-    
+
     if (!user) {
       // Record failed attempt even if user not found (prevent user enumeration)
       await accountLockoutService.recordFailedAttempt(identifier);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     // Verify password using the User model's correctPassword method
     const isValidPassword = await user.correctPassword(password);
     if (!isValidPassword) {
       // Record failed login attempt
       const lockoutStatus = await accountLockoutService.recordFailedAttempt(identifier);
-      
-      return res.status(401).json({ 
+
+      return res.status(401).json({
         error: 'Invalid credentials',
         remainingAttempts: lockoutStatus.remainingAttempts,
         message: lockoutStatus.message
       });
     }
-    
+
     // Reset failed attempts on successful password verification
     await accountLockoutService.resetAttempts(identifier);
-    
+
     // Check if MFA is enabled
     if (user.mfaEnabled && user.mfaSecret) {
       // Generate MFA session token (valid for 5 minutes)
       const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
-      
+
       logger.info(`MFA required for user ${user._id}`);
-      
+
       return res.status(200).json({
         success: true,
         mfaRequired: true,
@@ -393,7 +372,7 @@ exports.login = async (req, res) => {
         message: 'Please provide your MFA token to complete login'
       });
     }
-    
+
     // Generate tokens (no MFA required)
     const token = generateToken({
       id: user._id,
@@ -401,18 +380,18 @@ exports.login = async (req, res) => {
       phone: user.phone,
       role: user.role
     });
-    
+
     const refreshToken = generateToken({
       id: user._id,
       type: 'refresh'
     }, '7d');
-    
+
     // Update last login
     user.lastLogin = Date.now();
     await user.save();
-    
+
     logger.info(`User ${user._id} logged in successfully`);
-    
+
     res.json({
       success: true,
       token,
@@ -438,23 +417,23 @@ exports.login = async (req, res) => {
 exports.signup = async (req, res) => {
   try {
     const { name, firstName, lastName, email, password, phone, phoneNumber, idNumber, role, userType } = req.body;
-    
+
     // Support both 'phone' and 'phoneNumber' field names
     const userPhone = phone || phoneNumber;
-    
+
     // Validate required fields
     if (!email || !password || !userPhone) {
-      return res.status(400).json({ 
-        error: 'Email, password, and phone are required' 
+      return res.status(400).json({
+        error: 'Email, password, and phone are required'
       });
     }
-    
+
     if (!firstName || !lastName) {
-      return res.status(400).json({ 
-        error: 'First name and last name are required' 
+      return res.status(400).json({
+        error: 'First name and last name are required'
       });
     }
-    
+
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [
@@ -462,11 +441,11 @@ exports.signup = async (req, res) => {
         { phone: userPhone }
       ]
     });
-    
+
     if (existingUser) {
       return res.status(409).json({ error: 'User already exists' });
     }
-    
+
     // Create new user
     const user = new User({
       firstName: firstName || name?.split(' ')[0],
@@ -477,23 +456,13 @@ exports.signup = async (req, res) => {
       idNumber,
       role: role || userType || 'tenant',
       mpesaVerified: false,
-      profileComplete: true
     });
-    
-    await user.save();
-    
-    // Generate tokens
-    const token = generateToken({
-      id: user._id,
-      email: user.email,
-      role: user.role
-    });
-    
+
     const refreshToken = generateToken({
       id: user._id,
       type: 'refresh'
     }, '7d');
-    
+
     res.status(201).json({
       token,
       refreshToken,
@@ -508,15 +477,15 @@ exports.signup = async (req, res) => {
     });
   } catch (error) {
     logger.error('Signup error:', error);
-    
+
     // Handle validation errors
     if (error.name === 'ValidationError') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Validation failed',
         details: Object.values(error.errors).map(e => e.message)
       });
     }
-    
+
     res.status(500).json({ error: 'Signup failed', details: error.message });
   }
 };
@@ -528,17 +497,17 @@ exports.logout = async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    
+
     // Get token from header
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+
     if (token) {
       // Blacklist the token (expires in 1 hour by default)
       const expiresIn = 3600; // 1 hour in seconds
       await blacklistToken(token, expiresIn);
       logger.info(`Token blacklisted for user: ${req.user._id || req.user.id}`);
     }
-    
+
     res.json({
       success: true,
       message: 'Logged out successfully'
@@ -553,14 +522,14 @@ exports.logout = async (req, res) => {
 exports.refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    
+
     // TODO: Verify refresh token and generate new access token
     const token = generateToken({
       id: req.user.id,
       email: req.user.email,
       role: req.user.role
     });
-    
+
     res.json({
       token,
       expiresIn: 3600
@@ -578,18 +547,18 @@ exports.getCurrentUser = async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    
+
     // req.user is already set by the authenticate middleware
     // It's a lean object from the database, so use _id
     const userId = req.user._id || req.user.id;
-    
+
     const user = await User.findById(userId)
       .select('-password -verificationCode -codeExpires');
-    
+
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
+
     res.json({
       id: user._id,
       email: user.email,
@@ -609,9 +578,9 @@ exports.getCurrentUser = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     const user = await User.findOne({ email });
-    
+
     if (!user) {
       // Don't reveal if user exists
       return res.json({
@@ -619,9 +588,9 @@ exports.forgotPassword = async (req, res) => {
         message: 'Password reset email sent'
       });
     }
-    
+
     // TODO: Generate reset token and send email
-    
+
     res.json({
       success: true,
       message: 'Password reset email sent'
@@ -639,55 +608,55 @@ exports.resetPassword = async (req, res) => {
     const passwordHistoryService = require('../services/password-history.service');
     const bcrypt = require('bcryptjs');
     const crypto = require('crypto');
-    
+
     if (!token || !password) {
-      return res.status(400).json({ 
-        error: 'Reset token and new password are required' 
+      return res.status(400).json({
+        error: 'Reset token and new password are required'
       });
     }
-    
+
     // Validate password strength
     if (password.length < 8) {
-      return res.status(400).json({ 
-        error: 'Password must be at least 8 characters long' 
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters long'
       });
     }
-    
+
     // Hash the token to compare with stored hash
     const hashedToken = crypto
       .createHash('sha256')
       .update(token)
       .digest('hex');
-    
+
     // Find user with valid reset token
     const user = await User.findOne({
       passwordResetToken: hashedToken,
       passwordResetExpires: { $gt: Date.now() }
     }).select('+password +passwordHistory');
-    
+
     if (!user) {
-      return res.status(400).json({ 
-        error: 'Invalid or expired reset token' 
+      return res.status(400).json({
+        error: 'Invalid or expired reset token'
       });
     }
-    
+
     // Validate against password history
     const historyValidation = await passwordHistoryService.validatePassword(
       password,
       user.passwordHistory || []
     );
-    
+
     if (!historyValidation.valid) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: historyValidation.error,
         hint: passwordHistoryService.getRequirementsMessage()
       });
     }
-    
+
     // Hash new password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
-    
+
     // Add current password to history before changing
     if (user.password) {
       user.passwordHistory = passwordHistoryService.addToHistory(
@@ -695,16 +664,16 @@ exports.resetPassword = async (req, res) => {
         user.passwordHistory || []
       );
     }
-    
+
     // Update password and clear reset token
     user.password = hashedPassword;
     user.passwordChangedAt = Date.now();
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
-    
+
     logger.info(`Password reset successfully for user ${user._id}`);
-    
+
     res.json({
       success: true,
       message: 'Password reset successfully. You can now login with your new password.'
@@ -722,70 +691,70 @@ exports.changePassword = async (req, res) => {
     const userId = req.user._id || req.user.id;
     const passwordHistoryService = require('../services/password-history.service');
     const bcrypt = require('bcryptjs');
-    
+
     // Validate required fields
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: 'Current password and new password are required' });
     }
-    
+
     // Validate password strength
     if (newPassword.length < 8) {
-      return res.status(400).json({ 
-        error: 'Password must be at least 8 characters long' 
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters long'
       });
     }
-    
+
     // Find user and include password field and password history
     const user = await User.findById(userId).select('+password +passwordHistory');
-    
+
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
+
     // Verify current password
     const isValidPassword = await user.correctPassword(currentPassword);
     if (!isValidPassword) {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
-    
+
     // Check if new password is same as current
     const isSameAsCurrent = await bcrypt.compare(newPassword, user.password);
     if (isSameAsCurrent) {
-      return res.status(400).json({ 
-        error: 'New password must be different from current password' 
+      return res.status(400).json({
+        error: 'New password must be different from current password'
       });
     }
-    
+
     // Validate against password history
     const historyValidation = await passwordHistoryService.validatePassword(
       newPassword,
       user.passwordHistory || []
     );
-    
+
     if (!historyValidation.valid) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: historyValidation.error,
         hint: passwordHistoryService.getRequirementsMessage()
       });
     }
-    
+
     // Hash new password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
-    
+
     // Add current password to history before changing
     user.passwordHistory = passwordHistoryService.addToHistory(
       user.password, // Current password hash
       user.passwordHistory || []
     );
-    
+
     // Update to new password
     user.password = hashedPassword;
     user.passwordChangedAt = Date.now();
     await user.save();
-    
+
     logger.info(`Password changed successfully for user ${user._id}`);
-    
+
     res.json({
       success: true,
       message: 'Password changed successfully',

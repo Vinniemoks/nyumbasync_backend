@@ -76,7 +76,7 @@ const UserSchema = new mongoose.Schema({
   subcounty: {
     type: String,
     enum: [
-      'Westlands', 'Dagoretti', 'Embakasi', 
+      'Westlands', 'Dagoretti', 'Embakasi',
       'Kasarani', 'Langata', 'Starehe', 'Kamukunji'
     ]
   },
@@ -107,61 +107,11 @@ const UserSchema = new mongoose.Schema({
       type: String,
       select: false
     },
-    changedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-
-  // Multi-Factor Authentication (MFA)
-  mfaEnabled: {
-    type: Boolean,
-    default: false
-  },
-  mfaSecret: {
-    type: String,
-    select: false
-  },
-  mfaBackupCodes: [{
-    type: String,
-    select: false
-  }],
-  mfaVerified: {
-    type: Boolean,
-    default: false
-  },
-
-  // Verification status
-  isVerified: {
-    type: Boolean,
-    default: false
-  },
-  verificationCode: String,
-  codeExpires: Date,
-
-  // Account status
-  status: {
-    type: String,
-    enum: ['active', 'inactive', 'suspended'],
-    default: 'active'
-  },
-  lastLogin: Date,
-  loginAttempts: {
-    type: Number,
-    default: 0
-  },
-  lockedUntil: Date
-}, { 
-  timestamps: {
-    createdAt: 'joinedAt',
-    updatedAt: 'lastUpdated'
-  },
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
+    toObject: { virtuals: true }
+  });
 
 // Virtuals
-UserSchema.virtual('fullName').get(function() {
+UserSchema.virtual('fullName').get(function () {
   return `${this.firstName} ${this.lastName}`;
 });
 
@@ -173,9 +123,9 @@ UserSchema.index({ status: 1 });
 UserSchema.index({ subcounty: 1 });
 
 // Middleware
-UserSchema.pre('save', async function(next) {
+UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-  
+
   try {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
@@ -188,11 +138,11 @@ UserSchema.pre('save', async function(next) {
 
 // Instance methods
 UserSchema.methods = {
-  correctPassword: async function(candidatePassword) {
+  correctPassword: async function (candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
   },
 
-  changedPasswordAfter: function(JWTTimestamp) {
+  changedPasswordAfter: function (JWTTimestamp) {
     if (this.passwordChangedAt) {
       const changedTimestamp = parseInt(
         this.passwordChangedAt.getTime() / 1000,
@@ -203,39 +153,39 @@ UserSchema.methods = {
     return false;
   },
 
-  createPasswordResetToken: function() {
+  createPasswordResetToken: function () {
     const resetToken = crypto.randomBytes(32).toString('hex');
-    
+
     this.passwordResetToken = crypto
       .createHash('sha256')
       .update(resetToken)
       .digest('hex');
-    
+
     this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-    
+
     return resetToken;
   },
 
-  createVerificationCode: function() {
+  createVerificationCode: function () {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     this.verificationCode = crypto
       .createHash('sha256')
       .update(code)
       .digest('hex');
-    
+
     this.codeExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-    
+
     return code;
   }
 };
 
 // Static methods
 UserSchema.statics = {
-  findByIdentifier: function(identifier) {
+  findByIdentifier: function (identifier) {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
     return this.findOne(
-      isEmail 
+      isEmail
         ? { email: identifier.toLowerCase() }
         : { phone: identifier }
     );

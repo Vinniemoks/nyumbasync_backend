@@ -1,5 +1,6 @@
 const Maintenance = require('../models/maintenance.model');
 const Vendor = require('../models/vendor.model');
+const emailService = require('../services/emailService');
 
 // Submit repair request
 exports.submitRequest = async (req, res) => {
@@ -26,15 +27,15 @@ exports.submitRequest = async (req, res) => {
       request.assignedVendor = vendor._id;
       request.status = 'assigned';
       await request.save();
-      
+
       // TODO: Send WhatsApp alert to vendor
     }
 
     res.status(201).json(request);
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Request submission failed',
-      emergencyContact: '0709119119 (Nairobi County)' 
+      emergencyContact: '0709119119 (Nairobi County)'
     });
   }
 };
@@ -47,10 +48,10 @@ exports.updateStatus = async (req, res) => {
     const request = await Maintenance.findById(req.params.id);
 
     // Validate vendor ownership
-    if (req.user.role === 'vendor' && 
-        !request.assignedVendor.equals(req.user._id)) {
-      return res.status(403).json({ 
-        error: 'Unauthorized - Assigned vendor only' 
+    if (req.user.role === 'vendor' &&
+      !request.assignedVendor.equals(req.user._id)) {
+      return res.status(403).json({
+        error: 'Unauthorized - Assigned vendor only'
       });
     }
 
@@ -62,9 +63,9 @@ exports.updateStatus = async (req, res) => {
 
     res.json(request);
   } catch (err) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Status update failed',
-      action: 'Call tenant directly if urgent' 
+      action: 'Call tenant directly if urgent'
     });
   }
 };
@@ -86,12 +87,12 @@ exports.getPropertyRequests = async (req, res) => {
 exports.getTenantMaintenanceRequests = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const requests = await Maintenance.find({ reportedBy: userId })
       .populate('property')
       .populate('assignedVendor')
       .sort({ createdAt: -1 });
-    
+
     res.json(requests.map(req => ({
       id: req._id,
       ticketNumber: req.ticketNumber || `TKT-${req._id}`,
@@ -116,18 +117,18 @@ exports.getTenantMaintenanceRequest = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    
+
     const request = await Maintenance.findOne({
       _id: id,
       reportedBy: userId
     })
       .populate('property')
       .populate('assignedVendor');
-    
+
     if (!request) {
       return res.status(404).json({ error: 'Maintenance request not found' });
     }
-    
+
     res.json({
       id: request._id,
       ticketNumber: request.ticketNumber || `TKT-${request._id}`,
@@ -156,17 +157,29 @@ exports.createMaintenanceRequest = async (req, res) => {
   try {
     const { title, description, category, priority, propertyId } = req.body;
     const userId = req.user.id;
-    
+
     const request = await Maintenance.create({
       property: propertyId,
       reportedBy: userId,
       issueType: category || title,
+      title: title,
       description,
       priority: priority || 'medium',
       status: 'submitted',
       ticketNumber: `TKT-${Date.now()}`
     });
-    
+
+    // Populate user and property for email
+    await request.populate('property reportedBy');
+
+    // Send maintenance notification email
+    try {
+      await emailService.sendMaintenanceUpdate(request, request.reportedBy, 'created');
+    } catch (emailError) {
+      console.error('Failed to send maintenance notification email:', emailError);
+      // Don't fail the request if email fails
+    }
+
     res.status(201).json({
       id: request._id,
       ticketNumber: request.ticketNumber,
@@ -190,10 +203,10 @@ exports.updateMaintenanceRequest = async (req, res) => {
     const { id } = req.params;
     const { status, note } = req.body;
     const userId = req.user.id;
-    
+
     const request = await Maintenance.findOneAndUpdate(
       { _id: id, reportedBy: userId },
-      { 
+      {
         status,
         $push: {
           statusHistory: {
@@ -204,12 +217,19 @@ exports.updateMaintenanceRequest = async (req, res) => {
         }
       },
       { new: true }
-    );
-    
+    ).populate('property reportedBy');
+
     if (!request) {
       return res.status(404).json({ error: 'Maintenance request not found' });
     }
-    
+
+    // Send update email notification
+    try {
+      await emailService.sendMaintenanceUpdate(request, request.reportedBy, status === 'completed' ? 'completed' : 'updated');
+    } catch (emailError) {
+      console.error('Failed to send maintenance update email:', emailError);
+    }
+
     res.json(request);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update maintenance request' });
@@ -222,7 +242,7 @@ exports.rateMaintenanceRequest = async (req, res) => {
     const { id } = req.params;
     const { rating, feedback } = req.body;
     const userId = req.user.id;
-    
+
     const request = await Maintenance.findOneAndUpdate(
       { _id: id, reportedBy: userId },
       {
@@ -232,11 +252,11 @@ exports.rateMaintenanceRequest = async (req, res) => {
       },
       { new: true }
     );
-    
+
     if (!request) {
       return res.status(404).json({ error: 'Maintenance request not found' });
     }
-    
+
     res.json({
       success: true,
       message: 'Thank you for your feedback!'
