@@ -107,8 +107,72 @@ const UserSchema = new mongoose.Schema({
       type: String,
       select: false
     },
-    toObject: { virtuals: true }
-  });
+    changedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
+  // Multi-Factor Authentication (MFA)
+  mfaEnabled: {
+    type: Boolean,
+    default: false
+  },
+  mfaSecret: {
+    type: String,
+    select: false
+  },
+  mfaBackupCodes: [{
+    type: String,
+    select: false
+  }],
+  mfaVerified: {
+    type: Boolean,
+    default: false
+  },
+
+  // Biometric Authentication (Fingerprint, Face ID, Windows Hello, USB scanners, etc.)
+  biometricEnabled: {
+    type: Boolean,
+    default: false
+  },
+  biometricCredentials: [{
+    credentialId: String,
+    credentialPublicKey: String,
+    counter: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now },
+    lastUsed: Date
+  }],
+  biometricChallenge: String,
+  challengeExpiry: Date,
+
+  // Verification status
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  codeExpires: Date,
+
+  // Account status
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'suspended'],
+    default: 'active'
+  },
+  lastLogin: Date,
+  loginAttempts: {
+    type: Number,
+    default: 0
+  },
+  lockedUntil: Date
+}, {
+  timestamps: {
+    createdAt: 'joinedAt',
+    updatedAt: 'lastUpdated'
+  },
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
 
 // Virtuals
 UserSchema.virtual('fullName').get(function () {

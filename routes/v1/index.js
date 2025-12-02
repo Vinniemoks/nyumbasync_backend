@@ -22,6 +22,9 @@ const analyticsRoutes = require('./analytics.routes');
 const configRoutes = require('./config.routes');
 const notificationRoutes = require('./notification.routes');
 const aiRoutes = require('./ai.routes');
+const biometricRoutes = require('./biometric.routes');
+const videoCallRoutes = require('./videoCall.routes');
+const reportsRoutes = require('./reports.routes');
 
 // Core route mounting
 router.use('/admin', adminRoutes);
@@ -44,6 +47,9 @@ router.use('/analytics', analyticsRoutes);
 router.use('/config', configRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/ai', aiRoutes);
+router.use('/biometric', biometricRoutes);
+router.use('/video-call', videoCallRoutes);
+router.use('/reports', reportsRoutes);
 
 // Error handling middleware
 router.use((err, req, res, next) => {
