@@ -113,12 +113,32 @@ exports.verifyCode = async (req, res) => {
           'Hakikisha umeingiza namba kwa usahihi',
           'Omba namba mpya kupitia M-Pesa'
         ]
+      });
+    }
+
+    // Mark user as verified
+    user.mpesaVerified = true;
+    user.verificationCode = undefined;
+    user.codeExpires = undefined;
+    await user.save();
+
+    // Generate JWT token
+    const token = generateToken({
+      id: user._id,
+      role: user.role,
+      kraPin: user.kraPin || null,
+      phone: user.phone
+    });
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: {
         id: user._id,
+        phone: user.phone,
         role: user.role,
-        kraPin: user.kraPin || null,
-        phone: user.phone
-      },
         mpesaVerified: true
+      }
     });
 
   } catch (err) {

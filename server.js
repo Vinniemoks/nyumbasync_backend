@@ -112,8 +112,21 @@ const createRouterFromConfig = (routeConfigs) => {
     const handlers = Array.isArray(handler) ? handler : [handler];
 
     // Register the route
-    try {
-      router[httpMethod](path, ...handlers);
+    router[httpMethod](path, ...handlers);
+  });
+
+  return router;
+};
+
+// Route Loading Function
+const loadRoute = (routeName) => {
+  const routePath = path.join(__dirname, 'routes', 'v1', `${routeName}.routes.js`);
+
+  try {
+    logger.debug(`🔍 Attempting to load: ${routePath}`);
+
+    // Check if file exists
+    if (!fs.existsSync(routePath)) {
       logger.error(`❌ Route file does not exist: ${routePath}`);
       return null;
     }
@@ -224,13 +237,37 @@ const createRouterFromConfig = (routeConfigs) => {
 };
 
 // Route Loading Summary Function
-total: routesToLoad.length,
-  loaded: 0,
+const loadAllRoutes = () => {
+  const routesToLoad = [
+    'auth',
+    'property',
+    'mpesa',
+    'upload',
+    'user',
+    'admin',
+    'maintenance',
+    'payment',
+    'transaction',
+    'tenant',
+    'lease',
+    'document',
+    'notification',
+    'message',
+    'vendor',
+    'analytics',
+    'landlord'
+  ];
+
+  const loadedRoutes = {};
+  const failedRoutes = [];
+  const routeStats = {
+    total: routesToLoad.length,
+    loaded: 0,
     failed: 0
   };
 
-// Load each route and track results
-routesToLoad.forEach(routeName => {
+  // Load each route and track results
+  routesToLoad.forEach(routeName => {
   logger.info(`\n📂 Loading ${routeName} routes...`);
   const route = loadRoute(routeName);
 
@@ -260,15 +297,15 @@ if (failedRoutes.length > 0) {
   logger.error('   💡 Check the individual error messages above for details');
 }
 
-if (routeStats.failed === 0) {
-  logger.info('🎉 All routes loaded successfully!');
-} else if (routeStats.loaded === 0) {
-  logger.error('🚨 No routes were loaded! Check your routes directory structure.');
-} else {
-  logger.warn(`⚠️ Partial success: ${routeStats.loaded}/${routeStats.total} routes loaded`);
-}
+  if (routeStats.failed === 0) {
+    logger.info('🎉 All routes loaded successfully!');
+  } else if (routeStats.loaded === 0) {
+    logger.error('🚨 No routes were loaded! Check your routes directory structure.');
+  } else {
+    logger.warn(`⚠️ Partial success: ${routeStats.loaded}/${routeStats.total} routes loaded`);
+  }
 
-return loadedRoutes;
+  return loadedRoutes;
 };
 
 // Directory Structure Checker
@@ -925,20 +962,74 @@ const registerRoutes = () => {
   // Notification routes
   if (notificationRoutes) {
     try {
-      app.use('/public', express.static(publicDir, {
-        maxAge: '1d',
-        etag: true
-      }));
-      logger.info('✅ Static files served from /public');
-    } else {
-      logger.warn('⚠️ Public directory not found, static files not served');
+      app.use('/api/v1/notifications', authenticateToken, notificationRoutes);
+      logger.info('✅ Notification routes registered with authentication at /api/v1/notifications');
+    } catch (err) {
+      logger.error('❌ Failed to register notification routes:', err.message);
     }
+  } else {
+    logger.warn('⚠️ Notification routes not registered - route loading failed');
+  }
 
-    // Serve uploaded files
-    app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-      maxAge: '7d',
-      etag: true
-    })); */
+  // Message routes
+  if (messageRoutes) {
+    try {
+      app.use('/api/v1/messages', authenticateToken, messageRoutes);
+      logger.info('✅ Message routes registered with authentication at /api/v1/messages');
+    } catch (err) {
+      logger.error('❌ Failed to register message routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Message routes not registered - route loading failed');
+  }
+
+  // Vendor routes
+  if (vendorRoutes) {
+    try {
+      app.use('/api/v1/vendors', authenticateToken, vendorRoutes);
+      logger.info('✅ Vendor routes registered with authentication at /api/v1/vendors');
+    } catch (err) {
+      logger.error('❌ Failed to register vendor routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Vendor routes not registered - route loading failed');
+  }
+
+  // Analytics routes
+  if (analyticsRoutes) {
+    try {
+      app.use('/api/v1/analytics', authenticateToken, analyticsRoutes);
+      logger.info('✅ Analytics routes registered with authentication at /api/v1/analytics');
+    } catch (err) {
+      logger.error('❌ Failed to register analytics routes:', err.message);
+    }
+  } else {
+    logger.warn('⚠️ Analytics routes not registered - route loading failed');
+  }
+
+  logger.info('\n✅ Route registration complete\n');
+};
+
+// Register all routes
+registerRoutes();
+
+/* Static Files
+const publicDir = path.join(__dirname, 'public');
+if (fs.existsSync(publicDir)) {
+  app.use('/public', express.static(publicDir, {
+    maxAge: '1d',
+    etag: true
+  }));
+  logger.info('✅ Static files served from /public');
+} else {
+  logger.warn('⚠️ Public directory not found, static files not served');
+}
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: '7d',
+  etag: true
+})); */
 
     // API Documentation (in development)
     if (process.env.NODE_ENV === 'development') {
@@ -1111,78 +1202,63 @@ const registerRoutes = () => {
       logger.info(`📊 Memory usage: ${Math.round(memUsage.rss / 1024 / 1024)}MB RSS, ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB Heap`);
     }, 300000);
 
-    // Validate middleware stack before starting server
-    const validateMiddlewareStack = () => {
-      const requiredMiddleware = [
-        'helmet',
-        'compression',
-        'cors',
-        'express.json',
-        'express.urlencoded',
-        'mongoSanitize',
-        'xss'
-      ];
+// Graceful shutdown handler
+const gracefulShutdown = (signal) => {
+  logger.info(`\n${signal} received. Starting graceful shutdown...`);
 
-      const registeredMiddleware = app._router.stack
-        .filter(layer => layer.name !== '<anonymous>')
-        .map(layer => layer.name);
+  // Stop accepting new connections
+  if (typeof server !== 'undefined' && server) {
+    server.close(async () => {
+      logger.info('HTTP server closed');
 
-      const missingMiddleware = requiredMiddleware.filter(
-        middleware => !registeredMiddleware.includes(middleware)
-      );
-
-      if (missingMiddleware.length > 0) {
-        throw new Error(`Missing required middleware: ${missingMiddleware.join(', ')}`);
+      // Close database connection
+      try {
+        await mongoose.connection.close();
+        logger.info('Database connection closed');
+      } catch (err) {
+        logger.error('Error closing database connection:', err);
       }
 
-      server.close(async () => {
-        logger.info('HTTP server closed');
-
-        // Close database connection
-        try {
-          await mongoose.connection.close();
-          logger.info('Database connection closed');
-        } catch (err) {
-          logger.error('Error closing database connection:', err);
+      // Cleanup cluster resources
+      if (cluster.isWorker && workerHealth) {
+        // Send final health status to primary
+        if (process.send) {
+          process.send({
+            type: 'health_status',
+            data: { shutdownInitiated: true }
+          });
         }
+      }
 
-        // Cleanup cluster resources
-        if (cluster.isWorker) {
-          if (workerHealth) {
-            // Send final health status to primary
-            process.send({
-              type: 'health_status',
-              data: { ...await workerHealth.getHealthStatus(), shutdownInitiated: true }
-            });
-          }
-        }
-
-        // Final cleanup
-        logger.info('Cleanup completed');
-        process.exit(0);
-      });
-
-      // Force shutdown after timeout
-      setTimeout(() => {
-        logger.error('Forced shutdown due to timeout');
-        process.exit(1);
-      }, process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30000);
-    };
-
-    // Setup signal handlers
-    ['SIGTERM', 'SIGINT'].forEach(signal => {
-      process.on(signal, () => gracefulShutdown(signal));
+      // Final cleanup
+      logger.info('Cleanup completed');
+      process.exit(0);
     });
 
-    process.on('uncaughtException', (err) => {
-      logger.error('❌ Uncaught Exception:', err);
-      shutdown('uncaughtException');
-    });
+    // Force shutdown after timeout
+    setTimeout(() => {
+      logger.error('Forced shutdown due to timeout');
+      process.exit(1);
+    }, process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30000);
+  } else {
+    process.exit(0);
+  }
+};
 
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-      // Don't exit for unhandled rejections, just log them
-    });
+// Setup signal handlers
+['SIGTERM', 'SIGINT'].forEach(signal => {
+  process.on(signal, () => gracefulShutdown(signal));
+});
 
-    // Export for testing
-    module.exports = { app, server, authenticateToken, authorize, createRouterFromConfig };
+process.on('uncaughtException', (err) => {
+  logger.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit for unhandled rejections, just log them
+});
+
+// Export for testing
+module.exports = { app, authenticateToken, authorize, createRouterFromConfig };
