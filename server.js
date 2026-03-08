@@ -688,22 +688,39 @@ app.use(xss());
 app.use('/api/', limiter);
 
 // CORS Configuration
+const allowedOrigins = [
+  // Production web frontends
+  'https://mokuavinnie.tech',
+  'https://nyumbasync.co.ke',
+  'https://app.nyumbasync.co.ke',
+  'https://nyumbasync-backend.onrender.com',
+  // M-Pesa callbacks
+  'https://sandbox.safaricom.co.ke',
+  'https://api.safaricom.co.ke',
+  // Dynamic origins from environment variable (comma-separated)
+  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()).filter(Boolean) : []),
+  // Development origins
+  ...(process.env.NODE_ENV !== 'production' ? [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'http://localhost:10000',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:10000'
+  ] : [])
+];
+
 app.use(cors({
-  origin: [
-    '',
-    'https://mokuavinnie.tech',
-    'https://nyumbasync.co.ke',
-    'https://app.nyumbasync.co.ke',
-    'https://sandbox.safaricom.co.ke',
-    ...(process.env.NODE_ENV === 'development' ? [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:10000',
-      'http://127.0.0.1:10000'
-    ] : [])
-  ],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // In development allow all origins
+    if (process.env.NODE_ENV === 'development') return callback(null, true);
+    callback(new Error(`CORS: Origin ${origin} not allowed`));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
   credentials: true
 }));
 
