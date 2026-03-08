@@ -16,7 +16,7 @@ async function getAuthToken() {
 }
 
 // STK Push (Customer to Paybill)
-exports.initiateSTK Push = async (req, res) => {
+exports.initiateSTKPush = async (req, res) => {
   const { phone, amount, propertyId } = req.body;
 
   // Validate input

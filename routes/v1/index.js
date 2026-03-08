@@ -4,6 +4,7 @@ const router = express.Router();
 // Import core route modules
 const adminRoutes = require('./admin.routes');
 const authRoutes = require('./auth.routes');
+const landlordRoutes = require('./landlord.routes');
 const maintenanceRoutes = require('./maintenance.routes');
 const mpesaRoutes = require('./mpesa.routes');
 const paymentRoutes = require('./payment.routes');
@@ -29,6 +30,7 @@ const reportsRoutes = require('./reports.routes');
 // Core route mounting
 router.use('/admin', adminRoutes);
 router.use('/auth', authRoutes);
+router.use('/landlord', landlordRoutes);
 router.use('/maintenance', maintenanceRoutes);
 router.use('/mpesa', mpesaRoutes);
 router.use('/payments', paymentRoutes);

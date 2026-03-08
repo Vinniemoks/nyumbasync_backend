@@ -3,6 +3,7 @@ const handlebars = require('handlebars');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
+const sgEmailService = require('./emailService');
 
 // Create transporter
 const createTransporter = () => {
@@ -108,26 +109,33 @@ const createDefaultTemplate = (data) => {
   `;
 };
 
-// Send email function
+// Send email function — prefers SendGrid when configured, falls back to Nodemailer
 const sendEmail = async (to, subject, template, data) => {
   try {
+    const html = loadTemplate(template, data);
+
+    // Prefer SendGrid when API key is available
+    if (process.env.SENDGRID_API_KEY) {
+      return sgEmailService.sendEmail({ to, subject, html });
+    }
+
+    // Fall back to Nodemailer/SMTP
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
       logger.warn('Email credentials not configured, skipping email send');
       return { success: false, message: 'Email not configured' };
     }
-    
+
     const transporter = createTransporter();
-    const html = loadTemplate(template, data);
-    
+
     const mailOptions = {
       from: process.env.EMAIL_FROM || 'NyumbaSync <noreply@nyumbasync.co.ke>',
       to,
       subject,
       html
     };
-    
+
     const info = await transporter.sendMail(mailOptions);
-    
+
     logger.info(`Email sent successfully to ${to}: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {

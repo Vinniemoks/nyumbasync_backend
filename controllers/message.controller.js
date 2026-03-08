@@ -34,12 +34,15 @@ exports.getUserConversations = async (req, res) => {
 exports.getConversationDetails = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    // TODO: Implement conversation details retrieval
-    res.json({
-      id: conversationId,
-      participants: [],
-      createdAt: new Date().toISOString()
-    });
+    const conversation = await Conversation.findById(conversationId)
+      .populate('participants', 'firstName lastName email phone role')
+      .populate('lastMessageBy', 'firstName lastName');
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    res.json(conversation);
   } catch (error) {
     logger.error('Error fetching conversation details:', error);
     res.status(500).json({ error: 'Failed to fetch conversation details' });
@@ -129,8 +132,18 @@ exports.sendMessage = async (req, res) => {
 exports.markMessagesAsRead = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const { userId } = req.body;
-    // TODO: Implement mark as read
+    const userId = req.body.userId || req.user.id;
+
+    await Message.updateMany(
+      {
+        conversation: conversationId,
+        'readBy.user': { $ne: userId }
+      },
+      {
+        $addToSet: { readBy: { user: userId, readAt: new Date() } }
+      }
+    );
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error marking messages as read:', error);
@@ -141,9 +154,20 @@ exports.markMessagesAsRead = async (req, res) => {
 // Get unread count
 exports.getUnreadCount = async (req, res) => {
   try {
-    const { userId } = req.params;
-    // TODO: Implement unread count
-    res.json({ count: 0 });
+    const userId = req.params.userId || req.user.id;
+
+    // Get all conversations this user is part of
+    const conversations = await Conversation.find({ participants: userId });
+    const conversationIds = conversations.map(c => c._id);
+
+    const count = await Message.countDocuments({
+      conversation: { $in: conversationIds },
+      sender: { $ne: userId },
+      'readBy.user': { $ne: userId },
+      isDeleted: false
+    });
+
+    res.json({ count });
   } catch (error) {
     logger.error('Error fetching unread count:', error);
     res.status(500).json({ error: 'Failed to fetch unread count' });
@@ -153,16 +177,33 @@ exports.getUnreadCount = async (req, res) => {
 // Create conversation
 exports.createConversation = async (req, res) => {
   try {
-    const { participantIds } = req.body;
-    // TODO: Implement conversation creation
-    res.json({
-      success: true,
-      conversation: {
-        id: 1,
-        participants: participantIds,
-        createdAt: new Date().toISOString()
+    const { participantIds, type = 'direct', title } = req.body;
+    const userId = req.user.id;
+
+    if (!participantIds || participantIds.length === 0) {
+      return res.status(400).json({ error: 'participantIds required' });
+    }
+
+    // Include current user
+    const allParticipants = [...new Set([userId, ...participantIds])];
+
+    // For direct messages, check if conversation already exists
+    if (type === 'direct' && allParticipants.length === 2) {
+      let existing = await Conversation.findByParticipants(allParticipants);
+      if (existing) {
+        return res.json({ success: true, conversation: existing });
       }
+    }
+
+    const conversation = await Conversation.create({
+      participants: allParticipants,
+      type,
+      title
     });
+
+    await conversation.populate('participants', 'firstName lastName email role');
+
+    res.status(201).json({ success: true, conversation });
   } catch (error) {
     logger.error('Error creating conversation:', error);
     res.status(500).json({ error: 'Failed to create conversation' });
@@ -172,10 +213,16 @@ exports.createConversation = async (req, res) => {
 // Upload attachment
 exports.uploadAttachment = async (req, res) => {
   try {
-    // TODO: Implement attachment upload
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
     res.json({
       success: true,
-      attachmentUrl: '/uploads/attachment1.jpg'
+      attachmentUrl: file.path,
+      fileName: file.originalname,
+      fileType: file.mimetype,
+      fileSize: file.size
     });
   } catch (error) {
     logger.error('Error uploading attachment:', error);
@@ -187,7 +234,18 @@ exports.uploadAttachment = async (req, res) => {
 exports.deleteMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
-    // TODO: Implement message deletion
+    const userId = req.user.id;
+
+    const message = await Message.findOneAndUpdate(
+      { _id: messageId, sender: userId },
+      { $set: { isDeleted: true, message: '[Message deleted]' } },
+      { new: true }
+    );
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found or unauthorized' });
+    }
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting message:', error);
@@ -200,8 +258,21 @@ exports.searchMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { q } = req.query;
-    // TODO: Implement message search
-    res.json([]);
+
+    if (!q || q.trim().length < 2) {
+      return res.json([]);
+    }
+
+    const messages = await Message.find({
+      conversation: conversationId,
+      message: { $regex: q, $options: 'i' },
+      isDeleted: false
+    })
+      .populate('sender', 'firstName lastName email')
+      .sort('-createdAt')
+      .limit(50);
+
+    res.json(messages);
   } catch (error) {
     logger.error('Error searching messages:', error);
     res.status(500).json({ error: 'Failed to search messages' });
@@ -212,8 +283,27 @@ exports.searchMessages = async (req, res) => {
 exports.getTenantMessages = async (req, res) => {
   try {
     const userId = req.user.id;
-    // TODO: Implement tenant message retrieval
-    res.json([]);
+    const { page = 1, limit = 20 } = req.query;
+
+    const conversations = await Conversation.find({ participants: userId })
+      .populate('participants', 'firstName lastName email role')
+      .sort('-lastMessageAt')
+      .limit(parseInt(limit))
+      .skip((page - 1) * limit);
+
+    const conversationsWithUnread = await Promise.all(
+      conversations.map(async (conv) => {
+        const unreadCount = await Message.countDocuments({
+          conversation: conv._id,
+          sender: { $ne: userId },
+          'readBy.user': { $ne: userId },
+          isDeleted: false
+        });
+        return { ...conv.toObject(), unreadCount };
+      })
+    );
+
+    res.json(conversationsWithUnread);
   } catch (error) {
     logger.error('Error fetching tenant messages:', error);
     res.status(500).json({ error: 'Failed to fetch tenant messages' });
@@ -223,19 +313,37 @@ exports.getTenantMessages = async (req, res) => {
 // Send tenant message
 exports.sendTenantMessage = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { to, toName, subject, message, priority } = req.body;
-    // TODO: Implement tenant message sending
-    res.json({
+    const senderId = req.user.id;
+    const { to, subject, message, priority } = req.body;
+
+    if (!to || !message) {
+      return res.status(400).json({ error: 'Recipient and message are required' });
+    }
+
+    // Find or create conversation
+    let conversation = await Conversation.findByParticipants([senderId, to]);
+    if (!conversation) {
+      conversation = await Conversation.create({
+        participants: [senderId, to],
+        type: 'direct',
+        title: subject
+      });
+    }
+
+    const newMessage = await Message.create({
+      conversation: conversation._id,
+      sender: senderId,
+      message,
+      messageType: 'text',
+      metadata: { subject, priority }
+    });
+
+    await conversation.updateLastMessage(message, senderId);
+    await newMessage.populate('sender', 'firstName lastName email');
+
+    res.status(201).json({
       success: true,
-      message: {
-        id: 1,
-        from: userId,
-        to,
-        subject,
-        message,
-        timestamp: new Date().toISOString()
-      }
+      message: newMessage
     });
   } catch (error) {
     logger.error('Error sending tenant message:', error);
@@ -247,7 +355,14 @@ exports.sendTenantMessage = async (req, res) => {
 exports.markMessageAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    // TODO: Implement mark message as read
+    const userId = req.user.id;
+
+    const message = await Message.findById(id);
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    await message.markAsRead(userId);
     res.json({ success: true });
   } catch (error) {
     logger.error('Error marking message as read:', error);

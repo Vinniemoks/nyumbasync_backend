@@ -543,15 +543,45 @@ exports.refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
 
-    // TODO: Verify refresh token and generate new access token
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'Refresh token required' });
+    }
+
+    // Verify the refresh token
+    const jwt = require('jsonwebtoken');
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ error: 'Invalid token type' });
+    }
+
+    // Check user still exists
+    const user = await User.findById(decoded.id).select('_id email phone role status');
+    if (!user || user.status === 'suspended') {
+      return res.status(401).json({ error: 'User account not found or suspended' });
+    }
+
+    // Generate new access token
     const token = generateToken({
-      id: req.user.id,
-      email: req.user.email,
-      role: req.user.role
+      id: user._id,
+      email: user.email,
+      phone: user.phone,
+      role: user.role
     });
+
+    const newRefreshToken = generateToken(
+      { id: user._id, type: 'refresh' },
+      '7d'
+    );
 
     res.json({
       token,
+      refreshToken: newRefreshToken,
       expiresIn: 3600
     });
   } catch (error) {
@@ -609,7 +639,31 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    // TODO: Generate reset token and send email
+    // Generate a secure reset token and store its hash on the user
+    const crypto = require('crypto');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save({ validateBeforeSave: false });
+
+    // Send reset email
+    try {
+      const resetUrl = `${process.env.FRONTEND_URL || 'https://app.nyumbasync.com'}/reset-password/${resetToken}`;
+      await emailService.sendEmail({
+        to: user.email,
+        subject: 'NyumbaSync - Password Reset',
+        text: `You requested a password reset. Use this link (valid for 10 minutes): ${resetUrl}\n\nIf you did not request this, ignore this email.`,
+        html: `<p>You requested a password reset.</p><p><a href="${resetUrl}">Reset your password</a> (valid for 10 minutes)</p><p>If you did not request this, ignore this email.</p>`
+      });
+    } catch (emailError) {
+      logger.error('Failed to send reset email:', emailError);
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+      return res.status(500).json({ error: 'Failed to send reset email. Try again later.' });
+    }
 
     res.json({
       success: true,

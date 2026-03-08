@@ -63,8 +63,11 @@ exports.getDocumentById = async (req, res) => {
 exports.getDocumentsByTenant = async (req, res) => {
   try {
     const { tenantId } = req.params;
-    // TODO: Implement tenant document retrieval
-    res.json([]);
+    const documents = await Document.find({ tenant: tenantId, isArchived: false })
+      .populate('uploadedBy', 'firstName lastName email')
+      .populate('property', 'address unitNumber')
+      .sort('-createdAt');
+    res.json(documents);
   } catch (error) {
     logger.error('Error fetching tenant documents:', error);
     res.status(500).json({ error: 'Failed to fetch tenant documents' });
@@ -75,8 +78,11 @@ exports.getDocumentsByTenant = async (req, res) => {
 exports.getDocumentsByLandlord = async (req, res) => {
   try {
     const { landlordId } = req.params;
-    // TODO: Implement landlord document retrieval
-    res.json([]);
+    const documents = await Document.find({ landlord: landlordId, isArchived: false })
+      .populate('uploadedBy', 'firstName lastName email')
+      .populate('property', 'address unitNumber')
+      .sort('-createdAt');
+    res.json(documents);
   } catch (error) {
     logger.error('Error fetching landlord documents:', error);
     res.status(500).json({ error: 'Failed to fetch landlord documents' });
@@ -87,8 +93,11 @@ exports.getDocumentsByLandlord = async (req, res) => {
 exports.getDocumentsByProperty = async (req, res) => {
   try {
     const { propertyId } = req.params;
-    // TODO: Implement property document retrieval
-    res.json([]);
+    const documents = await Document.find({ property: propertyId, isArchived: false })
+      .populate('uploadedBy', 'firstName lastName email')
+      .populate('tenant', 'firstName lastName')
+      .sort('-createdAt');
+    res.json(documents);
   } catch (error) {
     logger.error('Error fetching property documents:', error);
     res.status(500).json({ error: 'Failed to fetch property documents' });
@@ -99,8 +108,10 @@ exports.getDocumentsByProperty = async (req, res) => {
 exports.getDocumentsByLease = async (req, res) => {
   try {
     const { leaseId } = req.params;
-    // TODO: Implement lease document retrieval
-    res.json([]);
+    const documents = await Document.find({ lease: leaseId, isArchived: false })
+      .populate('uploadedBy', 'firstName lastName email')
+      .sort('-createdAt');
+    res.json(documents);
   } catch (error) {
     logger.error('Error fetching lease documents:', error);
     res.status(500).json({ error: 'Failed to fetch lease documents' });
@@ -145,8 +156,28 @@ exports.uploadDocument = async (req, res) => {
 exports.downloadDocument = async (req, res) => {
   try {
     const { documentId } = req.params;
-    // TODO: Implement document download
-    res.json({ success: true, url: '/documents/download/' + documentId });
+    const userId = req.user.id;
+
+    const document = await Document.findOne({
+      _id: documentId,
+      $or: [
+        { uploadedBy: userId },
+        { tenant: userId },
+        { landlord: userId },
+        { 'sharedWith.user': userId }
+      ]
+    });
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found or access denied' });
+    }
+
+    const fs = require('fs');
+    if (!fs.existsSync(document.fileUrl)) {
+      return res.status(404).json({ error: 'File not found on server' });
+    }
+
+    res.download(document.fileUrl, document.name);
   } catch (error) {
     logger.error('Error downloading document:', error);
     res.status(500).json({ error: 'Failed to download document' });
@@ -157,8 +188,20 @@ exports.downloadDocument = async (req, res) => {
 exports.updateDocument = async (req, res) => {
   try {
     const { documentId } = req.params;
-    // TODO: Implement document update
-    res.json({ success: true, document: { id: documentId, ...req.body } });
+    const userId = req.user.id;
+    const { name, category, description, tags } = req.body;
+
+    const document = await Document.findOneAndUpdate(
+      { _id: documentId, uploadedBy: userId },
+      { $set: { name, category, description, tags } },
+      { new: true, runValidators: true }
+    );
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found or unauthorized' });
+    }
+
+    res.json({ success: true, document });
   } catch (error) {
     logger.error('Error updating document:', error);
     res.status(500).json({ error: 'Failed to update document' });
@@ -169,7 +212,22 @@ exports.updateDocument = async (req, res) => {
 exports.deleteDocument = async (req, res) => {
   try {
     const { documentId } = req.params;
-    // TODO: Implement document deletion
+    const userId = req.user.id;
+
+    const document = await Document.findOneAndDelete({
+      _id: documentId,
+      uploadedBy: userId
+    });
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found or unauthorized' });
+    }
+
+    const fs = require('fs');
+    if (document.fileUrl && fs.existsSync(document.fileUrl)) {
+      fs.unlinkSync(document.fileUrl);
+    }
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting document:', error);
@@ -181,8 +239,32 @@ exports.deleteDocument = async (req, res) => {
 exports.shareDocument = async (req, res) => {
   try {
     const { documentId } = req.params;
-    // TODO: Implement document sharing
-    res.json({ success: true });
+    const userId = req.user.id;
+    const { userIds, permission = 'view' } = req.body;
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'userIds array is required' });
+    }
+
+    const document = await Document.findOne({ _id: documentId, uploadedBy: userId });
+
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found or unauthorized' });
+    }
+
+    const shareEntries = userIds.map(uid => ({ user: uid, permission }));
+
+    // Add new shares (avoid duplicates)
+    for (const entry of shareEntries) {
+      const exists = document.sharedWith.some(s => s.user.toString() === entry.user);
+      if (!exists) {
+        document.sharedWith.push(entry);
+      }
+    }
+
+    await document.save();
+
+    res.json({ success: true, sharedWith: document.sharedWith });
   } catch (error) {
     logger.error('Error sharing document:', error);
     res.status(500).json({ error: 'Failed to share document' });

@@ -13,9 +13,6 @@ class MpesaService {
       return this.authToken;
     }
 
-    console.log('MPESA_CONSUMER_KEY:', process.env.MPESA_CONSUMER_KEY);
-    console.log('MPESA_CONSUMER_SECRET:', process.env.MPESA_CONSUMER_SECRET);
-
     const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
     
     try {
@@ -90,10 +87,8 @@ class MpesaService {
 
   _generatePassword(timestamp) {
     const passkey = process.env.MPESA_PASSKEY;
-    return crypto
-      .createHash('sha256')
-      .update(`${process.env.MPESA_SHORTCODE}${passkey}${timestamp}`)
-      .digest('hex');
+    // Safaricom requires Base64(shortcode + passkey + timestamp)
+    return Buffer.from(`${process.env.MPESA_SHORTCODE}${passkey}${timestamp}`).toString('base64');
   }
 
   _generateTimestamp() {

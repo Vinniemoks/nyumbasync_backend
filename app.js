@@ -6,15 +6,11 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { expressjwt: jwt } = require('express-jwt');
-const session = require('express-session');
-const RedisStore = require('connect-redis')(session);
 const compression = require('compression');
 
 // Import middlewares
-const { 
+const {
   helmet: helmetConfig,
-  csrf,
-  session: sessionConfig,
   errorHandler
 } = require('./middlewares/enhanced-security.middleware');
 const {
@@ -25,8 +21,6 @@ const {
   queryMonitor,
   errorMonitor
 } = require('./middlewares/monitoring.middleware');
-const { validateRequest } = require('./middlewares/validation');
-const { upload } = require('./middlewares/upload.middleware');
 
 // Import routes
 const routes = require('./routes');
@@ -46,10 +40,8 @@ const errorTracker = require('./utils/errorTracker');
 const app = express();
 
 // ========================
-// 1. PRE-ROUTE MIDDLEWARE
+// 1. SECURITY MIDDLEWARE
 // ========================
-
-// Security
 app.use(helmetConfig);
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(','),
@@ -58,26 +50,46 @@ app.use(cors({
   maxAge: parseInt(process.env.CORS_MAX_AGE) || 86400
 }));
 
-// Performance
+// ========================
+// 2. PERFORMANCE
+// ========================
 app.use(compression());
-app.use(express.json({ limit: process.env.MAX_PAYLOAD_SIZE || '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: process.env.MAX_PAYLOAD_SIZE || '50mb' }));
 
-// Session Management
-const redisClient = require('./config/redis');
-app.use(session({
-  store: new RedisStore({ client: redisClient }),
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    maxAge: parseInt(process.env.SESSION_DURATION) || 24 * 60 * 60 * 1000
+// ========================
+// 3. SESSION (Redis optional)
+// ========================
+try {
+  const session = require('express-session');
+  const redisClient = require('./config/redis');
+  let store;
+
+  if (redisClient) {
+    try {
+      const RedisStore = require('connect-redis').default || require('connect-redis')(session);
+      store = new RedisStore({ client: redisClient });
+    } catch (e) {
+      logger.warn('connect-redis not available, using memory session store');
+    }
   }
-}));
 
-// Monitoring & Logging
+  app.use(session({
+    store,
+    secret: process.env.SESSION_SECRET || 'nyumbasync-session-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: parseInt(process.env.SESSION_DURATION) || 24 * 60 * 60 * 1000
+    }
+  }));
+} catch (e) {
+  logger.warn('Session middleware not available:', e.message);
+}
+
+// ========================
+// 4. LOGGING
+// ========================
 app.use(morgan(process.env.LOG_FORMAT || 'combined', {
   stream: { write: message => logger.info(message.trim()) }
 }));
@@ -87,105 +99,55 @@ app.use(resourceMonitor);
 app.use(cacheMonitor);
 app.use(queryMonitor);
 
-// Rate Limiting
+// ========================
+// 5. REQUEST PARSING
+// ========================
+app.use(express.json({ limit: process.env.MAX_PAYLOAD_SIZE || '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.MAX_PAYLOAD_SIZE || '50mb' }));
+
+// ========================
+// 6. RATE LIMITING
+// ========================
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300
 });
 app.use(limiter);
 
-// Rate limiting (for Kenyan traffic patterns)
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // 300 requests per window
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', apiLimiter);
-
 // ========================
-// 2. LOGGING (Morgan with shared logger)
-// ========================
-app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
-
-// ========================
-// 3. REQUEST PARSING
-// ========================
-app.use(express.json({ limit: '10kb' })); // JSON payloads
-app.use(express.urlencoded({ extended: true })); // Form data
-
-// ========================
-// 4. AUTHENTICATION (JWT)
+// 7. AUTHENTICATION (JWT)
 // ========================
 app.use(
   jwt({
     secret: process.env.JWT_SECRET,
     algorithms: ['HS256'],
-    credentialsRequired: false // Allow public routes
+    credentialsRequired: false
   }).unless({
     path: [
       '/api/v1/auth/login',
+      '/api/v1/auth/signup',
       '/api/v1/auth/register',
       '/api/v1/auth/verify',
-      '/api/v1/mpesa/callback' // M-Pesa IPNs are public
+      '/api/v1/auth/forgot-password',
+      '/api/v1/mpesa/callback',
+      '/health'
     ]
   })
 );
 
 // ========================
-// 5. ROUTES
+// 8. KENYAN PHONE FORMATTING
 // ========================
-// Kenyan phone validation middleware
 app.use((req, res, next) => {
-  if (req.body && req.body.phone) { // Added check for req.body
-    console.log('Phone before formatting middleware:', req.body.phone); // Added console log
-    req.body.phone = req.body.phone.replace(/^0/, '254'); // Convert 07... to 2547...
-    console.log('Phone after formatting middleware:', req.body.phone); // Added console log
+  if (req.body && req.body.phone) {
+    req.body.phone = req.body.phone.replace(/^0/, '254');
   }
   next();
 });
 
-// API Routes
-app.use('/api/v1/auth', require('./routes/v1/auth.routes'));
-app.use('/api/v1/mpesa', require('./routes/v1/mpesa.routes'));
-app.use('/api/v1/rent', require('./routes/v1/payment.routes'));
-
 // ========================
-// 6. ERROR HANDLING
+// 9. ROUTES
 // ========================
-// 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Hakuna kitu hapa! (Nothing here!)',
-    swahiliHint: 'Unaenda wapi? (Where do you go?)'
-  });
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  logger.error(err.stack); // Use shared logger
-  
-  // M-Pesa API errors
-  if (err.message.includes('MPESA_')) {
-    return res.status(503).json({ 
-      error: 'Huduma ya M-Pesa haipatikani kwa sasa',
-      english: 'M-Pesa service unavailable'
-    });
-  }
-
-  // JWT errors
-  if (err.name === 'UnauthorizedError') {
-    return res.status(401).json({ error: 'Hakiki hati yako!' }); // "Verify your token!"
-  }
-
-  res.status(500).json({ error: 'Kuna kitu kimekosekana!' }); // "Something went wrong!"
-});
-
-// ========================
-// 2. ROUTES
-// ========================
-
-// API Routes
-app.use('/api', routes);
 
 // Health Check
 app.get('/health', (req, res) => {
@@ -196,9 +158,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+// API Routes (centralized)
+app.use('/api', routes);
+
 // ========================
-// 3. ERROR HANDLING
+// 10. ERROR HANDLING
 // ========================
+
+// Error Monitoring
+app.use(errorMonitor);
 
 // 404 Handler
 app.use((req, res) => {
@@ -208,13 +176,20 @@ app.use((req, res) => {
   });
 });
 
-// Error Monitoring
-app.use(errorMonitor);
-
 // Global Error Handler
 app.use((err, req, res, next) => {
   errorTracker.captureError(err);
   logger.error('Unhandled Error:', err);
+
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  if (err.message && err.message.includes('MPESA_')) {
+    return res.status(503).json({
+      error: 'M-Pesa service unavailable'
+    });
+  }
 
   res.status(err.status || 500).json({
     error: err.message || 'Internal Server Error',
@@ -223,9 +198,8 @@ app.use((err, req, res, next) => {
 });
 
 // ========================
-// 4. DATABASE CONNECTION
+// 11. DATABASE CONNECTION
 // ========================
-
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
@@ -239,16 +213,9 @@ mongoose.connect(process.env.MONGODB_URI, {
 // Graceful Shutdown
 process.on('SIGTERM', () => {
   logger.info('SIGTERM received. Starting graceful shutdown...');
-  
-  // Close server
-  server.close(() => {
-    logger.info('HTTP server closed');
-    
-    // Close database connection
-    mongoose.connection.close(false, () => {
-      logger.info('MongoDB connection closed');
-      process.exit(0);
-    });
+  mongoose.connection.close(false, () => {
+    logger.info('MongoDB connection closed');
+    process.exit(0);
   });
 });
 
