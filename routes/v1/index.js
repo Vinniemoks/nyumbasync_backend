@@ -1,20 +1,31 @@
 const express = require('express');
 const router = express.Router();
+const { asRouter } = require('../utils/route-adapter');
 
-// Import core route modules
+// Import core route modules. Some modules export an Express router, others
+// export an array of declarative route definitions — asRouter handles both.
 const adminRoutes = require('./admin.routes');
 const authRoutes = require('./auth.routes');
 const landlordRoutes = require('./landlord.routes');
 const maintenanceRoutes = require('./maintenance.routes');
 const mpesaRoutes = require('./mpesa.routes');
 const paymentRoutes = require('./payment.routes');
+const invoiceRoutes = require('./invoice.routes');
 const propertyRoutes = require('./property.routes');
 const transactionRoutes = require('./transaction.routes');
 const uploadRoutes = require('./upload.routes');
 const userRoutes = require('./user.routes');
 const propertyApprovalRoutes = require('./property-approval.routes');
+const tenantRoutes = require('./tenant.routes');
+const vendorRoutes = require('./vendor.routes');
+const leaseRoutes = require('./lease.routes');
+const documentRoutes = require('./document.routes');
+const messageRoutes = require('./message.routes');
+const mfaRoutes = require('./mfa.routes');
+const auditRoutes = require('./audit.routes');
+const enhancedAdminRoutes = require('./enhanced-admin.routes');
 
-// Import feature route modules 
+// Import feature route modules
 const financialRoutes = require('./financial.routes');
 const searchRoutes = require('./search.routes');
 const backupRoutes = require('./backup.routes');
@@ -28,30 +39,48 @@ const videoCallRoutes = require('./videoCall.routes');
 const reportsRoutes = require('./reports.routes');
 
 // Core route mounting
-router.use('/admin', adminRoutes);
-router.use('/auth', authRoutes);
-router.use('/landlord', landlordRoutes);
-router.use('/maintenance', maintenanceRoutes);
-router.use('/mpesa', mpesaRoutes);
-router.use('/payments', paymentRoutes);
-router.use('/properties', propertyRoutes);
-router.use('/transactions', transactionRoutes);
-router.use('/upload', uploadRoutes);
-router.use('/users', userRoutes);
-router.use('/property-approvals', propertyApprovalRoutes);
+router.use('/admin', asRouter(adminRoutes, 'admin.routes'));
+router.use('/auth', asRouter(authRoutes, 'auth.routes'));
+router.use('/landlord', asRouter(landlordRoutes, 'landlord.routes'));
+router.use('/maintenance', asRouter(maintenanceRoutes, 'maintenance.routes'));
+router.use('/mpesa', asRouter(mpesaRoutes, 'mpesa.routes'));
+router.use('/payments', asRouter(paymentRoutes, 'payment.routes'));
+router.use('/invoices', asRouter(invoiceRoutes, 'invoice.routes'));
+router.use('/properties', asRouter(propertyRoutes, 'property.routes'));
+router.use('/transactions', asRouter(transactionRoutes, 'transaction.routes'));
+router.use('/upload', asRouter(uploadRoutes, 'upload.routes'));
+router.use('/users', asRouter(userRoutes, 'user.routes'));
+router.use('/property-approvals', asRouter(propertyApprovalRoutes, 'property-approval.routes'));
+
+// Tenant self-service portal (GET /tenant/profile, /tenant/maintenance, ...)
+router.use('/tenant', asRouter(tenantRoutes, 'tenant.routes'));
+
+// Previously unmounted resources
+router.use('/vendors', asRouter(vendorRoutes, 'vendor.routes'));
+router.use('/leases', asRouter(leaseRoutes, 'lease.routes'));
+router.use('/documents', asRouter(documentRoutes, 'document.routes'));
+router.use('/messages', asRouter(messageRoutes, 'message.routes'));
+router.use('/mfa', asRouter(mfaRoutes, 'mfa.routes'));
+router.use('/audit', asRouter(auditRoutes, 'audit.routes'));
+router.use('/enhanced-admin', asRouter(enhancedAdminRoutes, 'enhanced-admin.routes'));
 
 // Feature route mounting
-router.use('/financial', financialRoutes);
-router.use('/search', searchRoutes);
-router.use('/backup', backupRoutes);
-router.use('/monitoring', monitoringRoutes);
-router.use('/analytics', analyticsRoutes);
-router.use('/config', configRoutes);
-router.use('/notifications', notificationRoutes);
-router.use('/ai', aiRoutes);
-router.use('/biometric', biometricRoutes);
-router.use('/video-call', videoCallRoutes);
-router.use('/reports', reportsRoutes);
+router.use('/financial', asRouter(financialRoutes, 'financial.routes'));
+router.use('/search', asRouter(searchRoutes, 'search.routes'));
+router.use('/backup', asRouter(backupRoutes, 'backup.routes'));
+router.use('/monitoring', asRouter(monitoringRoutes, 'monitoring.routes'));
+router.use('/analytics', asRouter(analyticsRoutes, 'analytics.routes'));
+router.use('/config', asRouter(configRoutes, 'config.routes'));
+router.use('/notifications', asRouter(notificationRoutes, 'notification.routes'));
+router.use('/ai', asRouter(aiRoutes, 'ai.routes'));
+router.use('/biometric', asRouter(biometricRoutes, 'biometric.routes'));
+router.use('/video-call', asRouter(videoCallRoutes, 'videoCall.routes'));
+router.use('/reports', asRouter(reportsRoutes, 'reports.routes'));
+
+// Contract-gap routes: fills endpoints the clients call that no dedicated
+// module provides (/tenant extras, /tenants, /rent-payments, /reports
+// aliases, admin emergency broadcast). Mounted last so specific routers win.
+router.use('/', require('./compat.routes'));
 
 // Error handling middleware
 router.use((err, req, res, next) => {

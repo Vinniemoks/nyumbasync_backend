@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { uploadSingle } = require('../../middlewares/upload.middleware');
 const documentController = require('../../controllers/document.controller');
 
 module.exports = [
@@ -10,7 +11,16 @@ module.exports = [
     handler: [authenticate(), asyncHandler(documentController.getAllDocuments)],
     config: { source: 'document.routes' }
   },
-  
+
+  // Get document categories — MUST precede '/:id' or 'categories' is parsed
+  // as a document id and the ObjectId cast 500s.
+  {
+    method: 'GET',
+    path: '/categories',
+    handler: [authenticate(), asyncHandler(documentController.getDocumentCategories)],
+    config: { source: 'document.routes' }
+  },
+
   // Get document by ID
   {
     method: 'GET',
@@ -31,7 +41,7 @@ module.exports = [
   {
     method: 'GET',
     path: '/landlord/:landlordId',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(documentController.getDocumentsByLandlord)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(documentController.getDocumentsByLandlord)],
     config: { source: 'document.routes' }
   },
   
@@ -55,7 +65,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/upload',
-    handler: [authenticate(), asyncHandler(documentController.uploadDocument)],
+    handler: [authenticate(), ...uploadSingle('file'), asyncHandler(documentController.uploadDocument)],
     config: { source: 'document.routes' }
   },
   

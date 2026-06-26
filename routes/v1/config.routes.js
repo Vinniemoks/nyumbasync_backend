@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const configController = require('../controllers/config.controller');
-const { authenticate } = require('../middlewares/auth.middleware');
-const { validate } = require('../middlewares/validation');
+const configController = require('../../controllers/config.controller');
+const { authenticate } = require('../../middlewares/auth.middleware');
+const { validate } = require('../../middlewares/validation');
 const { body, param, query } = require('express-validator');
 
 // Validation middleware

@@ -10,25 +10,10 @@ const { authenticate } = require('../../middlewares/auth.middleware');
  *   description: M-Pesa payment processing
  */
 
-/**
- * @swagger
- * /v1/mpesa/stkpush:
- *   post:
- *     summary: Initiate STK Push payment
- *     tags: [M-Pesa]
- *     security:
- *       - bearerAuth: []
- */
-router.post('/stkpush', authenticate(), mpesaController.initiateSTKPush);
-
-/**
- * @swagger
- * /v1/mpesa/callback:
- *   post:
- *     summary: M-Pesa payment callback
- *     tags: [M-Pesa]
- */
-router.post('/callback', mpesaController.handleCallback);
+// STK-push rent collection and its callback have moved to the canonical,
+// invoice-aware flow: POST /payments/mpesa/stk-push and POST
+// /payments/mpesa-callback (see payment.routes.js). The routes below are the
+// M-Pesa surfaces unique to this controller.
 
 /**
  * @swagger

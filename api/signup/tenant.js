@@ -31,7 +31,7 @@ const signupLimiter = rateLimit({
 });
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://nyachekisuppliers:KWTm8HHLgftzdnE7@nyumbasync.ytts2nv.mongodb.net/?retryWrites=true&w=majority&appName=nyumbasync', {
+mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });

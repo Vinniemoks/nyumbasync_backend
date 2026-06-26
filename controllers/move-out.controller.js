@@ -8,7 +8,12 @@ exports.submitMoveOutRequest = async (req, res) => {
   try {
     const userId = req.user.id;
     const { propertyId, leaseId, moveOutDate, reason, forwardingAddress } = req.body;
-    
+
+    // propertyId, leaseId, moveOutDate and reason are required by the model.
+    if (!propertyId || !leaseId || !moveOutDate || !reason) {
+      return res.status(400).json({ error: 'propertyId, leaseId, moveOutDate and reason are required' });
+    }
+
     const moveOutRequest = await MoveOutRequest.create({
       tenant: userId,
       property: propertyId,
@@ -16,6 +21,8 @@ exports.submitMoveOutRequest = async (req, res) => {
       moveOutDate,
       reason,
       forwardingAddress,
+      // referenceNumber is required and has no schema default — generate one.
+      referenceNumber: `MO-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       status: 'pending',
       stakeholderNotified: true,
       notifiedAt: new Date()

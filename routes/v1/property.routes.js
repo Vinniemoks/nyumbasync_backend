@@ -88,6 +88,17 @@ module.exports = [
     handler: asyncHandler(propertyController.getRentStats),
     config: { source: 'property.routes' }
   },
+  // Landlord routes — MUST come before '/:id' or '/landlord' is captured as an id.
+  {
+    method: 'GET',
+    path: '/landlord',
+    handler: [
+      authenticate('landlord'),
+      asyncHandler(propertyController.getLandlordProperties)
+    ],
+    config: { source: 'property.routes' }
+  },
+
   {
     method: 'GET',
     path: '/:id',
@@ -98,13 +109,13 @@ module.exports = [
     config: { source: 'property.routes' }
   },
 
-  // Landlord routes
+  // Generic list — used by all dashboards (GET /properties)
   {
     method: 'GET',
-    path: '/landlord',
+    path: '/',
     handler: [
-      authenticate('landlord'),
-      asyncHandler(propertyController.getLandlordProperties)
+      authenticate(),
+      asyncHandler(propertyController.searchProperties)
     ],
     config: { source: 'property.routes' }
   },

@@ -247,6 +247,7 @@ const loadAllRoutes = () => {
     'admin',
     'maintenance',
     'payment',
+    'invoice',
     'transaction',
     'tenant',
     'lease',
@@ -630,10 +631,12 @@ const limiter = rateLimit({
   }
 });
 
-// Stricter rate limiting for auth endpoints
+// Stricter rate limiting for auth endpoints. Only failed attempts count —
+// successful logins must not consume the brute-force budget.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: parseInt(process.env.AUTH_ATTEMPT_LIMIT, 10) || 10,
+  skipSuccessfulRequests: true,
   message: {
     error: 'Too many authentication attempts, please try again later.',
     retryAfter: '15 minutes'
@@ -820,9 +823,10 @@ const registerRoutes = () => {
   // Auth routes with rate limiting
   if (authRoutes) {
     try {
-      app.use('/api/v1/auth/login', authLimiter);
-      app.use('/api/v1/auth/register', authLimiter);
-      app.use('/api/v1/auth/reset-password', passwordResetLimiter);
+      // Cover both the versioned and unversioned (client-facing) auth paths.
+      app.use(['/api/v1/auth/login', '/api/auth/login'], authLimiter);
+      app.use(['/api/v1/auth/signup', '/api/auth/signup', '/api/v1/auth/register', '/api/auth/register'], authLimiter);
+      app.use(['/api/v1/auth/reset-password', '/api/auth/reset-password', '/api/v1/auth/forgot-password', '/api/auth/forgot-password'], passwordResetLimiter);
       app.use('/api/v1/auth', authRoutes);
       logger.info('✅ Auth routes registered with rate limiting at /api/v1/auth');
     } catch (err) {
@@ -1029,6 +1033,21 @@ const registerRoutes = () => {
 
 // Register all routes
 registerRoutes();
+
+// Mount the consolidated route tree as well. This provides:
+//  - the unversioned contract used by all clients (/api/auth, /api/tenant,
+//    /api/properties, ...) via the root alias in routes/index.js
+//  - core resources not covered by registerRoutes (/api/contacts,
+//    /api/v2/properties, /api/v2/transactions, /api/tenant-portal,
+//    /api/flows, /api/landlord, ...)
+// Paths already registered above (/api/v1/*) keep precedence.
+try {
+  const consolidatedRoutes = require('./routes');
+  app.use('/api', consolidatedRoutes);
+  logger.info('✅ Consolidated route tree mounted at /api (versioned + unversioned)');
+} catch (err) {
+  logger.error('❌ Failed to mount consolidated routes:', err.message);
+}
 
 /* Static Files
 const publicDir = path.join(__dirname, 'public');
@@ -1268,7 +1287,7 @@ const gracefulShutdown = (signal) => {
 });
 
 process.on('uncaughtException', (err) => {
-  logger.error('❌ Uncaught Exception:', err);
+  logger.error(`❌ Uncaught Exception: ${err.message}\n${err.stack}`);
   process.exit(1);
 });
 
@@ -1277,5 +1296,23 @@ process.on('unhandledRejection', (reason, promise) => {
   // Don't exit for unhandled rejections, just log them
 });
 
+// Start the HTTP server (skipped under test — tests drive the app directly).
+// Attaches the WebSocket layer used for real-time notifications.
+let server;
+if (process.env.NODE_ENV !== 'test') {
+  const PORT = parseInt(process.env.PORT, 10) || 3001;
+  server = app.listen(PORT, () => {
+    logger.info(`🚀 NyumbaSync API listening on port ${PORT}`);
+  });
+
+  try {
+    const { initializeWebSocket } = require('./websocket/server');
+    initializeWebSocket(server);
+    logger.info('✅ WebSocket server attached');
+  } catch (err) {
+    logger.error('❌ WebSocket initialization failed:', err.message);
+  }
+}
+
 // Export for testing
-module.exports = { app, authenticateToken, authorize, createRouterFromConfig };
+module.exports = { app, server, authenticateToken, authorize, createRouterFromConfig };

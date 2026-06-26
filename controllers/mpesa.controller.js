@@ -1,7 +1,10 @@
 const axios = require('axios');
-const Transaction = require('../models/transaction.model');
-const { generateMpesaPassword, generateTimestamp } = require('../utils/mpesa.utils');
-const emailService = require('../services/emailService');
+
+// NOTE: STK-push rent collection (CustomerPayBill) and its callback used to
+// live here on a Transaction-based prototype. That has been retired in favour
+// of the canonical, invoice-aware flow under /payments/* (payment.controller +
+// mpesa.service). This controller now only owns the M-Pesa surfaces that are
+// unique to it: B2C landlord payouts and transaction-status queries.
 
 // Helper function to get M-Pesa auth token
 async function getAuthToken() {
@@ -14,92 +17,6 @@ async function getAuthToken() {
   );
   return response.data.access_token;
 }
-
-// STK Push (Customer to Paybill)
-exports.initiateSTKPush = async (req, res) => {
-  const { phone, amount, propertyId } = req.body;
-
-  // Validate input
-  if (!phone || !amount || !propertyId) {
-    return res.status(400).json({ error: 'Missing phone, amount, or propertyId' });
-  }
-
-  try {
-    const timestamp = generateTimestamp();
-    const password = generateMpesaPassword(
-      process.env.MPESA_SHORTCODE,
-      process.env.MPESA_PASSKEY,
-      timestamp
-    );
-
-    const response = await axios.post(
-      `${process.env.MPESA_API_URL}/stkpush/v1/processrequest`,
-      {
-        BusinessShortCode: process.env.MPESA_SHORTCODE,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: 'CustomerPayBillOnline',
-        Amount: amount,
-        PartyA: `254${phone.slice(-9)}`,
-        PartyB: process.env.MPESA_SHORTCODE,
-        PhoneNumber: `254${phone.slice(-9)}`,
-        CallBackURL: `${process.env.API_BASE_URL}/v1/mpesa/callback`,
-        AccountReference: `NyumbaSync-${propertyId}`,
-        TransactionDesc: 'Rent Payment',
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${await getAuthToken()}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    // Save transaction to DB
-    const transaction = new Transaction({
-      propertyId,
-      phone: `254${phone.slice(-9)}`,
-      amount,
-      mpesaRequestId: response.data.CheckoutRequestID,
-      status: 'Pending',
-    });
-    await transaction.save();
-
-    res.status(200).json(response.data);
-  } catch (error) {
-    console.error('STK Push Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Payment initiation failed' });
-  }
-};
-
-// Handle M-Pesa Callback
-exports.handleCallback = async (req, res) => {
-  const callbackData = req.body;
-
-  try {
-    const transaction = await Transaction.findOne({
-      mpesaRequestId: callbackData.Body.stkCallback.CheckoutRequestID,
-    });
-
-    if (!transaction) {
-      return res.status(404).json({ error: 'Transaction not found' });
-    }
-
-    if (callbackData.Body.stkCallback.ResultCode === 0) {
-      transaction.status = 'Completed';
-      transaction.mpesaReceiptNumber = callbackData.Body.stkCallback.CallbackMetadata.Item[1].Value;
-    } else {
-      transaction.status = 'Failed';
-      transaction.errorMessage = callbackData.Body.stkCallback.ResultDesc;
-    }
-
-    await transaction.save();
-    res.status(200).send('Callback processed');
-  } catch (error) {
-    console.error('Callback Error:', error);
-    res.status(500).json({ error: 'Callback processing failed' });
-  }
-};
 
 // Query Transaction Status
 exports.queryTransactionStatus = async (req, res) => {

@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { uploadSingle } = require('../../middlewares/upload.middleware');
 const tenantController = require('../../controllers/tenant.controller');
 const maintenanceController = require('../../controllers/maintenance.controller');
 const paymentController = require('../../controllers/payment.controller');
@@ -60,7 +61,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/documents',
-    handler: [authenticate('tenant'), asyncHandler(documentController.uploadTenantDocument)],
+    handler: [authenticate('tenant'), ...uploadSingle('file'), asyncHandler(documentController.uploadTenantDocument)],
     config: { source: 'tenant.routes' }
   },
   {

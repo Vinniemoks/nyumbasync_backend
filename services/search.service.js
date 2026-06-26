@@ -1,22 +1,43 @@
-const elasticsearch = require('@elastic/elasticsearch');
 const { promisify } = require('util');
 const { logActivity } = require('../utils/logger');
 
+// Elasticsearch is optional: it is not a declared dependency and needs an
+// external cluster (SEARCH_PROVIDER_URL). When either is missing, search
+// endpoints respond 503 instead of taking the whole API down at boot.
+let elasticsearch = null;
+try {
+  elasticsearch = require('@elastic/elasticsearch');
+} catch {
+  elasticsearch = null;
+}
+
 class SearchService {
   constructor() {
-    this.client = new elasticsearch.Client({
-      node: process.env.SEARCH_PROVIDER_URL,
-      auth: {
-        username: process.env.SEARCH_USERNAME,
-        password: process.env.SEARCH_PASSWORD
-      }
-    });
+    this.client = null;
+    if (elasticsearch && process.env.SEARCH_PROVIDER_URL) {
+      this.client = new elasticsearch.Client({
+        node: process.env.SEARCH_PROVIDER_URL,
+        auth: {
+          username: process.env.SEARCH_USERNAME,
+          password: process.env.SEARCH_PASSWORD
+        }
+      });
+    }
     this.indexPrefix = process.env.SEARCH_INDEX_PREFIX || 'nyumbasync';
+  }
+
+  ensureAvailable() {
+    if (!this.client) {
+      const err = new Error('Search is not configured on this deployment');
+      err.status = 503;
+      throw err;
+    }
   }
 
   // Index a document
   async indexDocument(type, document) {
     try {
+      this.ensureAvailable();
       const index = `${this.indexPrefix}_${type}`;
       
       const response = await this.client.index({
@@ -50,6 +71,7 @@ class SearchService {
 
   // Search across documents
   async search(type, query, options = {}) {
+    this.ensureAvailable();
     try {
       const index = `${this.indexPrefix}_${type}`;
       const {
@@ -107,6 +129,7 @@ class SearchService {
 
   // Update document
   async updateDocument(type, id, updates) {
+    this.ensureAvailable();
     try {
       const index = `${this.indexPrefix}_${type}`;
       
@@ -142,6 +165,7 @@ class SearchService {
 
   // Delete document
   async deleteDocument(type, id) {
+    this.ensureAvailable();
     try {
       const index = `${this.indexPrefix}_${type}`;
       
@@ -170,6 +194,7 @@ class SearchService {
 
   // Bulk index documents
   async bulkIndex(type, documents) {
+    this.ensureAvailable();
     try {
       const index = `${this.indexPrefix}_${type}`;
       const operations = documents.flatMap(doc => [

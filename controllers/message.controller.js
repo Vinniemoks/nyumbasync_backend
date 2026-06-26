@@ -1,6 +1,7 @@
 const Message = require('../models/message.model');
 const Conversation = require('../models/conversation.model');
 const logger = require('../utils/logger');
+const { sendToConversation, sendToUser } = require('../websocket/server');
 
 // Get user conversations
 exports.getUserConversations = async (req, res) => {
@@ -117,6 +118,22 @@ exports.sendMessage = async (req, res) => {
     
     // Populate sender info
     await newMessage.populate('sender', 'firstName lastName email');
+    
+    // Real-time WebSocket broadcast to conversation room
+    try {
+      sendToConversation(conversationId, 'message:received', {
+        conversationId,
+        message: newMessage.message,
+        sender: {
+          id: newMessage.sender._id,
+          name: `${newMessage.sender.firstName} ${newMessage.sender.lastName}`,
+          role: req.user.role
+        },
+        timestamp: new Date()
+      });
+    } catch (wsErr) {
+      logger.error('WS_MESSAGE_BROADCAST_FAILURE:', wsErr.message);
+    }
     
     res.status(201).json({
       success: true,
@@ -340,6 +357,22 @@ exports.sendTenantMessage = async (req, res) => {
 
     await conversation.updateLastMessage(message, senderId);
     await newMessage.populate('sender', 'firstName lastName email');
+
+    // Real-time WebSocket broadcast to recipient
+    try {
+      sendToConversation(conversation._id, 'message:received', {
+        conversationId: conversation._id,
+        message: newMessage.message,
+        sender: {
+          id: newMessage.sender._id,
+          name: `${newMessage.sender.firstName} ${newMessage.sender.lastName}`,
+          role: req.user.role
+        },
+        timestamp: new Date()
+      });
+    } catch (wsErr) {
+      logger.error('WS_TENANT_MESSAGE_BROADCAST_FAILURE:', wsErr.message);
+    }
 
     res.status(201).json({
       success: true,

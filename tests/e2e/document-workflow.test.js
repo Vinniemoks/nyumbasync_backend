@@ -32,7 +32,7 @@ describe('E2E: Document Management Workflow', () => {
     const tenant = await e2eUtils.completeUserOnboarding(app, request, 'tenant');
 
     // 2. Create test file
-    const testFilePath = path.join(__dirname, '../test-doc.txt');
+    const testFilePath = path.join(__dirname, '../test-doc.pdf');
     fs.writeFileSync(testFilePath, 'Test document content for E2E testing');
 
     // 3. Upload document

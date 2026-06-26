@@ -277,31 +277,37 @@ propertySchema.index({ featured: 1, listingDate: -1 });
 propertySchema.index({ subcounty: 1, rent: 1 });
 propertySchema.index({ title: 'text', description: 'text' });
 
-// Virtual properties
+// Virtual properties. These run during toJSON/toObject even when a Property is
+// populated with a subset of fields, so each must tolerate missing paths
+// (otherwise serializing a partially-populated Property throws).
 propertySchema.virtual('fullAddress').get(function() {
   const addr = this.address;
+  if (!addr) return null;
   return `${addr.street}, ${addr.area}, ${addr.city}, ${addr.county}${addr.postalCode ? ' ' + addr.postalCode : ''}`;
 });
 
 propertySchema.virtual('primaryImage').get(function() {
-  const primary = this.images.find(img => img.isPrimary);
-  return primary ? primary.url : (this.images.length > 0 ? this.images[0].url : null);
+  const images = this.images || [];
+  const primary = images.find(img => img.isPrimary);
+  return primary ? primary.url : (images.length > 0 ? images[0].url : null);
 });
 
 propertySchema.virtual('rentDisplay').get(function() {
-  return `${this.rent.currency} ${this.rent.amount.toLocaleString()}/${this.rent.paymentFrequency}`;
+  if (!this.rent) return null;
+  return `${this.rent.currency} ${this.rent.amount?.toLocaleString()}/${this.rent.paymentFrequency}`;
 });
 
 propertySchema.virtual('depositAmount').get(function() {
-  return this.deposit || this.rent.amount * 2;
+  return this.deposit || (this.rent ? this.rent.amount * 2 : 0);
 });
 
 propertySchema.virtual('formattedRent').get(function() {
+  if (!this.rent || this.rent.amount == null) return null;
   return `KES ${this.rent.amount.toLocaleString('en-KE')}`;
 });
 
 propertySchema.virtual('coordinates').get(function() {
-  return this.address.coordinates?.coordinates?.join(', ') || '';
+  return this.address?.coordinates?.coordinates?.join(', ') || '';
 });
 
 // Instance methods

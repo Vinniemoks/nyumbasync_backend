@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const searchService = require('../services/search.service');
-const { authMiddleware } = require('../middlewares/auth.middleware');
-const { validateSearchQuery } = require('../middlewares/validation');
+const searchService = require('../../services/search.service');
+const { authMiddleware } = require('../../middlewares/auth.middleware');
+const { validateSearchQuery } = require('../../middlewares/validation');
 
 // Apply authentication to all routes
 router.use(authMiddleware);

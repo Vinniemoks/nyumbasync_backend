@@ -1,8 +1,8 @@
-const Transaction = require('../models/Transaction');
-const Property = require('../models/Property');
-const Lease = require('../models/Lease');
-const Tenant = require('../models/Tenant');
-const Maintenance = require('../models/Maintenance');
+const Transaction = require('../models/transaction.model');
+const Property = require('../models/property.model');
+const Lease = require('../models/lease.model');
+const Tenant = require('../models/tenant.model');
+const Maintenance = require('../models/maintenance.model');
 
 class ReportsService {
     /**

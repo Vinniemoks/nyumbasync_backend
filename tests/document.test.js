@@ -144,8 +144,9 @@ describe('Document Controller Tests', () => {
 
   describe('POST /api/v1/documents/upload', () => {
     it('should upload a document with file', async () => {
-      // Create a test file
-      const testFilePath = path.join(__dirname, 'test-upload.txt');
+      // Create a test file (.pdf — the upload filter only permits document/
+      // image extensions, not .txt).
+      const testFilePath = path.join(__dirname, 'test-upload.pdf');
       fs.writeFileSync(testFilePath, 'Test document content');
 
       const response = await request(app)

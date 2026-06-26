@@ -1,6 +1,15 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
+// A payment is "settled" once confirmed — at which point the transaction date
+// becomes mandatory. Before that (initiated/pending) it isn't known.
+const isSettled = (status) => ['completed', 'verified'].includes(status);
+
+// The M-Pesa receipt and payer phone only exist for M-Pesa channels (STK /
+// C2B). Bank transfers and card payments settle without them.
+const MPESA_CHANNELS = ['STK_PUSH', 'C2B_PAYBILL'];
+const needsMpesaFields = (doc) => isSettled(doc.status) && MPESA_CHANNELS.includes(doc.channel);
+
 const PaymentSchema = new Schema({
   // Transaction Parties
   tenant: {
@@ -52,9 +61,12 @@ const PaymentSchema = new Schema({
   },
 
   // M-Pesa Specific Fields
+  // The receipt, transaction date, and (for STK) the confirmed payer phone are
+  // only known once Safaricom confirms the payment, so they are required only
+  // when the payment reaches a settled state — not at STK initiation (pending).
   mpesaReceipt: {
     type: String,
-    required: [true, 'M-Pesa receipt number is required'],
+    required: [function() { return needsMpesaFields(this); }, 'M-Pesa receipt number is required'],
     uppercase: true,
     trim: true,
     validate: {
@@ -66,7 +78,7 @@ const PaymentSchema = new Schema({
   },
   phoneUsed: {
     type: String,
-    required: [true, 'Payer phone number is required'],
+    required: [function() { return needsMpesaFields(this); }, 'Payer phone number is required'],
     validate: {
       validator: function(v) {
         return /^254(7|1)\d{8}$/.test(v); // Kenyan mobile format
@@ -76,7 +88,7 @@ const PaymentSchema = new Schema({
   },
   mpesaTransactionDate: {
     type: Date,
-    required: true
+    required: [function() { return isSettled(this.status); }, 'M-Pesa transaction date is required']
   },
 
   // Payment Context
@@ -96,7 +108,7 @@ const PaymentSchema = new Schema({
   status: {
     type: String,
     enum: {
-      values: ['initiated', 'pending', 'completed', 'verified', 'disputed', 'refunded'],
+      values: ['initiated', 'pending', 'pending_verification', 'completed', 'verified', 'disputed', 'refunded', 'failed', 'expired'],
       message: 'Invalid payment status'
     },
     default: 'initiated'
@@ -118,6 +130,47 @@ const PaymentSchema = new Schema({
     type: String,
     enum: ['RENT', 'DEPOSIT', 'UTILITY', 'PENALTY', 'OTHER'],
     default: 'RENT'
+  },
+
+  // Invoice this payment settles, threaded from the client at initiation so the
+  // M-Pesa callback can bind the payment to the exact invoice (the STK callback
+  // does not echo AccountReference back).
+  invoice: {
+    type: Schema.Types.ObjectId,
+    ref: 'Invoice'
+  },
+  // M-Pesa STK CheckoutRequestID — set at initiation, matched on callback.
+  mpesaRequestId: {
+    type: String,
+    index: true
+  },
+  failureReason: String,
+
+  // ---- Multi-channel collection -------------------------------------------
+  // How this payment is being collected. C2B_PAYBILL is the STK fallback where
+  // the tenant pays a fixed Paybill using a unique, expiring account number.
+  channel: {
+    type: String,
+    enum: ['STK_PUSH', 'C2B_PAYBILL', 'BANK', 'CARD'],
+    default: 'STK_PUSH'
+  },
+  // Unique account number the tenant enters against the Paybill (C2B) or the
+  // expected bank reference. Sparse so STK/card payments (no ref) don't collide.
+  accountRef: {
+    type: String,
+    uppercase: true,
+    trim: true
+  },
+  // Time-boxed intents (C2B fallback ~10min, bank ~48h) expire at this time.
+  expiresAt: Date,
+  // Tenant-entered bank reference, pending landlord/admin verification.
+  submittedReference: String,
+  // Auto-reversal record (e.g. a C2B payment that landed after expiry).
+  reversal: {
+    requested: { type: Boolean, default: false },
+    reversedAt: Date,
+    mpesaReversalId: String,
+    reason: String
   },
 
   // System Metadata
@@ -147,7 +200,12 @@ PaymentSchema.index({ tenant: 1, paymentDate: -1 }); // Tenant payment history
 PaymentSchema.index({ landlord: 1, paymentDate: -1 }); // Landlord income tracking
 PaymentSchema.index({ property: 1, paymentDate: -1 }); // Property payment records
 PaymentSchema.index({ status: 1, paymentDate: -1 }); // Payment status monitoring
-PaymentSchema.index({ mpesaReceipt: 1 }, { unique: true }); // Prevent duplicate M-Pesa payments
+// Look up C2B/bank intents by the unique account number (sparse: STK/card omit it).
+PaymentSchema.index({ accountRef: 1 }, { unique: true, sparse: true });
+PaymentSchema.index({ channel: 1, status: 1, expiresAt: 1 }); // Expiry sweeps
+// Sparse so multiple pending payments (no receipt yet) don't collide on null,
+// while still preventing duplicate confirmed M-Pesa receipts.
+PaymentSchema.index({ mpesaReceipt: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ phoneUsed: 1, paymentDate: -1 }); // Payment tracking by phone number
 PaymentSchema.index({ 
   landlord: 1, 

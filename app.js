@@ -129,7 +129,17 @@ app.use(
       '/api/v1/auth/register',
       '/api/v1/auth/verify',
       '/api/v1/auth/forgot-password',
-      '/api/v1/mpesa/callback',
+      // M-Pesa callbacks (Safaricom posts here with no JWT). Dual-mounted
+      // under both /api/v1 and /api.
+      '/api/v1/payments/mpesa-callback',
+      '/api/payments/mpesa-callback',
+      '/api/v1/payments/mpesa/c2b/validation',
+      '/api/payments/mpesa/c2b/validation',
+      '/api/v1/payments/mpesa/c2b/confirmation',
+      '/api/payments/mpesa/c2b/confirmation',
+      // Card gateway webhook (signature-verified, no JWT).
+      '/api/v1/payments/card/webhook',
+      '/api/payments/card/webhook',
       '/health'
     ]
   })
@@ -205,6 +215,18 @@ mongoose.connect(process.env.MONGODB_URI, {
   useUnifiedTopology: true
 }).then(() => {
   logger.info('Connected to MongoDB');
+  // Start recurring billing jobs (monthly invoicing, daily reminders).
+  try {
+    require('./jobs/billing.scheduler').start();
+  } catch (err) {
+    logger.error('Failed to start billing scheduler:', err);
+  }
+  // Start the payment-intent expiry job (Paybill fallback / bank windows).
+  try {
+    require('./jobs/payments.scheduler').start();
+  } catch (err) {
+    logger.error('Failed to start payments scheduler:', err);
+  }
 }).catch(err => {
   logger.error('MongoDB Connection Error:', err);
   process.exit(1);

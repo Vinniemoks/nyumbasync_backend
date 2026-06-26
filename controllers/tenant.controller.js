@@ -8,10 +8,12 @@ exports.getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     
+    // These refs are not present on every user schema version — tolerate
+    // their absence instead of erroring (StrictPopulateError).
     const user = await User.findById(userId)
       .select('-password -verificationCode -codeExpires')
-      .populate('currentPropertyId')
-      .populate('currentLeaseId');
+      .populate({ path: 'currentPropertyId', strictPopulate: false })
+      .populate({ path: 'currentLeaseId', strictPopulate: false });
     
     if (!user) {
       return res.status(404).json({ error: 'Tenant not found' });

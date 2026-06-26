@@ -86,7 +86,8 @@ exports.getNotificationById = async (req, res) => {
  */
 exports.markAsRead = async (req, res) => {
   try {
-    const notification = await Notification.findById(req.params.id);
+    // Route param is :notificationId; accept :id too for robustness.
+    const notification = await Notification.findById(req.params.notificationId || req.params.id);
 
     if (!notification) {
       return res.status(404).json({
@@ -164,7 +165,7 @@ exports.getUnreadCount = async (req, res) => {
  */
 exports.deleteNotification = async (req, res) => {
   try {
-    const notification = await Notification.findByIdAndDelete(req.params.id);
+    const notification = await Notification.findByIdAndDelete(req.params.notificationId || req.params.id);
 
     if (!notification) {
       return res.status(404).json({

@@ -1,5 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { uploadSingle } = require('../../middlewares/upload.middleware');
 const leaseController = require('../../controllers/lease.controller');
 
 module.exports = [
@@ -10,7 +11,22 @@ module.exports = [
     handler: [authenticate(), asyncHandler(leaseController.getAllLeases)],
     config: { source: 'lease.routes' }
   },
-  
+
+  // Literal single-segment GETs MUST precede '/:id' or they're parsed as an id
+  // and 500 on the ObjectId cast.
+  {
+    method: 'GET',
+    path: '/landlord',
+    handler: [authenticate(), asyncHandler(leaseController.getMyLeases)],
+    config: { source: 'lease.routes' }
+  },
+  {
+    method: 'GET',
+    path: '/templates',
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.getLeaseTemplates)],
+    config: { source: 'lease.routes' }
+  },
+
   // Get lease by ID
   {
     method: 'GET',
@@ -23,7 +39,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.createLease)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.createLease)],
     config: { source: 'lease.routes' }
   },
   
@@ -31,7 +47,7 @@ module.exports = [
   {
     method: 'PUT',
     path: '/:id',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.updateLease)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.updateLease)],
     config: { source: 'lease.routes' }
   },
   
@@ -39,7 +55,7 @@ module.exports = [
   {
     method: 'DELETE',
     path: '/:id',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.deleteLease)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.deleteLease)],
     config: { source: 'lease.routes' }
   },
   
@@ -47,7 +63,7 @@ module.exports = [
   {
     method: 'GET',
     path: '/landlord/:landlordId',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.getLeasesByLandlord)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.getLeasesByLandlord)],
     config: { source: 'lease.routes' }
   },
   
@@ -79,7 +95,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/:leaseId/renew',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.renewLease)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.renewLease)],
     config: { source: 'lease.routes' }
   },
   
@@ -87,7 +103,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/:leaseId/terminate',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.terminateLease)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.terminateLease)],
     config: { source: 'lease.routes' }
   },
   
@@ -103,7 +119,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/:leaseId/documents',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.uploadLeaseDocument)],
+    handler: [authenticate(['landlord', 'manager']), ...uploadSingle('file'), asyncHandler(leaseController.uploadLeaseDocument)],
     config: { source: 'lease.routes' }
   },
   
@@ -123,19 +139,11 @@ module.exports = [
     config: { source: 'lease.routes' }
   },
   
-  // Get lease templates
-  {
-    method: 'GET',
-    path: '/templates',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.getLeaseTemplates)],
-    config: { source: 'lease.routes' }
-  },
-  
-  // Generate lease from template
+  // Generate lease from template ('/templates' GET is declared up top, before '/:id')
   {
     method: 'POST',
     path: '/templates/:templateId/generate',
-    handler: [authenticate('landlord', 'manager'), asyncHandler(leaseController.generateLeaseFromTemplate)],
+    handler: [authenticate(['landlord', 'manager']), asyncHandler(leaseController.generateLeaseFromTemplate)],
     config: { source: 'lease.routes' }
   }
 ];

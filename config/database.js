@@ -11,8 +11,14 @@ const config = {
 };
 
 const connectWithRetry = async () => {
-  const connectionString = process.env.MONGODB_URI || 
-    'mongodb+srv://nyachekisuppliers:KWTm8HHLgftzdnE7@nyumbasync.ytts2nv.mongodb.net/?retryWrites=true&w=majority&appName=nyumbasync';
+  // SECURITY: never hardcode credentials here. The connection string must
+  // come from the environment; refuse to start without it rather than
+  // silently connecting to a baked-in cluster.
+  const connectionString = process.env.MONGODB_URI;
+  if (!connectionString) {
+    logger.error('MONGODB_URI is not set. Configure it in .env (see .env.example).');
+    process.exit(1);
+  }
 
   try {
     await mongoose.connect(connectionString, {

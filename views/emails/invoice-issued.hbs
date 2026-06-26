@@ -1,0 +1,45 @@
+<div class="greeting">
+  Hi {{firstName}},
+</div>
+
+<div class="message">
+  <p>A new rent invoice has been generated for {{period}}. The full invoice is attached as a PDF for your records.</p>
+</div>
+
+<div class="info-box">
+  <h3>Invoice {{invoiceNumber}}</h3>
+  {{#each lineItems}}
+  <div class="info-row">
+    <span class="info-label">{{this.description}}</span>
+    <span class="info-value">KES {{this.amount}}</span>
+  </div>
+  {{/each}}
+  <div class="info-row">
+    <span class="info-label"><strong>Total Due</strong></span>
+    <span class="info-value"><strong>KES {{amount}}</strong></span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Due Date</span>
+    <span class="info-value">{{dueDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Property</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+</div>
+
+<div class="message">
+  <p>Please settle this invoice on or before the due date to avoid late fees.</p>
+</div>
+
+<a href="{{paymentUrl}}" class="button">Pay Now</a>
+
+<div class="message">
+  <p><strong>Payment Methods:</strong></p>
+  <ul>
+    <li>M-Pesa: Pay via STK Push in the portal</li>
+    <li>Bank Transfer: Use your unique reference number</li>
+    <li>Cash: Visit our office during business hours</li>
+  </ul>
+  <p>Questions about this invoice? Contact us at <a href="mailto:support@nyumbasync.co.ke">support@nyumbasync.co.ke</a> or call 0700NYUMBA.</p>
+</div>

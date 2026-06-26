@@ -21,7 +21,7 @@ class EmailService {
    * @param {string} options.text - Plain text content (optional)
    * @returns {Promise<boolean>}
    */
-  async sendEmail({ to, subject, html, text }) {
+  async sendEmail({ to, subject, html, text, attachments }) {
     if (!process.env.SENDGRID_API_KEY) {
       logger.warn('Email not sent - SendGrid not configured');
       return false;
@@ -35,6 +35,19 @@ class EmailService {
         text: text || this.stripHtml(html),
         html,
       };
+
+      // Map Nodemailer-style attachments ({ filename, content: Buffer }) to
+      // SendGrid's base64 format so the same call site works on both transports.
+      if (Array.isArray(attachments) && attachments.length) {
+        msg.attachments = attachments.map(a => ({
+          filename: a.filename,
+          content: Buffer.isBuffer(a.content)
+            ? a.content.toString('base64')
+            : Buffer.from(a.content).toString('base64'),
+          type: a.contentType || 'application/pdf',
+          disposition: 'attachment'
+        }));
+      }
 
       await sgMail.send(msg);
       logger.info(`✅ Email sent to ${to}: ${subject}`);

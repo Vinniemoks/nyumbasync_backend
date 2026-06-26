@@ -124,6 +124,65 @@ exports.verifyMFA = async (req, res) => {
 };
 
 /**
+ * Step-up verification: re-confirm the authenticated user's identity with a
+ * TOTP token or backup code. Unlike verifyMFA (which activates MFA), this has
+ * no side effects — it just answers "is this really you, right now?". Used to
+ * gate privileged actions such as switching into an admin role.
+ * @route POST /api/v1/auth/mfa/step-up
+ */
+exports.verifyStepUp = async (req, res) => {
+  try {
+    const { token, backupCode } = req.body;
+
+    if (!token && !backupCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'An MFA token or backup code is required'
+      });
+    }
+
+    const user = await User.findById(req.user.id).select('+mfaSecret +mfaBackupCodes');
+
+    if (!user || !user.mfaEnabled || !user.mfaSecret) {
+      return res.status(400).json({
+        success: false,
+        error: 'MFA is not enabled for this account'
+      });
+    }
+
+    let isValid = false;
+    if (backupCode) {
+      const result = mfaService.verifyBackupCode(backupCode, user.mfaBackupCodes || []);
+      isValid = result.valid;
+      // Consume the used backup code so it can't be replayed.
+      if (isValid) {
+        user.mfaBackupCodes = result.remainingCodes;
+        await user.save();
+      }
+    } else {
+      isValid = mfaService.verifyToken(user.mfaSecret, token);
+    }
+
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid verification code'
+      });
+    }
+
+    console.log(sanitizeLog('Step-up MFA verification succeeded', {
+      userId: user._id,
+      method: backupCode ? 'backup_code' : 'totp'
+    }));
+
+    return res.status(200).json({ success: true, verified: true });
+  } catch (error) {
+    console.error('Step-up MFA error:', error);
+    return res.status(500).json({ success: false, error: 'Step-up verification failed' });
+  }
+};
+
+/**
  * Disable MFA for user
  * @route POST /api/v1/auth/mfa/disable
  */
@@ -267,17 +326,16 @@ exports.verifyMFALogin = async (req, res) => {
       });
     }
 
-    // Generate JWT token (complete login)
+    // Generate JWT token (complete login). Use the shared generator so the
+    // claims (userId, iss, aud) match what the auth middleware verifies —
+    // a manually signed token without them is rejected on the next request.
     const jwt = require('jsonwebtoken');
-    const accessToken = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
-    );
+    const { generateToken } = require('../utils/auth');
+    const accessToken = generateToken({ id: user._id, role: user.role });
 
     const refreshToken = jwt.sign(
       { id: user._id },
-      process.env.JWT_REFRESH_SECRET,
+      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
     );
 

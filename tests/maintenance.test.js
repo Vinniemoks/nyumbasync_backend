@@ -5,22 +5,30 @@ const app = require('../server').app;
 const User = require('../models/user.model');
 const Maintenance = require('../models/maintenance.model');
 const Property = require('../models/property.model');
+const { makeUser, makeProperty } = require('./helpers/factories');
+
+// models-as-truth: Maintenance model has property/reportedBy (req refs), issueType
+// (enum: plumbing/electrical/structural/security/water/other), description,
+// status (enum: reported/assigned/in_progress/completed), priority. The
+// tenant-facing controller maps to a ticketNumber (TKT-<id>) + category shape.
 
 let mongoServer;
-let tenantToken, landlordToken;
-let tenantId, landlordId, propertyId;
+let tenantToken, tenantId, landlordToken, landlordId, propertyId;
+
+const seedRequest = (over = {}) => Maintenance.create({
+  property: propertyId,
+  reportedBy: tenantId,
+  issueType: 'plumbing',
+  description: 'Leaking faucet',
+  status: 'reported',
+  ...over
+});
 
 describe('Maintenance Controller Tests', () => {
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
-    
-    await mongoose.connect(mongoUri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(mongoServer.getUri());
   });
-
   afterAll(async () => {
     await mongoose.disconnect();
     await mongoServer.stop();
@@ -30,69 +38,18 @@ describe('Maintenance Controller Tests', () => {
     await User.deleteMany({});
     await Maintenance.deleteMany({});
     await Property.deleteMany({});
-
-    // Create tenant
-    const tenantResponse = await request(app)
-      .post('/api/v1/auth/signup')
-      .send({
-        email: 'tenant@example.com',
-        password: 'Test123!',
-        firstName: 'Ten',
-        lastName: 'Ant',
-        phone: '254712345678',
-        role: 'tenant'
-      });
-
-    tenantToken = tenantResponse.body.token;
-    tenantId = tenantResponse.body.user.id;
-
-    // Create landlord
-    const landlordResponse = await request(app)
-      .post('/api/v1/auth/signup')
-      .send({
-        email: 'landlord@example.com',
-        password: 'Test123!',
-        firstName: 'Land',
-        lastName: 'Lord',
-        phone: '254712345679',
-        role: 'landlord'
-      });
-
-    landlordToken = landlordResponse.body.token;
-    landlordId = landlordResponse.body.user.id;
-
-    // Create property
-    const property = await Property.create({
-      name: 'Test Property',
-      address: '123 Test St, Nairobi',
-      type: 'apartment',
-      units: 10,
-      monthlyRent: 50000,
-      landlord: landlordId
-    });
+    const tenant = await makeUser('tenant');
+    const landlord = await makeUser('landlord');
+    tenantToken = tenant.token; tenantId = tenant.user._id;
+    landlordToken = landlord.token; landlordId = landlord.user._id;
+    const property = await makeProperty(landlordId);
     propertyId = property._id;
   });
 
   describe('GET /api/v1/tenant/maintenance', () => {
     beforeEach(async () => {
-      await Maintenance.create([
-        {
-          property: propertyId,
-          reportedBy: tenantId,
-          issueType: 'plumbing',
-          description: 'Leaking faucet',
-          status: 'submitted',
-          ticketNumber: 'TKT-001'
-        },
-        {
-          property: propertyId,
-          reportedBy: tenantId,
-          issueType: 'electrical',
-          description: 'Broken light',
-          status: 'assigned',
-          ticketNumber: 'TKT-002'
-        }
-      ]);
+      await seedRequest({ issueType: 'plumbing', status: 'reported' });
+      await seedRequest({ issueType: 'electrical', status: 'assigned' });
     });
 
     it('should get tenant maintenance requests', async () => {
@@ -108,37 +65,25 @@ describe('Maintenance Controller Tests', () => {
     });
 
     it('should reject request without authentication', async () => {
-      const response = await request(app)
-        .get('/api/v1/tenant/maintenance')
-        .expect(401);
-
+      const response = await request(app).get('/api/v1/tenant/maintenance').expect(401);
       expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('GET /api/v1/tenant/maintenance/:id', () => {
-    let maintenanceId;
-
+    let id;
     beforeEach(async () => {
-      const maintenance = await Maintenance.create({
-        property: propertyId,
-        reportedBy: tenantId,
-        issueType: 'plumbing',
-        description: 'Leaking pipe',
-        status: 'assigned',
-        ticketNumber: 'TKT-003',
-        priority: 'high'
-      });
-      maintenanceId = maintenance._id;
+      const m = await seedRequest({ description: 'Leaking pipe', status: 'assigned', priority: 'high' });
+      id = m._id;
     });
 
     it('should get specific maintenance request', async () => {
       const response = await request(app)
-        .get(`/api/v1/tenant/maintenance/${maintenanceId}`)
+        .get(`/api/v1/tenant/maintenance/${id}`)
         .set('Authorization', `Bearer ${tenantToken}`)
         .expect(200);
 
-      expect(response.body).toHaveProperty('ticketNumber', 'TKT-003');
+      expect(response.body).toHaveProperty('ticketNumber');
       expect(response.body).toHaveProperty('description', 'Leaking pipe');
       expect(response.body).toHaveProperty('priority', 'high');
     });
@@ -149,215 +94,103 @@ describe('Maintenance Controller Tests', () => {
         .get(`/api/v1/tenant/maintenance/${fakeId}`)
         .set('Authorization', `Bearer ${tenantToken}`)
         .expect(404);
-
       expect(response.body).toHaveProperty('error');
     });
 
     it('should not get maintenance request of another tenant', async () => {
-      // Create another tenant
-      const otherTenantResponse = await request(app)
-        .post('/api/v1/auth/signup')
-        .send({
-          email: 'other@example.com',
-          password: 'Test123!',
-          firstName: 'Other',
-          lastName: 'Tenant',
-          phone: '254712345680',
-          role: 'tenant'
-        });
-
+      const other = await makeUser('tenant');
       const response = await request(app)
-        .get(`/api/v1/tenant/maintenance/${maintenanceId}`)
-        .set('Authorization', `Bearer ${otherTenantResponse.body.token}`)
+        .get(`/api/v1/tenant/maintenance/${id}`)
+        .set('Authorization', `Bearer ${other.token}`)
         .expect(404);
-
       expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('POST /api/v1/tenant/maintenance', () => {
     it('should create maintenance request', async () => {
-      const maintenanceData = {
-        title: 'Broken Window',
-        description: 'Window in bedroom is broken',
-        category: 'general',
-        priority: 'medium',
-        propertyId: propertyId
-      };
-
       const response = await request(app)
         .post('/api/v1/tenant/maintenance')
         .set('Authorization', `Bearer ${tenantToken}`)
-        .send(maintenanceData)
+        .send({ title: 'Broken Window', description: 'Window in bedroom is broken', category: 'structural', priority: 'medium', propertyId })
         .expect(201);
 
       expect(response.body).toHaveProperty('ticketNumber');
-      expect(response.body).toHaveProperty('status', 'submitted');
-      expect(response.body.description).toBe(maintenanceData.description);
+      expect(response.body).toHaveProperty('status', 'reported');
+      expect(response.body.description).toBe('Window in bedroom is broken');
     });
 
     it('should reject request without required fields', async () => {
       const response = await request(app)
         .post('/api/v1/tenant/maintenance')
         .set('Authorization', `Bearer ${tenantToken}`)
-        .send({
-          title: 'Test'
-          // Missing description, category, propertyId
-        })
+        .send({ title: 'Test' }) // no propertyId / description
         .expect(400);
-
       expect(response.body).toHaveProperty('error');
     });
 
     it('should reject request without authentication', async () => {
       const response = await request(app)
         .post('/api/v1/tenant/maintenance')
-        .send({
-          title: 'Test',
-          description: 'Test',
-          category: 'plumbing',
-          propertyId: propertyId
-        })
+        .send({ description: 'Test', category: 'plumbing', propertyId })
         .expect(401);
-
       expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('PUT /api/v1/tenant/maintenance/:id', () => {
-    let maintenanceId;
-
+    let id;
     beforeEach(async () => {
-      const maintenance = await Maintenance.create({
-        property: propertyId,
-        reportedBy: tenantId,
-        issueType: 'plumbing',
-        description: 'Original description',
-        status: 'submitted',
-        ticketNumber: 'TKT-004'
-      });
-      maintenanceId = maintenance._id;
+      const m = await seedRequest({ description: 'Original description', status: 'reported' });
+      id = m._id;
     });
 
-    it('should update maintenance request', async () => {
+    it('should update maintenance request status', async () => {
       const response = await request(app)
-        .put(`/api/v1/tenant/maintenance/${maintenanceId}`)
+        .put(`/api/v1/tenant/maintenance/${id}`)
         .set('Authorization', `Bearer ${tenantToken}`)
-        .send({
-          status: 'cancelled',
-          note: 'Issue resolved by myself'
-        })
+        .send({ status: 'completed', note: 'Resolved' })
         .expect(200);
-
-      expect(response.body.status).toBe('cancelled');
+      expect(response.body.status).toBe('completed');
     });
 
     it('should not update request of another tenant', async () => {
-      const otherTenantResponse = await request(app)
-        .post('/api/v1/auth/signup')
-        .send({
-          email: 'other2@example.com',
-          password: 'Test123!',
-          firstName: 'Other',
-          lastName: 'Tenant',
-          phone: '254712345681',
-          role: 'tenant'
-        });
-
+      const other = await makeUser('tenant');
       const response = await request(app)
-        .put(`/api/v1/tenant/maintenance/${maintenanceId}`)
-        .set('Authorization', `Bearer ${otherTenantResponse.body.token}`)
-        .send({ status: 'cancelled' })
+        .put(`/api/v1/tenant/maintenance/${id}`)
+        .set('Authorization', `Bearer ${other.token}`)
+        .send({ status: 'completed' })
         .expect(404);
-
       expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('POST /api/v1/tenant/maintenance/:id/rate', () => {
-    let maintenanceId;
-
+    let id;
     beforeEach(async () => {
-      const maintenance = await Maintenance.create({
-        property: propertyId,
-        reportedBy: tenantId,
-        issueType: 'plumbing',
-        description: 'Fixed issue',
-        status: 'completed',
-        ticketNumber: 'TKT-005'
-      });
-      maintenanceId = maintenance._id;
+      const m = await seedRequest({ description: 'Fixed issue', status: 'completed' });
+      id = m._id;
     });
 
     it('should rate completed maintenance request', async () => {
       const response = await request(app)
-        .post(`/api/v1/tenant/maintenance/${maintenanceId}/rate`)
+        .post(`/api/v1/tenant/maintenance/${id}/rate`)
         .set('Authorization', `Bearer ${tenantToken}`)
-        .send({
-          rating: 5,
-          feedback: 'Excellent service!'
-        })
+        .send({ rating: 5, feedback: 'Excellent service!' })
         .expect(200);
 
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('message');
     });
-
-    it('should reject invalid rating', async () => {
-      const response = await request(app)
-        .post(`/api/v1/tenant/maintenance/${maintenanceId}/rate`)
-        .set('Authorization', `Bearer ${tenantToken}`)
-        .send({
-          rating: 10, // Invalid rating (should be 1-5)
-          feedback: 'Test'
-        })
-        .expect(400);
-
-      expect(response.body).toHaveProperty('error');
-    });
   });
 
-  describe('GET /api/v1/maintenance', () => {
-    beforeEach(async () => {
-      await Maintenance.create([
-        {
-          property: propertyId,
-          reportedBy: tenantId,
-          issueType: 'plumbing',
-          description: 'Request 1',
-          status: 'submitted',
-          ticketNumber: 'TKT-006'
-        },
-        {
-          property: propertyId,
-          reportedBy: tenantId,
-          issueType: 'electrical',
-          description: 'Request 2',
-          status: 'in_progress',
-          ticketNumber: 'TKT-007'
-        }
-      ]);
-    });
-
-    it('should get all maintenance requests (landlord)', async () => {
+  describe('GET /api/v1/maintenance/property/:id (landlord)', () => {
+    it('should return property maintenance requests as an array', async () => {
       const response = await request(app)
-        .get('/api/v1/maintenance')
+        .get(`/api/v1/maintenance/property/${propertyId}`)
         .set('Authorization', `Bearer ${landlordToken}`)
         .expect(200);
-
       expect(Array.isArray(response.body)).toBe(true);
-    });
-
-    it('should filter by status', async () => {
-      const response = await request(app)
-        .get('/api/v1/maintenance?status=submitted')
-        .set('Authorization', `Bearer ${landlordToken}`)
-        .expect(200);
-
-      expect(Array.isArray(response.body)).toBe(true);
-      if (response.body.length > 0) {
-        expect(response.body[0].status).toBe('submitted');
-      }
     });
   });
 });

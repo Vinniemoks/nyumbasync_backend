@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const videoCallController = require('../../controllers/videoCall.controller');
-const { authenticateToken } = require('../../middleware/auth.middleware');
+const { authenticateToken } = require('../../middlewares/auth.middleware');
 
 // All routes require authentication
 router.use(authenticateToken);

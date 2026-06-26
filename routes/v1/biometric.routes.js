@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const biometricController = require('../../controllers/biometric.controller');
-const { authenticateToken } = require('../../middleware/auth.middleware');
+const { authenticateToken } = require('../../middlewares/auth.middleware');
 
 // Registration endpoints (require authentication)
 router.post('/register/challenge', authenticateToken, biometricController.registerChallenge);

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const reportsService = require('../../services/reportsService');
-const { authenticate } = require('../../middleware/auth');
+const { authenticate } = require('../../middlewares/auth.middleware');
 
 /**
  * @route   GET /api/v1/reports/available

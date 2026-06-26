@@ -109,14 +109,17 @@ const createDefaultTemplate = (data) => {
   `;
 };
 
-// Send email function — prefers SendGrid when configured, falls back to Nodemailer
-const sendEmail = async (to, subject, template, data) => {
+// Send email function — prefers SendGrid when configured, falls back to Nodemailer.
+// `options.attachments` accepts Nodemailer-style attachments
+// (e.g. [{ filename, content }]) and is forwarded to both transports.
+const sendEmail = async (to, subject, template, data, options = {}) => {
   try {
     const html = loadTemplate(template, data);
+    const { attachments } = options;
 
     // Prefer SendGrid when API key is available
     if (process.env.SENDGRID_API_KEY) {
-      return sgEmailService.sendEmail({ to, subject, html });
+      return sgEmailService.sendEmail({ to, subject, html, attachments });
     }
 
     // Fall back to Nodemailer/SMTP
@@ -131,7 +134,8 @@ const sendEmail = async (to, subject, template, data) => {
       from: process.env.EMAIL_FROM || 'NyumbaSync <noreply@nyumbasync.co.ke>',
       to,
       subject,
-      html
+      html,
+      ...(attachments && attachments.length ? { attachments } : {})
     };
 
     const info = await transporter.sendMail(mailOptions);

@@ -25,20 +25,22 @@ global.integrationUtils = {
   // Create property with landlord
   createPropertyWithLandlord: async (app, request, landlordToken) => {
     const propertyData = {
-      name: 'Integration Test Property',
-      address: '123 Integration St, Nairobi',
+      title: 'Integration Test Property',
+      description: 'A comfortable test apartment located in the Riverside area of Nairobi, Kenya.',
       type: 'apartment',
-      units: 10,
-      monthlyRent: 50000,
       bedrooms: 2,
-      bathrooms: 2
+      bathrooms: 2,
+      address: { street: '123 Integration St', area: 'Riverside', city: 'Nairobi', county: 'Nairobi', coordinates: { type: 'Point', coordinates: [36.8172, -1.2864] } },
+      rent: { amount: 50000 },
+      deposit: 50000,
+      subcounty: 'Westlands'
     };
-    
+
     const response = await request(app)
       .post('/api/v1/properties')
       .set('Authorization', `Bearer ${landlordToken}`)
       .send(propertyData);
-    
+
     return response.body;
   },
   

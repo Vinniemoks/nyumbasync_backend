@@ -9,17 +9,18 @@ describe('Rent Payment Processing', () => {
     expect(calculateLateFees(10000, 5).amount).toBe(0); // No fee for 5 days late
   });
 
-  test('rejects payments under KES 100', async () => {
-    const mockReq = { 
+  test('rejects ad-hoc payments under KES 100', async () => {
+    const mockReq = {
       body: { phone: '254712345678', amount: 50, propertyId: '123' },
       user: { id: 'tenant123' }
     };
     const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-    
+
     await payRent(mockReq, mockRes);
-    
+
+    expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(mockRes.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: 'Amount must be whole KES ≥100' })
+      expect.objectContaining({ error: 'Amount must be a whole number of at least KES 100' })
     );
   });
 });

@@ -53,6 +53,12 @@ router.use('/landlord', landlordRoutes);
 const API_VERSION = process.env.API_VERSION || 'v1';
 router.use(`/${API_VERSION}`, v1Routes);
 
+// Unversioned alias: the documented contract (BACKEND_API_REFERENCE.md) and
+// all frontend clients address resources directly under /api (e.g.
+// /api/auth/login). Mount the current version at the root as well, after the
+// core routes above so they keep precedence.
+router.use('/', v1Routes);
+
 // Redirect root to current version
 router.get('/', (req, res) => {
   res.redirect(`/${API_VERSION}`);

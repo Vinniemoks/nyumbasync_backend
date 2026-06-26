@@ -62,9 +62,13 @@ describe('Integration: Property-Tenant Relationship', () => {
         tenantId: tenant.userId,
         propertyId: property._id,
         startDate: '2024-01-01',
-        endDate: '2025-01-01',
-        monthlyRent: 50000,
-        securityDeposit: 50000
+        terms: {
+          durationMonths: 12,
+          rentAmount: 50000,
+          depositAmount: 50000,
+          rentDueDate: 5,
+          terminationNotice: 2
+        }
       })
       .expect(201);
 

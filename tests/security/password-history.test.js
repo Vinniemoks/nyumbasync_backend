@@ -5,17 +5,21 @@
 
 const request = require('supertest');
 const { expect } = require('chai');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const User = require('../../models/user.model');
 const passwordHistoryService = require('../../services/password-history.service');
 const bcrypt = require('bcryptjs');
 
 describe('Password History Security Tests', () => {
-  let app;
+  const app = require('../../server').app;
+  let mongoServer;
   let testUser;
   let authToken;
 
   before(async () => {
-    app = require('../../server');
+    mongoServer = await MongoMemoryServer.create();
+    await mongoose.connect(mongoServer.getUri());
 
     // Create test user
     testUser = await User.create({
@@ -40,6 +44,8 @@ describe('Password History Security Tests', () => {
 
   after(async () => {
     await User.deleteOne({ email: 'password@test.com' });
+    await mongoose.disconnect();
+    await mongoServer.stop();
   });
 
   describe('Password Change with History', () => {

@@ -44,3 +44,5 @@ const VendorSchema = new mongoose.Schema({
   kraCertified: Boolean,
   businessPermit: String
 });
+
+module.exports = mongoose.model('Vendor', VendorSchema);

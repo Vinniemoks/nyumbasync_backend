@@ -9,6 +9,7 @@ const { Contact } = require('../models');
 const emailService = require('./email.service');
 const smsService = require('./sms.service');
 const logger = require('../utils/logger');
+const { sendToUser } = require('../websocket/server');
 
 class NotificationService {
   /**
@@ -73,6 +74,24 @@ class NotificationService {
 
       // Mark as sent
       await notification.markAsSent();
+
+      // Real-time WebSocket broadcast to recipient
+      try {
+        sendToUser(recipientId, 'notification', {
+          id: notification._id,
+          type,
+          priority,
+          title,
+          message: notification.message,
+          data: notificationData,
+          actionUrl,
+          actionLabel,
+          category,
+          createdAt: notification.createdAt
+        });
+      } catch (wsErr) {
+        logger.error(`WS_NOTIFICATION_BROADCAST_FAILURE: ${wsErr.message}`);
+      }
 
       logger.info(`Notification sent to ${recipient.email}: ${type}`);
 

@@ -266,19 +266,23 @@ LeaseSchema.virtual('daysUntilExpiry').get(function() {
   return null;
 });
 
-// Pre-save middleware to calculate end date if not provided
-LeaseSchema.pre('save', function(next) {
-  if (this.startDate && this.terms.durationMonths && !this.endDate) {
+// Derive endDate and landlord BEFORE validation — these were on pre('save'),
+// but Mongoose validates before save hooks run, so the required endDate/landlord
+// were never populated in time and every Lease.create failed validation.
+LeaseSchema.pre('validate', function(next) {
+  if (this.startDate && this.terms && this.terms.durationMonths && !this.endDate) {
     this.endDate = new Date(this.startDate);
     this.endDate.setMonth(this.endDate.getMonth() + this.terms.durationMonths);
   }
   
-  // Auto-set landlord from property if not provided
+  // Auto-set landlord from property if not provided. The Property owner field
+  // is `landlord` (there is no `owner` path), so the previous populate('owner')
+  // never resolved one and the required landlord stayed empty → save failed.
   if (this.property && !this.landlord && this.isNew) {
-    mongoose.model('Property').findById(this.property).populate('owner')
+    mongoose.model('Property').findById(this.property)
       .then(property => {
-        if (property && property.owner) {
-          this.landlord = property.owner._id;
+        if (property && property.landlord) {
+          this.landlord = property.landlord;
         }
         next();
       })

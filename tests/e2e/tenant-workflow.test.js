@@ -53,12 +53,12 @@ describe('E2E: Tenant Workflow', () => {
       tenant.token
     );
 
-    // 4. Tenant browses properties
+    // 4. Tenant browses properties (the list endpoint returns { properties })
     const propertiesResponse = await request(app)
       .get('/api/v1/properties/available')
       .expect(200);
-    
-    expect(propertiesResponse.body.length).toBeGreaterThan(0);
+
+    expect(propertiesResponse.body.properties.length).toBeGreaterThan(0);
 
     // 5. Tenant submits maintenance request
     const maintenance = await e2eUtils.maintenanceResolutionFlow(
@@ -69,7 +69,7 @@ describe('E2E: Tenant Workflow', () => {
     );
 
     expect(maintenance.ticketNumber).toBeDefined();
-    expect(maintenance.status).toBe('submitted');
+    expect(maintenance.status).toBe('reported');
 
     // 6. Tenant checks request status
     const statusResponse = await request(app)
@@ -77,7 +77,7 @@ describe('E2E: Tenant Workflow', () => {
       .set('Authorization', `Bearer ${tenant.token}`)
       .expect(200);
 
-    expect(statusResponse.body.ticketNumber).toBe(maintenance.ticketNumber);
+    expect(statusResponse.body.id).toBe(maintenance.id);
   });
 
   it('should complete tenant move-out workflow', async () => {
@@ -92,16 +92,10 @@ describe('E2E: Tenant Workflow', () => {
       tenant.token
     );
 
-    // Create lease
-    const Lease = require('../../models/lease.model');
-    const lease = await Lease.create({
-      tenant: tenant.user.id,
-      property: property._id,
-      startDate: new Date('2024-01-01'),
-      endDate: new Date('2025-01-01'),
-      monthlyRent: 45000,
-      securityDeposit: 45000,
-      status: 'active'
+    // Create lease (real schema: terms.{durationMonths,rentAmount,depositAmount})
+    const { makeLease } = require('../helpers/factories');
+    const lease = await makeLease(tenant.user.id, property._id, landlord.user.id, {
+      terms: { durationMonths: 12, rentAmount: 45000, depositAmount: 45000, rentDueDate: 5 }
     });
 
     // 1. Submit move-out request
@@ -138,7 +132,7 @@ describe('E2E: Tenant Workflow', () => {
 
     // 3. Check refund status
     const statusResponse = await request(app)
-      .get(`/api/v1/tenant/deposit/status/${refundResponse.body.refundRequest.id}`)
+      .get(`/api/v1/tenant/deposit/status/${refundResponse.body.refundRequest._id}`)
       .set('Authorization', `Bearer ${tenant.token}`)
       .expect(200);
 

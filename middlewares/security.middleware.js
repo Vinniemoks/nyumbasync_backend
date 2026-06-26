@@ -163,19 +163,26 @@ const detectSuspiciousActivity = (req, res, next) => {
  */
 const requestTiming = (req, res, next) => {
   req.startTime = Date.now();
-  
+
+  // Set the timing header just before headers are flushed — setting it in
+  // the 'finish' event is too late (headers already sent) and crashes.
+  const originalWriteHead = res.writeHead;
+  res.writeHead = function writeHeadWithTiming(...args) {
+    if (!res.headersSent) {
+      res.setHeader('X-Response-Time', `${Date.now() - req.startTime}ms`);
+    }
+    return originalWriteHead.apply(this, args);
+  };
+
   res.on('finish', () => {
     const duration = Date.now() - req.startTime;
-    
+
     // Log slow requests
     if (duration > 1000) {
       logger.warn(`Slow request detected: ${req.method} ${req.url} took ${duration}ms`);
     }
-    
-    // Add timing header
-    res.setHeader('X-Response-Time', `${duration}ms`);
   });
-  
+
   next();
 };
 

@@ -215,13 +215,16 @@ const clearAll = async () => {
   }
 };
 
-// Initialize Redis on module load
-initializeRedis().catch(err => {
-  logger.warn('Failed to initialize Redis:', err.message);
-});
+// Initialize Redis on module load. The in-memory fallback is already active, so
+// a failure here is non-fatal — swallow it without logging so a stray async
+// rejection (or a partially-mocked logger under test) can never crash the
+// process. initializeRedis logs its own outcome internally.
+initializeRedis().catch(() => { /* in-memory fallback in use */ });
 
-// Periodic cleanup of in-memory tokens (every 5 minutes)
-setInterval(cleanupExpiredTokens, 5 * 60 * 1000);
+// Periodic cleanup of in-memory tokens (every 5 minutes). unref() so this timer
+// never keeps the process (or the Jest runner) alive.
+const cleanupTimer = setInterval(cleanupExpiredTokens, 5 * 60 * 1000);
+if (cleanupTimer.unref) cleanupTimer.unref();
 
 module.exports = {
   blacklistToken,

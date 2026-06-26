@@ -5,15 +5,19 @@
 
 const request = require('supertest');
 const { expect } = require('chai');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const User = require('../../models/user.model');
 const accountLockoutService = require('../../services/account-lockout.service');
 
 describe('Account Lockout Security Tests', () => {
-  let app;
+  const app = require('../../server').app;
+  let mongoServer;
   let testUser;
 
   before(async () => {
-    app = require('../../server');
+    mongoServer = await MongoMemoryServer.create();
+    await mongoose.connect(mongoServer.getUri());
 
     // Create test user
     testUser = await User.create({
@@ -28,6 +32,8 @@ describe('Account Lockout Security Tests', () => {
 
   after(async () => {
     await User.deleteOne({ email: 'lockout@test.com' });
+    await mongoose.disconnect();
+    await mongoServer.stop();
   });
 
   afterEach(async () => {

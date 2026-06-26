@@ -58,3 +58,5 @@ MaintenanceSchema.index({
   status: 1,
   priority: 1
 });
+
+module.exports = mongoose.model('Maintenance', MaintenanceSchema);

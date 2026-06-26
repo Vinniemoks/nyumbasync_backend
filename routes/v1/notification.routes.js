@@ -7,7 +7,7 @@ module.exports = [
   {
     method: 'GET',
     path: '/',
-    handler: [authenticate(), asyncHandler(notificationController.getAllNotifications)],
+    handler: [authenticate(), asyncHandler(notificationController.getNotifications)],
     config: { source: 'notification.routes' }
   },
   
@@ -95,7 +95,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/send',
-    handler: [authenticate('admin', 'manager'), asyncHandler(notificationController.sendNotification)],
+    handler: [authenticate(['admin', 'manager']), asyncHandler(notificationController.sendNotification)],
     config: { source: 'notification.routes' }
   }
 ];

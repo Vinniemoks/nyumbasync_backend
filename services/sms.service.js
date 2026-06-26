@@ -69,6 +69,32 @@ const sendSMS = async (to, message) => {
   }
 };
 
+// Send a WhatsApp message via Twilio (uses the same client, `whatsapp:` prefixes).
+const sendWhatsApp = async (to, message) => {
+  try {
+    if (!twilioClient) {
+      twilioClient = initializeTwilio();
+    }
+    const from = process.env.TWILIO_WHATSAPP_FROM;
+    if (!twilioClient || !from) {
+      logger.warn('WhatsApp not configured, skipping send');
+      return { success: false, message: 'WhatsApp not configured' };
+    }
+
+    const result = await twilioClient.messages.create({
+      body: message,
+      from: `whatsapp:${from.replace(/^whatsapp:/, '')}`,
+      to: `whatsapp:${formatPhoneNumber(to)}`
+    });
+
+    logger.info(`WhatsApp sent successfully to ${to}: ${result.sid}`);
+    return { success: true, sid: result.sid };
+  } catch (error) {
+    logger.error(`Error sending WhatsApp to ${to}:`, error);
+    throw error;
+  }
+};
+
 // Specific SMS functions
 const sendWelcomeSMS = async (user) => {
   const message = `Welcome to NyumbaSync, ${user.firstName}! Your account has been created successfully. Visit https://nyumbasync.co.ke to get started.`;
@@ -114,6 +140,7 @@ const sendMoveOutConfirmationSMS = async (user, moveOutRequest) => {
 
 module.exports = {
   sendSMS,
+  sendWhatsApp,
   sendWelcomeSMS,
   sendVerificationCodeSMS,
   sendPasswordResetSMS,

@@ -46,7 +46,7 @@ class MpesaService {
       PartyA: phone,
       PartyB: process.env.MPESA_SHORTCODE,
       PhoneNumber: phone,
-      CallBackURL: `${process.env.BASE_URL}/api/v1/mpesa-callback`,
+      CallBackURL: this._callbackUrl(),
       AccountReference: reference,
       TransactionDesc: 'NyumbaSync Rent Payment'
     };
@@ -79,10 +79,86 @@ class MpesaService {
     }
   }
 
+  // Register the C2B Validation + Confirmation URLs for the Paybill. One-time
+  // (admin) action. ResponseType 'Cancelled' tells Safaricom to auto-cancel a
+  // payment if our Validation URL is unreachable, rather than complete it.
+  async registerC2BUrls() {
+    const token = await this._getAuthToken();
+    const payload = {
+      ShortCode: process.env.MPESA_C2B_SHORTCODE || process.env.MPESA_SHORTCODE,
+      ResponseType: 'Cancelled',
+      ConfirmationURL: process.env.MPESA_CONFIRMATION_URL,
+      ValidationURL: process.env.MPESA_VALIDATION_URL
+    };
+    const response = await axios.post(
+      `${this._getBaseUrl()}/mpesa/c2b/v1/registerurl`,
+      payload,
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 8000 }
+    );
+    return response.data;
+  }
+
+  // Reverse a completed C2B transaction (e.g. a payment that arrived after the
+  // account number expired). Requires the reversal initiator credentials.
+  async reverseTransaction({ transactionId, amount, receiverShortcode, remarks }) {
+    const token = await this._getAuthToken();
+    const shortcode = receiverShortcode || process.env.MPESA_C2B_SHORTCODE || process.env.MPESA_SHORTCODE;
+    const payload = {
+      Initiator: process.env.MPESA_INITIATOR_NAME,
+      SecurityCredential: process.env.MPESA_SECURITY_CREDENTIAL,
+      CommandID: 'TransactionReversal',
+      TransactionID: transactionId,
+      Amount: amount,
+      ReceiverParty: shortcode,
+      RecieverIdentifierType: '11', // organization shortcode
+      ResultURL: process.env.MPESA_REVERSAL_RESULT_URL || this._callbackUrl(),
+      QueueTimeOutURL: process.env.MPESA_REVERSAL_TIMEOUT_URL || this._callbackUrl(),
+      Remarks: (remarks || 'Expired rent payment auto-reversal').slice(0, 100),
+      Occasion: 'AutoReversal'
+    };
+    const response = await axios.post(
+      `${this._getBaseUrl()}/mpesa/reversal/v1/request`,
+      payload,
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 8000 }
+    );
+    return response.data;
+  }
+
+  // Whether reversal credentials are provisioned (needed to auto-refund late pays).
+  isReversalConfigured() {
+    return Boolean(process.env.MPESA_INITIATOR_NAME && process.env.MPESA_SECURITY_CREDENTIAL);
+  }
+
+  // True only when explicitly pointed at Safaricom production. Defaults to
+  // sandbox so a misconfigured env can never accidentally charge real money.
+  _isLive() {
+    return ['production', 'live', 'prod'].includes((process.env.MPESA_ENV || '').toLowerCase());
+  }
+
   _getBaseUrl() {
-    return process.env.NODE_ENV === 'production' 
-      ? 'https://api.safaricom.co.ke' 
+    return this._isLive()
+      ? 'https://api.safaricom.co.ke'
       : 'https://sandbox.safaricom.co.ke';
+  }
+
+  // Resolve the STK callback URL. Prefer the explicit MPESA_CALLBACK_URL env
+  // (what Daraja is registered with); fall back to BASE_URL + the mounted
+  // callback route.
+  _callbackUrl() {
+    if (process.env.MPESA_CALLBACK_URL) return process.env.MPESA_CALLBACK_URL;
+    const base = process.env.BASE_URL || process.env.API_BASE_URL || '';
+    return `${base.replace(/\/$/, '')}/api/v1/payments/mpesa-callback`;
+  }
+
+  // Whether the minimum Daraja credentials are present. Lets callers fail fast
+  // with a clear message instead of a generic auth error.
+  isConfigured() {
+    return Boolean(
+      process.env.MPESA_CONSUMER_KEY &&
+      process.env.MPESA_CONSUMER_SECRET &&
+      process.env.MPESA_SHORTCODE &&
+      process.env.MPESA_PASSKEY
+    );
   }
 
   _generatePassword(timestamp) {

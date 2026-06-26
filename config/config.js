@@ -54,6 +54,18 @@ module.exports = {
       initiator: process.env.B2C_INITIATOR,
       securityCredential: process.env.B2C_SECURITY_CREDENTIAL,
       shortcode: process.env.B2C_SHORTCODE
+    },
+    // C2B Paybill fallback (used when STK push fails)
+    c2b: {
+      shortcode: process.env.MPESA_C2B_SHORTCODE || process.env.MPESA_SHORTCODE,
+      validationUrl: process.env.MPESA_VALIDATION_URL,
+      confirmationUrl: process.env.MPESA_CONFIRMATION_URL,
+      ttlMinutes: parseInt(process.env.MPESA_C2B_TTL_MINUTES, 10) || 10
+    },
+    // Reversal initiator (auto-refunds payments made after the account expires)
+    reversal: {
+      initiatorName: process.env.MPESA_INITIATOR_NAME,
+      securityCredential: process.env.MPESA_SECURITY_CREDENTIAL
     }
   },
 

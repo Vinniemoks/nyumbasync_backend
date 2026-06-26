@@ -9,6 +9,11 @@ process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-for-testing-only';
 // Increase timeout for database operations
 jest.setTimeout(10000);
 
+// Some legacy suites are written Mocha-style (before/after hooks). Jest only
+// defines beforeAll/afterAll — alias them so those suites run under Jest.
+global.before = global.beforeAll;
+global.after = global.afterAll;
+
 // Mock console methods to reduce noise in tests
 global.console = {
   ...console,

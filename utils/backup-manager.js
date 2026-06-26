@@ -1,19 +1,31 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs').promises;
-const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const { logAdminActivity } = require('./logger');
 const mongoose = require('mongoose');
 
+// aws-sdk is optional: S3 upload of backups only works when the SDK is
+// installed and AWS credentials are configured. Without it, backups are
+// still written to the local backups/ directory.
+let AWS = null;
+try {
+  AWS = require('aws-sdk');
+} catch {
+  AWS = null;
+}
+
 class BackupManager {
   constructor() {
     this.backupDir = path.join(process.cwd(), 'backups');
-    this.s3 = new AWS.S3({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      region: process.env.AWS_REGION
-    });
+    this.s3 = null;
+    if (AWS && process.env.AWS_ACCESS_KEY_ID) {
+      this.s3 = new AWS.S3({
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        region: process.env.AWS_REGION
+      });
+    }
     this.bucketName = process.env.AWS_BACKUP_BUCKET;
     this.init();
   }

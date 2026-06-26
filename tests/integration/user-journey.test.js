@@ -84,7 +84,7 @@ describe('Integration: Complete User Journey', () => {
         .get('/api/v1/properties/available')
         .expect(200);
 
-      expect(Array.isArray(propertiesResponse.body)).toBe(true);
+      expect(Array.isArray(propertiesResponse.body.properties)).toBe(true);
 
       // Step 5: Tenant submits maintenance request
       const maintenanceResponse = await request(app)
@@ -108,7 +108,7 @@ describe('Integration: Complete User Journey', () => {
         .set('Authorization', `Bearer ${tenantToken}`)
         .expect(200);
 
-      expect(maintenanceStatusResponse.body.status).toBe('submitted');
+      expect(maintenanceStatusResponse.body.status).toBe('reported');
 
       // Step 7: Tenant views all their maintenance requests
       const allMaintenanceResponse = await request(app)
@@ -124,7 +124,7 @@ describe('Integration: Complete User Journey', () => {
         .set('Authorization', `Bearer ${tenantToken}`)
         .expect(200);
 
-      expect(Array.isArray(notificationsResponse.body)).toBe(true);
+      expect(Array.isArray(notificationsResponse.body.data)).toBe(true);
 
       // Step 9: Tenant changes password
       const passwordChangeResponse = await request(app)
@@ -176,47 +176,45 @@ describe('Integration: Complete User Journey', () => {
         .post('/api/v1/properties')
         .set('Authorization', `Bearer ${landlord.token}`)
         .send({
-          name: 'Landlord Property',
-          address: '456 Landlord St, Nairobi',
+          title: 'Landlord Property',
+          description: 'A spacious property in the Riverside area of Nairobi, Kenya, for the journey test.',
           type: 'apartment',
-          units: 15,
-          monthlyRent: 60000,
           bedrooms: 3,
-          bathrooms: 2
+          bathrooms: 2,
+          address: { street: '456 Landlord St', area: 'Riverside', city: 'Nairobi', county: 'Nairobi', coordinates: { type: 'Point', coordinates: [36.8172, -1.2864] } },
+          rent: { amount: 60000 },
+          deposit: 60000,
+          subcounty: 'Westlands'
         })
         .expect(201);
 
       const propertyId = propertyResponse.body._id;
 
-      // Step 3: Landlord views their properties
+      // Step 3: Landlord views their properties (list returns { properties })
       const propertiesResponse = await request(app)
         .get('/api/v1/properties/landlord')
         .set('Authorization', `Bearer ${landlord.token}`)
         .expect(200);
 
-      expect(propertiesResponse.body.length).toBe(1);
+      expect(propertiesResponse.body.properties.length).toBe(1);
 
       // Step 4: Landlord updates property
       const updateResponse = await request(app)
         .put(`/api/v1/properties/${propertyId}`)
         .set('Authorization', `Bearer ${landlord.token}`)
-        .send({
-          name: 'Updated Property Name',
-          monthlyRent: 65000
-        })
+        .send({ title: 'Updated Property Name' })
         .expect(200);
 
-      expect(updateResponse.body.name).toBe('Updated Property Name');
-      expect(updateResponse.body.monthlyRent).toBe(65000);
+      expect(updateResponse.body.title).toBe('Updated Property Name');
 
-      // Step 5: Landlord updates rent
+      // Step 5: Landlord updates rent (within the 7% cap: 60000 → 63000)
       const rentUpdateResponse = await request(app)
         .put(`/api/v1/properties/${propertyId}/rent`)
         .set('Authorization', `Bearer ${landlord.token}`)
-        .send({ amount: 70000 })
+        .send({ amount: 63000 })
         .expect(200);
 
-      expect(rentUpdateResponse.body.monthlyRent).toBe(70000);
+      expect(rentUpdateResponse.body.property.rent.amount).toBe(63000);
 
       // Step 6: Create tenant and maintenance request
       const tenant = await integrationUtils.createAuthenticatedUser(app, request, {
@@ -234,33 +232,33 @@ describe('Integration: Complete User Journey', () => {
         .send({
           title: 'Broken Window',
           description: 'Window needs repair',
-          category: 'general',
+          category: 'structural',
           priority: 'medium',
           propertyId: propertyId
         })
         .expect(201);
 
-      // Step 7: Landlord views maintenance requests
+      // Step 7: Landlord views maintenance requests for the property
       const maintenanceResponse = await request(app)
-        .get('/api/v1/maintenance')
+        .get(`/api/v1/maintenance/property/${propertyId}`)
         .set('Authorization', `Bearer ${landlord.token}`)
         .expect(200);
 
       expect(Array.isArray(maintenanceResponse.body)).toBe(true);
 
-      // Step 8: Landlord creates vendor
+      // Step 8: Landlord creates vendor (real schema)
       const vendorResponse = await request(app)
         .post('/api/v1/vendors')
         .set('Authorization', `Bearer ${landlord.token}`)
         .send({
-          name: 'Reliable Repairs',
-          serviceTypes: ['plumbing', 'electrical'],
-          phone: '+254722111222',
-          email: 'repairs@vendor.com'
+          company: 'Reliable Repairs',
+          contact: '254722111222',
+          services: ['plumbing', 'electrical'],
+          subcounties: ['Westlands']
         })
         .expect(201);
 
-      expect(vendorResponse.body.name).toBe('Reliable Repairs');
+      expect(vendorResponse.body.company).toBe('Reliable Repairs');
 
       // Step 9: Landlord views vendors
       const vendorsResponse = await request(app)
@@ -299,16 +297,10 @@ describe('Integration: Complete User Journey', () => {
         landlord.token
       );
 
-      // Create lease
-      const Lease = require('../../models/lease.model');
-      const lease = await Lease.create({
-        tenant: tenant.userId,
-        property: property._id,
-        startDate: new Date('2024-01-01'),
-        endDate: new Date('2025-01-01'),
-        monthlyRent: 50000,
-        securityDeposit: 50000,
-        status: 'active'
+      // Create lease (real schema: terms.{durationMonths,rentAmount,...})
+      const { makeLease } = require('../helpers/factories');
+      const lease = await makeLease(tenant.userId, property._id, landlord.userId, {
+        terms: { durationMonths: 12, rentAmount: 50000, depositAmount: 50000, rentDueDate: 5 }
       });
 
       // Step 1: Tenant submits move-out request
@@ -361,7 +353,7 @@ describe('Integration: Complete User Journey', () => {
         .expect(201);
 
       expect(refundResponse.body.success).toBe(true);
-      const refundId = refundResponse.body.refundRequest.id;
+      const refundId = refundResponse.body.refundRequest._id;
 
       // Step 5: Tenant checks deposit refund status
       const refundStatusResponse = await request(app)

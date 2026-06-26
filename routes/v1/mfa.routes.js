@@ -26,6 +26,14 @@ router.post('/enable', mfaController.enableMFA);
 router.post('/verify', mfaController.verifyMFA);
 
 /**
+ * @route   POST /api/v1/auth/mfa/step-up
+ * @desc    Re-verify identity (TOTP/backup code) to authorize a privileged
+ *          action such as switching into an admin role. No side effects.
+ * @access  Private
+ */
+router.post('/step-up', mfaController.verifyStepUp);
+
+/**
  * @route   POST /api/v1/auth/mfa/disable
  * @desc    Disable MFA for user account
  * @access  Private

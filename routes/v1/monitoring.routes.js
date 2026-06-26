@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const monitoringController = require('../controllers/monitoring.controller');
-const { authenticate } = require('../middlewares/auth.middleware');
-const { validate } = require('../middlewares/validation');
+const monitoringController = require('../../controllers/monitoring.controller');
+const { authenticate } = require('../../middlewares/auth.middleware');
+const { validate } = require('../../middlewares/validation');
 const { query } = require('express-validator');
 
 // Basic health check (public)

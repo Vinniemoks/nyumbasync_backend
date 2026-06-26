@@ -192,10 +192,11 @@ class AccountLockoutService {
 
     const now = Date.now();
     if (data.lockedUntil > now) {
+      const minutesLeft = Math.ceil((data.lockedUntil - now) / 60000);
       return {
         locked: true,
         lockoutUntil: data.lockedUntil,
-        message: `Account locked until ${new Date(data.lockedUntil).toLocaleString()}`
+        message: `Account locked. Try again in ${minutesLeft} minutes.`
       };
     }
 
@@ -287,7 +288,8 @@ class AccountLockoutService {
       }
 
       const now = Date.now();
-      const locked = data.lockedUntil && data.lockedUntil > now;
+      // Coerce to a real boolean — `null && …` is null, but callers expect false.
+      const locked = !!(data.lockedUntil && data.lockedUntil > now);
 
       return {
         attempts: data.attempts,

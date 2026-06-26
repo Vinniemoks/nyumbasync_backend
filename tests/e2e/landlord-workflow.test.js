@@ -34,17 +34,25 @@ describe('E2E: Landlord Workflow', () => {
     const landlord = await e2eUtils.completeUserOnboarding(app, request, 'landlord');
     expect(landlord.token).toBeDefined();
 
+    // Helper: a valid Property body for the real schema.
+    const propertyBody = (over = {}) => ({
+      title: 'First Property',
+      description: 'A spacious property located in the Riverside area of Nairobi, Kenya, for testing.',
+      type: 'apartment',
+      bedrooms: 3,
+      bathrooms: 2,
+      address: { street: '100 First St', area: 'Riverside', city: 'Nairobi', county: 'Nairobi', coordinates: { type: 'Point', coordinates: [36.8172, -1.2864] } },
+      rent: { amount: 50000 },
+      deposit: 50000,
+      subcounty: 'Westlands',
+      ...over
+    });
+
     // 2. Create first property
     const property1Response = await request(app)
       .post('/api/v1/properties')
       .set('Authorization', `Bearer ${landlord.token}`)
-      .send({
-        name: 'First Property',
-        address: '100 First St, Nairobi',
-        type: 'apartment',
-        units: 10,
-        monthlyRent: 50000
-      })
+      .send(propertyBody())
       .expect(201);
 
     const property1Id = property1Response.body._id;
@@ -53,53 +61,44 @@ describe('E2E: Landlord Workflow', () => {
     await request(app)
       .post('/api/v1/properties')
       .set('Authorization', `Bearer ${landlord.token}`)
-      .send({
-        name: 'Second Property',
-        address: '200 Second St, Nairobi',
-        type: 'house',
-        units: 5,
-        monthlyRent: 75000
-      })
+      .send(propertyBody({ title: 'Second Property', type: 'house', rent: { amount: 75000 }, deposit: 75000 }))
       .expect(201);
 
-    // 4. View all properties
+    // 4. View all properties (landlord list returns { count, properties })
     const propertiesResponse = await request(app)
       .get('/api/v1/properties/landlord')
       .set('Authorization', `Bearer ${landlord.token}`)
       .expect(200);
 
-    expect(propertiesResponse.body.length).toBe(2);
+    expect(propertiesResponse.body.properties.length).toBe(2);
 
     // 5. Update property
     await request(app)
       .put(`/api/v1/properties/${property1Id}`)
       .set('Authorization', `Bearer ${landlord.token}`)
-      .send({
-        name: 'Updated First Property',
-        monthlyRent: 55000
-      })
+      .send({ title: 'Updated First Property' })
       .expect(200);
 
-    // 6. Update rent
+    // 6. Update rent — must stay within the 7% legal cap (50000 → 53000)
     await request(app)
       .put(`/api/v1/properties/${property1Id}/rent`)
       .set('Authorization', `Bearer ${landlord.token}`)
-      .send({ amount: 60000 })
+      .send({ amount: 53000 })
       .expect(200);
 
-    // 7. Create vendor
+    // 7. Create vendor (real schema: company/contact/services/subcounties)
     const vendorResponse = await request(app)
       .post('/api/v1/vendors')
       .set('Authorization', `Bearer ${landlord.token}`)
       .send({
-        name: 'Quick Fix Services',
-        serviceTypes: ['plumbing', 'electrical'],
-        phone: '+254722333444',
-        email: 'quickfix@vendor.com'
+        company: 'Quick Fix Services',
+        contact: '254722333444',
+        services: ['plumbing', 'electrical'],
+        subcounties: ['Westlands']
       })
       .expect(201);
 
-    expect(vendorResponse.body.name).toBe('Quick Fix Services');
+    expect(vendorResponse.body.company).toBe('Quick Fix Services');
 
     // 8. View vendors
     const vendorsResponse = await request(app)
@@ -131,26 +130,18 @@ describe('E2E: Landlord Workflow', () => {
       .send({
         title: 'Broken Door',
         description: 'Front door lock is broken',
-        category: 'general',
+        category: 'structural',
         priority: 'high',
         propertyId: property._id
       })
       .expect(201);
 
-    // 3. Landlord views maintenance requests
+    // 3. Landlord views maintenance requests for the property
     const maintenanceResponse = await request(app)
-      .get('/api/v1/maintenance')
+      .get(`/api/v1/maintenance/property/${property._id}`)
       .set('Authorization', `Bearer ${landlord.token}`)
       .expect(200);
 
     expect(Array.isArray(maintenanceResponse.body)).toBe(true);
-
-    // 4. Landlord filters by property
-    const filteredResponse = await request(app)
-      .get(`/api/v1/maintenance?propertyId=${property._id}`)
-      .set('Authorization', `Bearer ${landlord.token}`)
-      .expect(200);
-
-    expect(Array.isArray(filteredResponse.body)).toBe(true);
   });
 });

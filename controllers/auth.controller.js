@@ -338,6 +338,12 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Email/phone and password are required' });
     }
 
+    // Reject non-string credentials — a JSON object like { $ne: null } is a
+    // NoSQL-injection probe and must never reach the query layer.
+    if (typeof identifier !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Invalid credentials format' });
+    }
+
     // Check if account is locked
     const lockStatus = await accountLockoutService.isLocked(identifier);
     if (lockStatus.locked) {
@@ -423,6 +429,7 @@ exports.login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        roles: user.roles,
         phone: user.phone,
         mfaEnabled: user.mfaEnabled || false
       }
@@ -436,7 +443,7 @@ exports.login = async (req, res) => {
 // Signup with email and password
 exports.signup = async (req, res) => {
   try {
-    const { name, firstName, lastName, email, password, phone, phoneNumber, idNumber, role, userType } = req.body;
+    const { name, firstName, lastName, email, password, phone, phoneNumber, idNumber, role, roles, userType } = req.body;
 
     // Support both 'phone' and 'phoneNumber' field names
     const userPhone = phone || phoneNumber;
@@ -454,6 +461,18 @@ exports.signup = async (req, res) => {
       });
     }
 
+    // Validate input FORMAT before touching the DB, so a malformed request is
+    // a clear 400 (not a 409 that happens to collide with an existing record).
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'A valid email address is required' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+    if (!validatePhone(userPhone)) {
+      return res.status(400).json({ error: 'Invalid Kenyan phone (must start with 2547 or 2541)' });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [
@@ -466,6 +485,19 @@ exports.signup = async (req, res) => {
       return res.status(409).json({ error: 'User already exists' });
     }
 
+    // RBAC: only non-privileged roles may be self-registered. Admin and
+    // manager accounts are provisioned by an existing admin, never via
+    // public signup — otherwise anyone could register as admin.
+    const SELF_REGISTRABLE_ROLES = ['tenant', 'landlord', 'agent', 'vendor'];
+    // Accept either a single role or a list of roles (multi-role accounts).
+    // Anything not self-registrable is dropped; if nothing valid remains we
+    // fall back to 'tenant'.
+    const requestedRoles = (Array.isArray(roles) && roles.length ? roles : [role || userType])
+      .filter(Boolean);
+    const safeRoles = [...new Set(requestedRoles.filter((r) => SELF_REGISTRABLE_ROLES.includes(r)))];
+    if (safeRoles.length === 0) safeRoles.push('tenant');
+    const safeRole = safeRoles[0];
+
     // Create new user
     const user = new User({
       firstName: firstName || name?.split(' ')[0],
@@ -474,8 +506,17 @@ exports.signup = async (req, res) => {
       password, // Password will be hashed by the User model pre-save hook
       phone: userPhone,
       idNumber,
-      role: role || userType || 'tenant',
+      role: safeRole,
+      roles: safeRoles,
       mpesaVerified: false,
+    });
+
+    // Persist the account — without this the signup silently created nothing.
+    await user.save();
+
+    const token = generateToken({
+      id: user._id,
+      role: user.role
     });
 
     const refreshToken = generateToken({
@@ -484,6 +525,7 @@ exports.signup = async (req, res) => {
     }, '7d');
 
     res.status(201).json({
+      success: true,
       token,
       refreshToken,
       user: {
@@ -492,6 +534,7 @@ exports.signup = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        roles: user.roles,
         phone: user.phone
       }
     });
@@ -727,11 +770,9 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // Hash new password
-    const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Add current password to history before changing
+    // Snapshot the current (still-hashed) password into history before we
+    // overwrite it. The model's pre('save') hook hashes the new password —
+    // hashing here too would double-hash and break the next login.
     if (user.password) {
       user.passwordHistory = passwordHistoryService.addToHistory(
         user.password,
@@ -739,9 +780,8 @@ exports.resetPassword = async (req, res) => {
       );
     }
 
-    // Update password and clear reset token
-    user.password = hashedPassword;
-    user.passwordChangedAt = Date.now();
+    // Update password (model hook hashes it on save) and clear reset token
+    user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
@@ -812,19 +852,16 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // Hash new password
-    const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-
-    // Add current password to history before changing
+    // Snapshot the current (still-hashed) password into history BEFORE we
+    // overwrite it. The User model's pre('save') hook hashes the new password
+    // for us — hashing here too would double-hash and break the next login.
     user.passwordHistory = passwordHistoryService.addToHistory(
       user.password, // Current password hash
       user.passwordHistory || []
     );
 
-    // Update to new password
-    user.password = hashedPassword;
-    user.passwordChangedAt = Date.now();
+    // Update to new password (model hook hashes it on save)
+    user.password = newPassword;
     await user.save();
 
     logger.info(`Password changed successfully for user ${user._id}`);

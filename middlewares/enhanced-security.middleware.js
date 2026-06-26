@@ -1,6 +1,5 @@
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const csrf = require('csurf');
 const { cache } = require('../utils/cache');
 
 // Rate limiting configuration
@@ -31,15 +30,11 @@ const securityMiddleware = {
     xssFilter: process.env.ENABLE_XSS_PROTECTION === 'true'
   }),
 
-  // CSRF Protection
-  csrf: csrf({
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: parseInt(process.env.CSRF_TOKEN_EXPIRY) || 3600000
-    }
-  }),
+  // NOTE: CSRF protection is not currently applied. The previous `csurf`-based
+  // middleware here was never wired into the app's middleware chain and the
+  // package is deprecated, so it has been removed. The API is primarily
+  // Bearer-token (JWT) authenticated; if cookie-auth CSRF protection is needed,
+  // add a maintained library (e.g. csrf-csrf) and apply it in app.js.
 
   // Rate limiters
   standardLimiter: createRateLimiter(

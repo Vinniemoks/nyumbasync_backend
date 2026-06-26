@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const enhancedAdminController = require('../controllers/enhanced-admin.controller');
-const { authenticate } = require('../middlewares/auth.middleware');
-const { validate } = require('../middlewares/validation');
+const enhancedAdminController = require('../../controllers/enhanced-admin.controller');
+const { authenticate } = require('../../middlewares/auth.middleware');
+const { validate } = require('../../middlewares/validation');
 const { body, param } = require('express-validator');
 const rateLimiter = require('express-rate-limit');
 

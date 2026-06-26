@@ -1,4 +1,11 @@
-const { createObjectDetector } = require('@tensorflow/tfjs-node');
+// TensorFlow is optional: a large native dependency that is not installed in
+// every deployment. AI analysis endpoints return 503 when it is unavailable.
+let createObjectDetector = null;
+try {
+  ({ createObjectDetector } = require('@tensorflow/tfjs-node'));
+} catch {
+  createObjectDetector = null;
+}
 const MaintenanceRequest = require('../models/maintenance.model');
 const Property = require('../models/property.model');
 const VendorModel = require('../models/vendor.model');
@@ -8,6 +15,9 @@ const maintenanceAIController = {
   // Analyze maintenance request images
   async analyzeMaintenanceImages(req, res) {
     try {
+      if (!createObjectDetector) {
+        return res.status(503).json({ error: 'AI analysis is not available on this deployment' });
+      }
       const { requestId } = req.params;
       const maintenanceRequest = await MaintenanceRequest.findById(requestId);
 

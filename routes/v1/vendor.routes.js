@@ -23,7 +23,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/',
-    handler: [authenticate('admin', 'manager', 'landlord'), asyncHandler(vendorController.createVendor)],
+    handler: [authenticate(['admin', 'manager', 'landlord']), asyncHandler(vendorController.createVendor)],
     config: { source: 'vendor.routes' }
   },
   
@@ -31,7 +31,7 @@ module.exports = [
   {
     method: 'PUT',
     path: '/:id',
-    handler: [authenticate('admin', 'manager', 'landlord'), asyncHandler(vendorController.updateVendor)],
+    handler: [authenticate(['admin', 'manager', 'landlord']), asyncHandler(vendorController.updateVendor)],
     config: { source: 'vendor.routes' }
   },
   
@@ -39,7 +39,7 @@ module.exports = [
   {
     method: 'DELETE',
     path: '/:id',
-    handler: [authenticate('admin', 'manager', 'landlord'), asyncHandler(vendorController.deleteVendor)],
+    handler: [authenticate(['admin', 'manager', 'landlord']), asyncHandler(vendorController.deleteVendor)],
     config: { source: 'vendor.routes' }
   }
 ];

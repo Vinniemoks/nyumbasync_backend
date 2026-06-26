@@ -11,10 +11,13 @@ const logAuthAttempt = (identifier, event, details = '') => {
 };
 const { RateLimiterMemory } = require('rate-limiter-flexible');
 
-// Rate limiting for authentication attempts
+// Per-IP request budget for authenticated traffic. This runs on every
+// protected route, so it must accommodate normal app usage (a dashboard
+// load fires many API calls) — brute-force protection for credentials
+// lives on the login/signup routes themselves, not here.
 const rateLimiter = new RateLimiterMemory({
-  points: 5, // 5 attempts
-  duration: 60, // per 60 seconds
+  points: parseInt(process.env.AUTH_RATE_LIMIT_POINTS, 10) || 300, // requests
+  duration: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW, 10) || 60, // seconds
 });
 
 /**
@@ -79,11 +82,18 @@ const authenticate = (roles = 'any') => {
       }
 
       req.user = user;
+      // .lean() documents have no `id` virtual; controllers use both forms.
+      req.user.id = req.user.id || String(user._id);
 
       // Role authorization (if specified)
       if (roles !== 'any') {
         const requiredRoles = Array.isArray(roles) ? roles : [roles];
-        if (!requiredRoles.some(role => user.roles.includes(role))) {
+        // Users may carry a single `role` (current schema) or a `roles`
+        // array (legacy) — accept both.
+        const userRoles = Array.isArray(user.roles)
+          ? user.roles
+          : [user.role].filter(Boolean);
+        if (!requiredRoles.some(role => userRoles.includes(role))) {
           logAuthAttempt(user._id, 'UNAUTHORIZED_ROLE', `Required: ${requiredRoles.join(', ')}`);
           return res.status(403).json({
             error: `Access denied. Required role(s): ${requiredRoles.join(', ')}`,
@@ -234,6 +244,19 @@ const verifyEmailConfirmed = (req, res, next) => {
   next();
 };
 
+// Strictly require a logged-in user. authenticate() with the default 'any'
+// role treats a missing token as "continue anonymously" (used by optional /
+// public-or-private routes), so it can't back the names that mean "you must be
+// authenticated" — without a token those would fall through to the controller
+// with no req.user and 500. This guard rejects the no-token case up front.
+const requireAuth = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies?.accessToken;
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required. No token provided.' });
+  }
+  return authenticate()(req, res, next);
+};
+
 module.exports = {
   authenticate,          // Primary authentication middleware
   authorizeOwnership,    // Resource ownership verification
@@ -247,5 +270,22 @@ module.exports = {
   
   // Legacy exports (deprecated)
   authorizeRoles: (...roles) => authenticate(roles),
-  isTenant: verifyTenant()
+  isTenant: verifyTenant(),
+
+  // Compatibility aliases — several route modules import these names.
+  // authMiddleware authenticates any logged-in user; roleMiddleware
+  // restricts to the given roles.
+  authMiddleware: requireAuth,
+  roleMiddleware: (roles) => authenticate(roles),
+  protect: requireAuth,
+  authenticateToken: requireAuth,
+
+  // Optional tenant authentication: authenticates when a bearer token is
+  // present, otherwise continues anonymously.
+  optionalTenantAuth: (req, res, next) => {
+    if (req.headers.authorization?.startsWith('Bearer ')) {
+      return authenticate('tenant')(req, res, next);
+    }
+    return next();
+  }
 };

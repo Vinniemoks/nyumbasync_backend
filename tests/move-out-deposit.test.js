@@ -7,10 +7,11 @@ const MoveOutRequest = require('../models/move-out-request.model');
 const DepositRefund = require('../models/deposit-refund.model');
 const Property = require('../models/property.model');
 const Lease = require('../models/lease.model');
+const { makeUser, makeProperty, makeLease } = require('./helpers/factories');
 
 let mongoServer;
 let tenantToken, tenantId;
-let propertyId, leaseId;
+let propertyId, leaseId, landlordId;
 
 describe('Move-Out and Deposit Tests', () => {
   beforeAll(async () => {
@@ -35,41 +36,15 @@ describe('Move-Out and Deposit Tests', () => {
     await Property.deleteMany({});
     await Lease.deleteMany({});
 
-    // Create tenant
-    const tenantResponse = await request(app)
-      .post('/api/v1/auth/signup')
-      .send({
-        email: 'tenant@example.com',
-        password: 'Test123!',
-        firstName: 'Ten',
-        lastName: 'Ant',
-        phone: '254712345678',
-        role: 'tenant'
-      });
+    const tenant = await makeUser('tenant');
+    const landlord = await makeUser('landlord');
+    tenantToken = tenant.token; tenantId = tenant.user._id;
+    landlordId = landlord.user._id;
 
-    tenantToken = tenantResponse.body.token;
-    tenantId = tenantResponse.body.user.id;
-
-    // Create property
-    const property = await Property.create({
-      name: 'Test Property',
-      address: '123 Test St, Nairobi',
-      type: 'apartment',
-      units: 10,
-      monthlyRent: 50000
-    });
+    const property = await makeProperty(landlordId);
     propertyId = property._id;
 
-    // Create lease
-    const lease = await Lease.create({
-      tenant: tenantId,
-      property: propertyId,
-      startDate: new Date('2024-01-01'),
-      endDate: new Date('2025-01-01'),
-      monthlyRent: 50000,
-      securityDeposit: 50000,
-      status: 'active'
-    });
+    const lease = await makeLease(tenantId, propertyId, landlordId);
     leaseId = lease._id;
   });
 
@@ -320,7 +295,8 @@ describe('Move-Out and Deposit Tests', () => {
         lease: leaseId,
         moveOutDate: new Date('2024-12-31'),
         reason: 'Relocating',
-        status: 'approved'
+        status: 'approved',
+        referenceNumber: 'MO-STATUS-001'
       });
       moveOutRequestId = moveOutRequest._id;
 
@@ -379,7 +355,8 @@ describe('Move-Out and Deposit Tests', () => {
         lease: leaseId,
         moveOutDate: new Date('2024-12-31'),
         reason: 'Relocating',
-        status: 'approved'
+        status: 'approved',
+        referenceNumber: 'MO-CURRENT-DEP-001'
       });
 
       await DepositRefund.create({

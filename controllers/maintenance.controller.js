@@ -1,6 +1,92 @@
 const Maintenance = require('../models/maintenance.model');
 const Vendor = require('../models/vendor.model');
+const Property = require('../models/property.model');
 const emailService = require('../services/emailService');
+const { sendToUser } = require('../websocket/server');
+
+// Map a Maintenance doc to the shape the clients expect.
+const toMaintenanceDTO = (req) => ({
+  id: req._id,
+  ticketNumber: req.ticketNumber || `TKT-${req._id}`,
+  title: req.issueType,
+  description: req.description,
+  category: req.issueType,
+  priority: req.priority || 'medium',
+  status: req.status,
+  propertyId: req.property?._id || req.property,
+  tenantId: req.reportedBy?._id || req.reportedBy,
+  createdAt: req.createdAt
+});
+
+// GET /maintenance — role-aware list. Tenants see their own requests; landlords
+// see every request across the properties they own; admins/managers see all.
+// (No such aggregate route existed before, so the desktop/mobile list 404'd.)
+exports.getMaintenanceRequests = async (req, res) => {
+  try {
+    let filter = {};
+    if (req.user.role === 'tenant') {
+      filter = { reportedBy: req.user.id };
+    } else if (req.user.role === 'landlord') {
+      const propertyIds = await Property.find({ landlord: req.user.id }).distinct('_id');
+      filter = { property: { $in: propertyIds } };
+    } // admin/manager → all
+
+    const requests = await Maintenance.find(filter)
+      .populate('property')
+      .populate('reportedBy', 'firstName lastName phone')
+      .sort({ createdAt: -1 });
+
+    res.json(requests.map(toMaintenanceDTO));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch maintenance requests' });
+  }
+};
+
+// PUT /maintenance/:id — landlord/manager/admin update of status/priority/vendor.
+// Landlords may only touch requests on properties they own.
+exports.manageMaintenanceRequest = async (req, res) => {
+  try {
+    const { status, priority, assignedVendor, note } = req.body;
+    const request = await Maintenance.findById(req.params.id).populate('property');
+    if (!request) {
+      return res.status(404).json({ error: 'Maintenance request not found' });
+    }
+
+    if (req.user.role === 'landlord') {
+      const ownerId = request.property?.landlord?.toString();
+      if (ownerId !== req.user.id.toString()) {
+        return res.status(403).json({ error: 'Not authorized for this maintenance request' });
+      }
+    }
+
+    if (status) request.status = status;
+    if (priority) request.priority = priority;
+    if (assignedVendor) request.assignedVendor = assignedVendor;
+    if (note) {
+      request.statusHistory = request.statusHistory || [];
+      request.statusHistory.push({ status: status || request.status, note, at: new Date() });
+    }
+    await request.save();
+
+    // Real-time WebSocket broadcast to tenant
+    try {
+      sendToUser(req.user.id, 'maintenance:updated', {
+        requestId: request._id,
+        status: request.status,
+        priority: request.priority,
+        assignedVendor: request.assignedVendor,
+        note,
+        timestamp: new Date()
+      });
+    } catch (wsErr) {
+      console.error('WS_MAINTENANCE_BROADCAST_FAILURE:', wsErr.message);
+    }
+
+    res.json(toMaintenanceDTO(request));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update maintenance request' });
+  }
+};
 
 // Submit repair request
 exports.submitRequest = async (req, res) => {
@@ -31,6 +117,24 @@ exports.submitRequest = async (req, res) => {
       // TODO: Send WhatsApp alert to vendor
     }
 
+    // Real-time WebSocket broadcast to landlord
+    try {
+      const property = await Property.findById(propertyId);
+      if (property?.landlord) {
+        sendToUser(property.landlord.toString(), 'maintenance:updated', {
+          requestId: request._id,
+          status: request.status,
+          issueType,
+          description,
+          propertyId,
+          tenantId: req.user.id,
+          timestamp: new Date()
+        });
+      }
+    } catch (wsErr) {
+      console.error('WS_MAINTENANCE_SUBMIT_FAILURE:', wsErr.message);
+    }
+
     res.status(201).json(request);
   } catch (err) {
     res.status(500).json({
@@ -58,6 +162,29 @@ exports.updateStatus = async (req, res) => {
     request.status = status;
     if (completionProof) request.completionProof = completionProof;
     await request.save();
+
+    // Real-time WebSocket broadcast to tenant and landlord
+    try {
+      await request.populate('property');
+      const landlordId = request.property?.landlord?.toString();
+      const tenantId = request.reportedBy?.toString();
+      if (tenantId) {
+        sendToUser(tenantId, 'maintenance:updated', {
+          requestId: request._id,
+          status,
+          timestamp: new Date()
+        });
+      }
+      if (landlordId) {
+        sendToUser(landlordId, 'maintenance:updated', {
+          requestId: request._id,
+          status,
+          timestamp: new Date()
+        });
+      }
+    } catch (wsErr) {
+      console.error('WS_VENDOR_UPDATE_FAILURE:', wsErr.message);
+    }
 
     // TODO: Notify tenant via SMS
 
@@ -158,6 +285,11 @@ exports.createMaintenanceRequest = async (req, res) => {
     const { title, description, category, priority, propertyId } = req.body;
     const userId = req.user.id;
 
+    // property + description are required by the Maintenance model.
+    if (!propertyId || !description) {
+      return res.status(400).json({ error: 'propertyId and description are required' });
+    }
+
     const request = await Maintenance.create({
       property: propertyId,
       reportedBy: userId,
@@ -165,7 +297,8 @@ exports.createMaintenanceRequest = async (req, res) => {
       title: title,
       description,
       priority: priority || 'medium',
-      status: 'submitted',
+      // 'reported' is the model's initial status enum value (not 'submitted').
+      status: 'reported',
       ticketNumber: `TKT-${Date.now()}`
     });
 
@@ -182,7 +315,8 @@ exports.createMaintenanceRequest = async (req, res) => {
 
     res.status(201).json({
       id: request._id,
-      ticketNumber: request.ticketNumber,
+      // The model doesn't persist ticketNumber; derive it like the GET endpoints.
+      ticketNumber: request.ticketNumber || `TKT-${request._id}`,
       title: request.issueType,
       description: request.description,
       category: request.issueType,

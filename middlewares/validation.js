@@ -153,11 +153,34 @@ const validate = (req, res, next) => {
   next();
 };
 
+// Alias used by some route modules for the generic result handler.
+const validateRequest = validate;
+
+// Financial requests: ensure basic shape before hitting controllers.
+const validateFinancialRequest = [
+  body('amount').optional().isNumeric().withMessage('amount must be numeric'),
+  body('propertyId').optional().isString().trim(),
+  body('description').optional().isString().trim().isLength({ max: 1000 }),
+  validate
+];
+
+// Search queries: bound length to keep regex/scan costs sane.
+const validateSearchQuery = (req, res, next) => {
+  const q = req.query.q ?? req.query.query ?? '';
+  if (typeof q !== 'string' || q.length > 200) {
+    return res.status(400).json({ error: 'Invalid search query' });
+  }
+  next();
+};
+
 module.exports = {
   validate,
+  validateRequest,
   validatePhoneRegistration,
   validateVerificationCode,
   validateMpesaPayment,
   validateUpdateUser,
-  validatePropertyApproval
+  validatePropertyApproval,
+  validateFinancialRequest,
+  validateSearchQuery
 };

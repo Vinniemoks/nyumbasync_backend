@@ -6,17 +6,19 @@
 const request = require('supertest');
 const { expect } = require('chai');
 const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const User = require('../../models/user.model');
 const mfaService = require('../../services/mfa.service');
 
 describe('MFA Security Tests', () => {
-  let app;
+  const app = require('../../server').app;
+  let mongoServer;
   let testUser;
   let authToken;
 
   before(async () => {
-    // Import app
-    app = require('../../server');
+    mongoServer = await MongoMemoryServer.create();
+    await mongoose.connect(mongoServer.getUri());
 
     // Create test user
     testUser = await User.create({
@@ -40,8 +42,9 @@ describe('MFA Security Tests', () => {
   });
 
   after(async () => {
-    // Cleanup
     await User.deleteOne({ email: 'mfa@test.com' });
+    await mongoose.disconnect();
+    await mongoServer.stop();
   });
 
   describe('MFA Setup', () => {
@@ -59,12 +62,20 @@ describe('MFA Security Tests', () => {
     });
 
     it('should not allow enabling MFA twice', async () => {
-      // Enable MFA first time
-      await request(app)
+      // Enrol + verify so MFA is actually active (the enable step alone leaves
+      // mfaEnabled=false until a TOTP token is verified).
+      const enableRes = await request(app)
         .post('/api/v1/auth/mfa/enable')
         .set('Authorization', `Bearer ${authToken}`);
+      const speakeasy = require('speakeasy');
+      const token = speakeasy.totp({ secret: enableRes.body.data.secret, encoding: 'base32' });
+      await request(app)
+        .post('/api/v1/auth/mfa/verify')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ token })
+        .expect(200);
 
-      // Try to enable again
+      // Now that MFA is enabled, a second enable must be rejected.
       const res = await request(app)
         .post('/api/v1/auth/mfa/enable')
         .set('Authorization', `Bearer ${authToken}`)
@@ -414,7 +425,7 @@ describe('MFA Security Tests', () => {
         .send({ token: '123456' })
         .expect(400);
 
-      expect(res.body.error).to.include('password');
+      expect(res.body.error).to.match(/password/i);
     });
   });
 });

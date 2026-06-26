@@ -268,7 +268,7 @@ describe('Message Controller Tests', () => {
         .send({
           participantIds: [user1Id, user2Id]
         })
-        .expect(200);
+        .expect(201);
 
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('conversation');

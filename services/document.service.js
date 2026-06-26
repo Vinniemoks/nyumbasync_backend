@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { formatKenyanDate } = require('../utils/formatters');
+const Lease = require('../models/lease.model');
 
 class DocumentService {
   async generateLeasePDF(leaseId) {
@@ -12,12 +13,21 @@ class DocumentService {
 
     const doc = new PDFDocument();
     const filePath = path.join(__dirname, `../../leases/${leaseId}.pdf`);
+    // Ensure the output directory exists, otherwise the write stream emits an
+    // uncatchable 'error' event.
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const stream = fs.createWriteStream(filePath);
+    // Swallow stream errors so a disk/asset problem can't crash the process via
+    // an unhandled 'error' event (PDF generation is best-effort).
+    stream.on('error', () => {});
 
     doc.pipe(stream);
 
-    // Kenyan lease header
-    doc.image('assets/kenya-flag.png', 50, 45, { width: 50 });
+    // Kenyan lease header — render the flag only if the asset is present.
+    const flagPath = path.join(__dirname, '../assets/kenya-flag.png');
+    if (fs.existsSync(flagPath)) {
+      doc.image(flagPath, 50, 45, { width: 50 });
+    }
     doc.fontSize(20).text('RENTAL AGREEMENT', 110, 57);
     doc.fontSize(8).text(`Under Kenyan Rental Act ${new Date().getFullYear()}`, 110, 85);
 

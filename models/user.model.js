@@ -81,12 +81,20 @@ const UserSchema = new mongoose.Schema({
     ]
   },
 
-  // Role-based access control
+  // Role-based access control.
+  // `role` is the user's *active* role (the portal they're currently using);
+  // `roles` is every role the account holds. A user who is both a tenant and a
+  // vendor has roles: ['tenant', 'vendor'] and switches `role` between them.
   role: {
     type: String,
-    enum: ['tenant', 'landlord', 'manager', 'vendor', 'admin'],
+    enum: ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin'],
     required: true,
     default: 'tenant'
+  },
+  roles: {
+    type: [String],
+    enum: ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin'],
+    default: undefined
   },
 
   // Security fields
@@ -102,16 +110,17 @@ const UserSchema = new mongoose.Schema({
   passwordResetExpires: Date,
 
   // Password history (prevent reuse)
-  passwordHistory: [{
-    hash: {
-      type: String,
-      select: false
-    },
-    changedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
+  // Hide the whole array by default but keep it re-selectable as a unit via
+  // .select('+passwordHistory'). Putting select:false on the nested `hash`
+  // instead left it excluded even when the array was explicitly selected, so
+  // reuse checks saw undefined hashes and never detected a reused password.
+  passwordHistory: {
+    type: [{
+      hash: { type: String },
+      changedAt: { type: Date, default: Date.now }
+    }],
+    select: false
+  },
 
   // Multi-Factor Authentication (MFA)
   mfaEnabled: {
@@ -122,10 +131,13 @@ const UserSchema = new mongoose.Schema({
     type: String,
     select: false
   },
-  mfaBackupCodes: [{
-    type: String,
+  // select:false must sit on the array path itself, not the element — on the
+  // element it silently can't be re-selected with `.select('+mfaBackupCodes')`,
+  // which left the codes undefined and broke backup-code login entirely.
+  mfaBackupCodes: {
+    type: [String],
     select: false
-  }],
+  },
   mfaVerified: {
     type: Boolean,
     default: false
@@ -187,6 +199,22 @@ UserSchema.index({ status: 1 });
 UserSchema.index({ subcounty: 1 });
 
 // Middleware
+
+// Keep `role` (active) and `roles` (all) consistent. Legacy accounts that only
+// ever set `role` get a single-element `roles`; if `roles` is provided, the
+// active `role` is forced to be a member of it.
+UserSchema.pre('save', function (next) {
+  if (!this.roles || this.roles.length === 0) {
+    this.roles = this.role ? [this.role] : [];
+  } else {
+    this.roles = [...new Set(this.roles)];
+    if (!this.roles.includes(this.role)) {
+      this.role = this.roles[0];
+    }
+  }
+  next();
+});
+
 UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
 
