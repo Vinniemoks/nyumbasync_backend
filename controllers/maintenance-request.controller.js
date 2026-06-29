@@ -6,6 +6,7 @@
 const MaintenanceRequest = require('../models/maintenance-request.model');
 const { Contact, Property } = require('../models');
 const logger = require('../utils/logger');
+const { checkUsageLimitForUserId } = require('../services/subscription.service');
 
 /**
  * Create maintenance request
@@ -236,19 +237,38 @@ exports.scheduleRequest = async (req, res) => {
  */
 exports.assignVendor = async (req, res) => {
   try {
-    const { vendorId } = req.body;
-    
+    // vendorId is the legacy Contact-based assignment (unauthenticated
+    // directory vendor). vendorUserId is a registered platform account
+    // (User with role 'vendor') — only that path has a subscription to
+    // enforce, since Contact-based vendors don't log in or pay.
+    const { vendorId, vendorUserId } = req.body;
+
     const request = await MaintenanceRequest.findById(req.params.id);
-    
+
     if (!request) {
       return res.status(404).json({
         success: false,
         error: 'Maintenance request not found'
       });
     }
-    
+
+    // Only block the assignment if it's actually adding/changing the vendor —
+    // re-confirming the same assignment shouldn't be blocked by their limit.
+    if (vendorUserId && String(vendorUserId) !== String(request.vendorUser || '')) {
+      const { allowed, used, limit, tier } = await checkUsageLimitForUserId(vendorUserId);
+      if (!allowed) {
+        return res.status(402).json({
+          success: false,
+          error: 'Subscription limit reached',
+          message: `This vendor's ${tier} plan allows up to ${limit} active jobs. They need to upgrade before taking on more.`,
+          usage: { used, limit, tier },
+        });
+      }
+      request.vendorUser = vendorUserId;
+    }
+
     await request.assignVendor(vendorId, req.user?._id);
-    
+
     res.json({
       success: true,
       message: 'Vendor assigned',

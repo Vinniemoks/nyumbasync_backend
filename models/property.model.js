@@ -135,6 +135,22 @@ const propertySchema = new Schema({
     index: true
   },
   manager: { type: Schema.Types.ObjectId, ref: 'User' },
+  // The agent actively listing/marketing this property, if any. Distinct
+  // from relatedContacts (which tracks Contact-side interactions like
+  // viewings) — this is the direct User reference subscription usage
+  // counting needs for an agent's "active listings" limit.
+  agent: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    validate: {
+      validator: async function(id) {
+        if (!id) return true;
+        const user = await mongoose.model('User').findById(id);
+        return user && user.role === 'agent';
+      },
+      message: 'Referenced user must be an agent'
+    }
+  },
 
   // Related Contacts - The "Sync" Magic
   relatedContacts: [{

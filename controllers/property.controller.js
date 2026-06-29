@@ -2,6 +2,21 @@
 const Property = require('../models/property.model');
 const asyncHandler = require('express-async-handler');
 const { validateRentIncrease } = require('../utils/kenyanValidators');
+const { checkUsageLimitForUserId } = require('../services/subscription.service');
+
+// Shared guard: block assigning `agent` to a property if doing so would put
+// that agent over their subscription's active-listings limit. Only runs the
+// check when an agent is actually being added or changed.
+async function assertAgentWithinLimit(newAgentId, previousAgentId) {
+  if (!newAgentId || String(newAgentId) === String(previousAgentId || '')) return null;
+  const { allowed, used, limit, tier } = await checkUsageLimitForUserId(newAgentId);
+  if (allowed) return null;
+  return {
+    error: 'Subscription limit reached',
+    message: `This agent's ${tier} plan allows up to ${limit} active listings. They need to upgrade before taking on more.`,
+    usage: { used, limit, tier },
+  };
+}
 
 // ADD MISSING FUNCTION: getAvailableProperties (called by route)
 exports.getAvailableProperties = asyncHandler(async (req, res) => {
@@ -67,10 +82,14 @@ exports.getProperty = asyncHandler(async (req, res) => {
 });
 
 exports.createProperty = asyncHandler(async (req, res) => {
-  const { rent, deposit, houses } = req.body;
+  const { rent, deposit, houses, agent } = req.body;
   if (deposit > rent.amount * 3) {
     return res.status(400).json({ error: 'Deposit cannot exceed 3 months rent per Kenyan law' });
   }
+
+  const agentLimitError = await assertAgentWithinLimit(agent, null);
+  if (agentLimitError) return res.status(402).json(agentLimitError);
+
   const property = await Property.create({
     ...req.body,
     landlord: req.user._id,
@@ -86,6 +105,10 @@ exports.updateProperty = asyncHandler(async (req, res) => {
   if (!property) {
     return res.status(403).json({ error: 'Unauthorized or property not found' });
   }
+
+  const agentLimitError = await assertAgentWithinLimit(req.body.agent, property.agent);
+  if (agentLimitError) return res.status(402).json(agentLimitError);
+
   const updated = await Property.findByIdAndUpdate(
     req.params.id,
     { ...req.body, landlord: req.user._id },

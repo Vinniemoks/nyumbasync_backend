@@ -130,7 +130,24 @@ const maintenanceRequestSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Contact' // Vendor/contractor contact
   },
-  
+  // Separate from assignedTo: a vendor who has an actual platform account
+  // (User with role 'vendor') rather than just a Contact record. Subscription
+  // usage counting needs a direct User reference — assignedTo's Contact
+  // model has no link back to a vendor's own login. Populated alongside
+  // assignedTo when the assigned vendor is a registered platform user.
+  vendorUser: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    validate: {
+      validator: async function(id) {
+        if (!id) return true;
+        const user = await mongoose.model('User').findById(id);
+        return user && user.role === 'vendor';
+      },
+      message: 'Referenced user must be a vendor'
+    }
+  },
+
   assignedAt: Date,
   
   // Work details
