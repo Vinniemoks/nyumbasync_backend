@@ -197,6 +197,10 @@ exports.mpesaCallback = async (req, res) => {
   try {
     const payment = await Payment.findOne({ mpesaRequestId: stk.CheckoutRequestID });
     if (!payment) {
+      // Not a rent payment — check whether this is a subscription upgrade
+      // payment instead (same Daraja shortcode, one shared callback URL).
+      const handled = await require('./subscription.controller').handleMpesaCallback(stk);
+      if (handled) return res.status(200).end();
       console.error('MPESA_CALLBACK_NO_MATCH:', stk.CheckoutRequestID);
       return res.status(404).end();
     }

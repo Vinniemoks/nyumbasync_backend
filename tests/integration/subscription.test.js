@@ -1,11 +1,25 @@
 const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
+
+// Mock the Daraja HTTP layer — we can't reach Safaricom in tests, so we
+// assert the wiring around it (pending payment, callback activation).
+jest.mock('../../services/mpesa.service', () => ({
+  isConfigured: jest.fn(() => true),
+  initiateSTKPush: jest.fn(async () => ({
+    MerchantRequestID: 'mer-sub-1',
+    CheckoutRequestID: 'ws_CO_SUB_TEST123',
+    ResponseCode: '0',
+  })),
+}));
+
+const mpesaService = require('../../services/mpesa.service');
 const app = require('../../server').app;
 const User = require('../../models/user.model');
 const Property = require('../../models/property.model');
 const Subscription = require('../../models/subscription.model');
 const MaintenanceRequest = require('../../models/maintenance-request.model');
+const subscriptionController = require('../../controllers/subscription.controller');
 
 require('./setup');
 
@@ -96,7 +110,7 @@ describe('Integration: Subscriptions', () => {
       bedrooms: 2,
       bathrooms: 2,
       landlord: userId,
-      address: { street: `${n} Test Rd`, area: 'Riverside', city: 'Nairobi', county: 'Nairobi' },
+      address: { street: `${n} Test Rd`, area: 'Riverside', city: 'Nairobi', county: 'Nairobi', coordinates: { type: 'Point', coordinates: [36.8172, -1.2864] } },
       rent: { amount: 20000 },
       deposit: 20000,
     })));
@@ -119,7 +133,7 @@ describe('Integration: Subscriptions', () => {
     expect(res.body.usage).toEqual({ used: 3, limit: 3, tier: 'free' });
   });
 
-  it('records a pending upgrade for a paid tier (no payment gateway yet)', async () => {
+  it('records a pending upgrade without unlocking the higher limit until payment confirms', async () => {
     const { token } = await integrationUtils.createAuthenticatedUser(app, request, {
       email: 'landlord4@subscription.com',
       password: 'Test123!',
@@ -135,8 +149,12 @@ describe('Integration: Subscriptions', () => {
       .send({ tier: 'starter', billingCycle: 'monthly' });
 
     expect(res.status).toBe(200);
-    expect(res.body.subscription.tier).toBe('starter');
+    // tier stays 'free' (still the only thing actually paid for) — only the
+    // pending fields and amount due reflect the requested upgrade.
+    expect(res.body.subscription.tier).toBe('free');
     expect(res.body.subscription.status).toBe('pending');
+    expect(res.body.subscription.pendingTier).toBe('starter');
+    expect(res.body.amountDue).toBe(1500);
   });
 
   it('blocks assigning an agent past their Free tier listing limit (402)', async () => {
@@ -238,5 +256,83 @@ describe('Integration: Subscriptions', () => {
 
     expect(res.status).toBe(402);
     expect(res.body.usage).toEqual({ used: 5, limit: 5, tier: 'free' });
+  });
+
+  it('initiates an STK push for a pending upgrade and activates it on a successful callback', async () => {
+    const { token, userId } = await integrationUtils.createAuthenticatedUser(app, request, {
+      email: 'landlord7@subscription.com',
+      password: 'Test123!',
+      firstName: 'Sub',
+      lastName: 'Landlord7',
+      phone: '254712345600',
+      role: 'landlord',
+    });
+
+    await request(app)
+      .post('/api/v1/subscriptions/upgrade')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ tier: 'starter', billingCycle: 'monthly' });
+
+    const payRes = await request(app)
+      .post('/api/v1/subscriptions/upgrade/pay')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ phone: '254712345600' });
+
+    expect(payRes.status).toBe(202);
+    expect(payRes.body.checkoutRequestId).toBe('ws_CO_SUB_TEST123');
+    expect(mpesaService.initiateSTKPush).toHaveBeenCalledWith(
+      '254712345600', 1500, expect.stringMatching(/^SUB/)
+    );
+
+    let subscription = await Subscription.findOne({ user: userId });
+    expect(subscription.status).toBe('pending');
+    expect(subscription.tier).toBe('free'); // still not active — awaiting callback
+
+    // Simulate Safaricom's success callback.
+    const handled = await subscriptionController.handleMpesaCallback({
+      CheckoutRequestID: 'ws_CO_SUB_TEST123',
+      ResultCode: 0,
+      ResultDesc: 'Success',
+    });
+    expect(handled).toBe(true);
+
+    subscription = await Subscription.findOne({ user: userId });
+    expect(subscription.tier).toBe('starter');
+    expect(subscription.status).toBe('active');
+    expect(subscription.currentPeriodEnd).not.toBeNull();
+    expect(subscription.pendingTier).toBeNull();
+  });
+
+  it('leaves the subscription pending (not active) on a failed callback', async () => {
+    const { token, userId } = await integrationUtils.createAuthenticatedUser(app, request, {
+      email: 'landlord8@subscription.com',
+      password: 'Test123!',
+      firstName: 'Sub',
+      lastName: 'Landlord8',
+      phone: '254712345601',
+      role: 'landlord',
+    });
+
+    await request(app)
+      .post('/api/v1/subscriptions/upgrade')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ tier: 'starter', billingCycle: 'monthly' });
+
+    await request(app)
+      .post('/api/v1/subscriptions/upgrade/pay')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ phone: '254712345601' });
+
+    await subscriptionController.handleMpesaCallback({
+      CheckoutRequestID: 'ws_CO_SUB_TEST123',
+      ResultCode: 1032,
+      ResultDesc: 'Request cancelled by user',
+    });
+
+    const subscription = await Subscription.findOne({ user: userId });
+    expect(subscription.tier).toBe('free');
+    expect(subscription.status).toBe('pending');
+    expect(subscription.pendingTier).toBe('starter');
+    expect(subscription.pendingPayment.checkoutRequestId).toBeFalsy();
   });
 });

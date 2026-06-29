@@ -29,9 +29,9 @@ const subscriptionSchema = new Schema({
   },
   status: {
     // 'active' covers the free tier too (nothing to collect). 'pending'
-    // means an upgrade was requested but payment hasn't settled yet —
-    // there is no payment gateway wired in yet, so paid tiers currently
-    // land here until that's built.
+    // means a paid-tier upgrade was requested but payment hasn't settled —
+    // `tier` stays at the last *paid-for* tier until it does, so the higher
+    // limit is never granted before money has actually moved.
     type: String,
     enum: ['active', 'pending', 'past_due', 'canceled'],
     default: 'active',
@@ -39,6 +39,16 @@ const subscriptionSchema = new Schema({
   currentPeriodEnd: {
     type: Date,
     default: null,
+  },
+  // Set while an upgrade is awaiting payment. `tier`/`billingCycle` only
+  // move to these values once the M-Pesa callback confirms payment.
+  pendingTier: { type: String, enum: [...TIER_IDS, null], default: null },
+  pendingBillingCycle: { type: String, enum: [...BILLING_CYCLES, null], default: null },
+  pendingPayment: {
+    checkoutRequestId: { type: String, default: null },
+    amount: { type: Number, default: null },
+    phone: { type: String, default: null },
+    initiatedAt: { type: Date, default: null },
   },
 }, { timestamps: true });
 

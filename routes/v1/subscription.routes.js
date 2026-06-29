@@ -21,4 +21,13 @@ module.exports = [
     ],
     config: { source: 'subscription.routes' },
   },
+  {
+    method: 'POST',
+    path: '/upgrade/pay',
+    handler: [
+      authenticate(['landlord', 'manager', 'agent', 'vendor']),
+      asyncHandler(subscriptionController.payForUpgrade),
+    ],
+    config: { source: 'subscription.routes' },
+  },
 ];
