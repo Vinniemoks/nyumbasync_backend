@@ -514,6 +514,13 @@ exports.signup = async (req, res) => {
     // Persist the account — without this the signup silently created nothing.
     await user.save();
 
+    // Billable roles (everyone except tenant) start on the Free tier.
+    const { BILLABLE_ROLES } = require('../config/pricingPlans');
+    if (BILLABLE_ROLES.includes(user.role)) {
+      const Subscription = require('../models/subscription.model');
+      await Subscription.create({ user: user._id, role: user.role, tier: 'free', status: 'active' });
+    }
+
     const token = generateToken({
       id: user._id,
       role: user.role

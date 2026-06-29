@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const { body, param, validationResult } = require('express-validator');
 const propertyController = require('../../controllers/property.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
+const { enforceUsageLimit } = require('../../middlewares/subscription.middleware');
 
 // Define validation middleware properly
 const validatePropertyId = [
@@ -125,6 +126,7 @@ module.exports = [
     path: '/',
     handler: [
       authenticate('landlord'),
+      enforceUsageLimit(),
       asyncHandler(propertyController.createProperty)
     ],
     config: { source: 'property.routes' }

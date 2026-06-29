@@ -17,6 +17,7 @@ const Communication = require('./communication.model');
 const LandlordProfile = require('./landlord-profile.model');
 const VendorManagement = require('./vendor-management.model');
 const Workflow = require('./workflow.model');
+const Subscription = require('./subscription.model');
 
 module.exports = {
   // Core Models - The Three Pillars
@@ -31,6 +32,7 @@ module.exports = {
   Maintenance,
   TenantPortalAuth,
   MaintenanceRequest,
+  Subscription,
   Notification,
   Communication,
   
