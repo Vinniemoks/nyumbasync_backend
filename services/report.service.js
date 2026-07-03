@@ -12,13 +12,21 @@ const path = require('path');
 
 class ReportService {
   constructor() {
-    this.reportsDir = path.join(__dirname, '../../reports');
+    // REPORTS_DIR points at the persistent Fly volume in production; the repo
+    // directory is only a local-dev fallback (machine disk is ephemeral).
+    this.reportsDir = process.env.REPORTS_DIR || path.join(__dirname, '../reports');
     this.ensureReportsDirectoryExists();
   }
 
   ensureReportsDirectoryExists() {
-    if (!fs.existsSync(this.reportsDir)) {
-      fs.mkdirSync(this.reportsDir, { recursive: true });
+    // Must never throw: this runs at require time, and an unwritable
+    // directory would otherwise take down the whole route tree.
+    try {
+      if (!fs.existsSync(this.reportsDir)) {
+        fs.mkdirSync(this.reportsDir, { recursive: true });
+      }
+    } catch (err) {
+      console.error(`ReportService: cannot create reports dir ${this.reportsDir}: ${err.message}`);
     }
   }
 

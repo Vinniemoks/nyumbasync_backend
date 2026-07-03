@@ -5,6 +5,13 @@ const { formatKenyanDate } = require('../utils/formatters');
 const Lease = require('../models/lease.model');
 
 class DocumentService {
+  constructor() {
+    // Callers destructure generateLeasePDF off the instance, which unbinds
+    // `this` and crashes at this._addKenyanClauses mid-render, leaving a
+    // truncated PDF on disk.
+    this.generateLeasePDF = this.generateLeasePDF.bind(this);
+  }
+
   async generateLeasePDF(leaseId) {
     const lease = await Lease.findById(leaseId)
       .populate('property')
@@ -12,7 +19,10 @@ class DocumentService {
       .populate('landlord');
 
     const doc = new PDFDocument();
-    const filePath = path.join(__dirname, `../../leases/${leaseId}.pdf`);
+    // LEASE_DIR points at the persistent Fly volume in production; the repo
+    // directory is only a local-dev fallback (machine disk is ephemeral).
+    const leaseDir = process.env.LEASE_DIR || path.join(__dirname, '../leases');
+    const filePath = path.join(leaseDir, `${leaseId}.pdf`);
     // Ensure the output directory exists, otherwise the write stream emits an
     // uncatchable 'error' event.
     fs.mkdirSync(path.dirname(filePath), { recursive: true });

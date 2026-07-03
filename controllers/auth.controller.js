@@ -2,6 +2,7 @@ const User = require('../models/user.model');
 const { initiateSTKPush } = require('../services/mpesa.service');
 const { generateToken } = require('../utils/auth'); // Corrected import name
 const { validatePhone } = require('../utils/kenyanValidators');
+const { formatKenyanPhone } = require('../utils/formatters');
 const logger = require('../utils/logger'); // Import shared logger
 const { blacklistToken } = require('../services/token-blacklist.service');
 const emailService = require('../services/emailService');
@@ -21,8 +22,12 @@ exports.registerWithPhone = async (req, res) => {
       });
     }
 
+    // Canonical 254XXXXXXXXX form — lookups and storage must never see
+    // format variants (+254..., 07...) or the unique index is bypassed
+    const normalizedPhone = formatKenyanPhone(phone);
+
     // Check if phone already registered
-    const existingUser = await User.findOne({ phone });
+    const existingUser = await User.findOne({ phone: normalizedPhone });
     if (existingUser?.mpesaVerified) {
       return res.status(409).json({
         error: 'Phone number already registered',
@@ -44,9 +49,9 @@ exports.registerWithPhone = async (req, res) => {
 
     // Create/update user record with temporary placeholder names
     const user = await User.findOneAndUpdate(
-      { phone },
+      { phone: normalizedPhone },
       {
-        phone,
+        phone: normalizedPhone,
         role,
         verificationCode,
         codeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
@@ -63,7 +68,7 @@ exports.registerWithPhone = async (req, res) => {
       }
     );
 
-    logger.info(`Verification code sent to ${phone}`);
+    logger.info(`Verification code sent to ${normalizedPhone}`);
 
     const responseBody = {
       success: true,
@@ -100,9 +105,9 @@ exports.verifyCode = async (req, res) => {
   try {
     const { phone, code } = req.body;
 
-    // Find unexpired code record
+    // Find unexpired code record (phones are stored in canonical 254... form)
     const user = await User.findOne({
-      phone,
+      phone: formatKenyanPhone(phone) || phone,
       codeExpires: { $gt: new Date() }
     });
 
@@ -354,11 +359,13 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find user by email or phone and include password field
+    // Find user by email or phone and include password field.
+    // Phones are stored in canonical 254XXXXXXXXX form, so normalize the
+    // identifier before matching (accepts +254..., 07..., 254...).
     const user = await User.findOne({
       $or: [
         { email: identifier },
-        { phone: identifier }
+        { phone: formatKenyanPhone(identifier) || identifier }
       ]
     }).select('+password +mfaEnabled +mfaSecret');
 
@@ -384,7 +391,7 @@ exports.login = async (req, res) => {
     // Reset failed attempts on successful password verification
     await accountLockoutService.resetAttempts(identifier);
 
-    // Check if MFA is enabled
+    // Check if MFA is enabled (authenticator app)
     if (user.mfaEnabled && user.mfaSecret) {
       // Generate MFA session token (valid for 5 minutes)
       const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
@@ -394,8 +401,31 @@ exports.login = async (req, res) => {
       return res.status(200).json({
         success: true,
         mfaRequired: true,
+        mfaMethod: 'totp',
         mfaSessionToken,
         message: 'Please provide your MFA token to complete login'
+      });
+    }
+
+    // Email-OTP MFA — for accounts that opted in without an authenticator app.
+    if (user.mfaEmailEnabled) {
+      const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
+      let sent = false;
+      try {
+        sent = !!(await require('../services/verification.service').sendLoginOtp(user));
+      } catch (mailErr) {
+        logger.error('Login OTP email failed:', mailErr);
+      }
+      logger.info(`Email MFA required for user ${user._id} (sent=${sent})`);
+      return res.status(200).json({
+        success: true,
+        mfaRequired: true,
+        mfaMethod: 'email',
+        mfaSessionToken,
+        emailOtpSent: sent,
+        message: sent
+          ? 'Enter the code we just emailed you to complete login'
+          : 'Could not send the email code — email delivery is not configured. Contact support.'
       });
     }
 
@@ -473,11 +503,15 @@ exports.signup = async (req, res) => {
       return res.status(400).json({ error: 'Invalid Kenyan phone (must start with 2547 or 2541)' });
     }
 
+    // Canonical 254XXXXXXXXX form — dup-check and storage must never see
+    // format variants (+254..., 07...) or the unique index is bypassed
+    const normalizedPhone = formatKenyanPhone(userPhone);
+
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [
         { email },
-        { phone: userPhone }
+        { phone: normalizedPhone }
       ]
     });
 
@@ -504,7 +538,7 @@ exports.signup = async (req, res) => {
       lastName: lastName || name?.split(' ')[1],
       email,
       password, // Password will be hashed by the User model pre-save hook
-      phone: userPhone,
+      phone: normalizedPhone,
       idNumber,
       role: safeRole,
       roles: safeRoles,
@@ -513,6 +547,15 @@ exports.signup = async (req, res) => {
 
     // Persist the account — without this the signup silently created nothing.
     await user.save();
+
+    // Send the email-confirmation link + code. Best-effort: signup must not
+    // fail because the email provider is down/unconfigured.
+    let emailVerificationSent = false;
+    try {
+      emailVerificationSent = !!(await require('../services/verification.service').sendEmailVerification(user));
+    } catch (mailErr) {
+      logger.error('Signup verification email failed:', mailErr);
+    }
 
     // Billable roles (everyone except tenant) start on the Free tier.
     const { BILLABLE_ROLES } = require('../config/pricingPlans');
@@ -535,6 +578,7 @@ exports.signup = async (req, res) => {
       success: true,
       token,
       refreshToken,
+      emailVerificationSent,
       user: {
         id: user._id,
         email: user.email,
@@ -542,7 +586,8 @@ exports.signup = async (req, res) => {
         lastName: user.lastName,
         role: user.role,
         roles: user.roles,
-        phone: user.phone
+        phone: user.phone,
+        emailVerified: false
       }
     });
   } catch (error) {
@@ -557,6 +602,44 @@ exports.signup = async (req, res) => {
     }
 
     res.status(500).json({ error: 'Signup failed', details: error.message });
+  }
+};
+
+// Confirm an email address via the emailed link token or { email, code }.
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token, email, code } = { ...req.query, ...req.body };
+    if (!token && !(email && code)) {
+      return res.status(400).json({ error: 'A verification token, or an email and code, is required' });
+    }
+    const verificationService = require('../services/verification.service');
+    const user = await verificationService.verifyEmail({ token, email, code }, User);
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired verification link/code. Request a new one.' });
+    }
+    return res.json({ success: true, message: 'Email verified. Welcome to NyumbaSync!' });
+  } catch (error) {
+    logger.error('Email verification error:', error);
+    return res.status(500).json({ error: 'Email verification failed' });
+  }
+};
+
+// Re-send the confirmation email for the logged-in user.
+exports.resendVerification = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.emailVerified) {
+      return res.json({ success: true, message: 'Your email is already verified.' });
+    }
+    const sent = await require('../services/verification.service').sendEmailVerification(user);
+    if (!sent) {
+      return res.status(503).json({ error: 'Email delivery is not configured on the server.' });
+    }
+    return res.json({ success: true, message: `Verification email sent to ${user.email}.` });
+  } catch (error) {
+    logger.error('Resend verification error:', error);
+    return res.status(500).json({ error: 'Could not resend the verification email' });
   }
 };
 

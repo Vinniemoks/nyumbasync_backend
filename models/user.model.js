@@ -6,6 +6,7 @@ const {
   validateKRAPin: validateKRA,
   validateNationalID: validateIDNumber
 } = require('../utils/kenyanValidators');
+const { formatKenyanPhone } = require('../utils/formatters');
 
 
 const UserSchema = new mongoose.Schema({
@@ -15,6 +16,11 @@ const UserSchema = new mongoose.Schema({
     required: [true, 'Phone number is required'],
     unique: true,
     trim: true,
+    // Normalize to canonical 254XXXXXXXXX on every write so the unique
+    // index can't be bypassed by format variants (+254..., 07...).
+    // Fall back to the raw value so invalid input still fails validation
+    // with the message below rather than a misleading "required" error.
+    set: (v) => formatKenyanPhone(v) || v,
     validate: {
       validator: validatePhone,
       message: 'Invalid Kenyan phone (must start with 2547 or 2541)'
@@ -51,6 +57,18 @@ const UserSchema = new mongoose.Schema({
   },
   verificationCode: String,
   verificationCodeExpiry: Date,
+  // One-time codes for step-up actions (withdrawals, login MFA) delivered by
+  // email/WhatsApp. Stored as a sha256 hash; purpose prevents cross-use.
+  actionOtp: { type: String, select: false },
+  actionOtpExpiry: Date,
+  actionOtpPurpose: String,
+  // Email confirmation (signup): hashed link-token + 6-digit code.
+  emailVerified: { type: Boolean, default: false },
+  emailVerifyToken: { type: String, select: false },
+  emailVerifyCode: { type: String, select: false },
+  emailVerifyExpiry: Date,
+  // Email-OTP MFA at login (for accounts without an authenticator app).
+  mfaEmailEnabled: { type: Boolean, default: false },
   isActive: {
     type: Boolean,
     default: true
@@ -279,7 +297,7 @@ UserSchema.statics = {
     return this.findOne(
       isEmail
         ? { email: identifier.toLowerCase() }
-        : { phone: identifier }
+        : { phone: formatKenyanPhone(identifier) || identifier }
     );
   }
 };

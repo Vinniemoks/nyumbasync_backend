@@ -57,22 +57,34 @@ const settleInvoiceForPayment = async (payment) => {
 };
 
 // Resolve property, landlord and the authoritative amount for a payment.
-// When an invoice is paid, its values win over anything the client sent.
+// Invoice payments are capped at the outstanding balance; the client may pay
+// it in full (default) or send a smaller `amount` for a partial payment.
 const resolvePaymentContext = async ({ tenantId, invoiceId, propertyId, amount }) => {
   if (invoiceId) {
     const invoice = await Invoice.findById(invoiceId);
     if (!invoice) return { error: { status: 404, message: 'Invoice not found' } };
-    if (String(invoice.tenant) !== String(tenantId)) {
+    if (tenantId && String(invoice.tenant) !== String(tenantId)) {
       return { error: { status: 403, message: 'This invoice does not belong to you' } };
     }
     if (!['issued', 'sent', 'overdue', 'partially_paid'].includes(invoice.status)) {
       return { error: { status: 409, message: `Invoice is already ${invoice.status}` } };
     }
+    const balance = Math.round((invoice.total || 0) - (invoice.amountPaid || 0));
+    let payAmount = balance;
+    if (amount != null && amount !== '') {
+      payAmount = Math.round(Number(amount));
+      if (!Number.isInteger(payAmount) || payAmount < 100) {
+        return { error: { status: 400, message: 'Amount must be a whole number of at least KES 100' } };
+      }
+      if (payAmount > balance) {
+        return { error: { status: 400, message: `Amount exceeds the outstanding balance of KES ${balance.toLocaleString()}` } };
+      }
+    }
     return {
       invoice,
       property: invoice.property,
       landlord: invoice.landlord,
-      amount: invoice.total
+      amount: payAmount
     };
   }
 
@@ -106,8 +118,9 @@ exports.initiateStkPush = async (req, res) => {
       return res.status(400).json({ error: 'A valid Kenyan phone number is required' });
     }
 
-    // Fast-fail on an obviously invalid client amount for ad-hoc payments
-    // (invoice payments ignore the client amount in favour of the invoice total).
+    // Fast-fail on an obviously invalid client amount for ad-hoc payments.
+    // Invoice payments validate the amount against the outstanding balance in
+    // resolvePaymentContext (partial payments are allowed, overpayment is not).
     if (!invoiceId) {
       const amt = Math.round(Number(amount));
       if (!Number.isInteger(amt) || amt < 100) {
@@ -185,6 +198,80 @@ exports.initiateStkPush = async (req, res) => {
 
 // Legacy alias for the older POST /payments/mpesa route.
 exports.payRent = exports.initiateStkPush;
+
+// Landlord/manager/agent prompts the tenant's phone with an M-Pesa STK push
+// for an invoice they own — the full outstanding balance by default, or a
+// partial `amount`. The prompt lands on the TENANT's phone; settlement is the
+// same STK callback path as a tenant-initiated payment.
+exports.promptTenantStkPush = async (req, res) => {
+  try {
+    const { invoiceId, amount } = req.body;
+    if (!invoiceId) {
+      return res.status(400).json({ error: 'invoiceId is required' });
+    }
+
+    // tenantId: null — ownership is checked against the landlord below.
+    const ctx = await resolvePaymentContext({ tenantId: null, invoiceId, amount });
+    if (ctx.error) return res.status(ctx.error.status).json({ error: ctx.error.message });
+
+    if (String(ctx.invoice.landlord) !== String(req.user.id)) {
+      return res.status(403).json({ error: 'This invoice does not belong to you' });
+    }
+
+    const tenant = await User.findById(ctx.invoice.tenant).select('phone firstName');
+    const tenantPhone = normalizePhone(tenant?.phone);
+    if (!/^254(7|1)\d{8}$/.test(tenantPhone)) {
+      return res.status(400).json({ error: "The tenant's phone number is missing or invalid" });
+    }
+
+    if (!mpesaService.isConfigured()) {
+      return res.status(503).json({
+        error: 'M-Pesa is not configured on the server',
+        fallback: 'Ask the tenant to pay via USSD *544#'
+      });
+    }
+
+    const payment = await Payment.create({
+      tenant: ctx.invoice.tenant,
+      landlord: ctx.invoice.landlord,
+      property: ctx.property,
+      amount: ctx.amount,
+      phoneUsed: tenantPhone,
+      status: 'pending',
+      accountingCode: 'RENT',
+      invoice: invoiceId,
+      initiatedBy: req.user.id
+    });
+
+    const reference = String(ctx.invoice.invoiceNumber || `RENT${payment._id.toString().slice(-8)}`).slice(0, 12);
+
+    try {
+      const stk = await mpesaService.initiateSTKPush(tenantPhone, ctx.amount, reference);
+      payment.mpesaRequestId = stk.CheckoutRequestID;
+      await payment.save();
+
+      return res.status(202).json({
+        success: true,
+        status: 'pending',
+        transactionId: payment._id,
+        checkoutRequestId: stk.CheckoutRequestID,
+        message: `STK push sent to ${tenant.firstName || 'the tenant'}'s phone (${tenantPhone.replace(/^(2547\d{2}|2541\d{2})\d{4}/, '$1****')}).`
+      });
+    } catch (stkErr) {
+      payment.status = 'failed';
+      payment.failureReason = stkErr.message || 'STK push failed';
+      await payment.save();
+      console.error('MPESA_PROMPT_FAILURE:', stkErr.message);
+      return res.status(502).json({
+        success: false,
+        error: 'Could not reach M-Pesa via STK push. Ask the tenant to try from their app.'
+      });
+    }
+  } catch (err) {
+    console.error('PAYMENT_PROMPT_FAILURE:', err);
+    return res.status(500).json({ error: 'Payment prompt failed' });
+  }
+};
 
 // M-Pesa STK callback. Always responds 200 to Safaricom once handled so they
 // don't retry a payment we've already recorded.
@@ -269,7 +356,9 @@ exports.checkPaymentStatus = async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.id);
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
-    if (String(payment.tenant) !== String(req.user.id)) {
+    // The paying tenant or the landlord who prompted it may poll the status.
+    const requester = String(req.user.id);
+    if (requester !== String(payment.tenant) && requester !== String(payment.landlord)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

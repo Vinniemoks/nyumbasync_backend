@@ -264,7 +264,7 @@ exports.disableMFA = async (req, res) => {
  */
 exports.verifyMFALogin = async (req, res) => {
   try {
-    const { mfaSessionToken, token, backupCode } = req.body;
+    const { mfaSessionToken, token, backupCode, emailOtp } = req.body;
 
     if (!mfaSessionToken) {
       return res.status(400).json({
@@ -273,10 +273,10 @@ exports.verifyMFALogin = async (req, res) => {
       });
     }
 
-    if (!token && !backupCode) {
+    if (!token && !backupCode && !emailOtp) {
       return res.status(400).json({
         success: false,
-        error: 'MFA token or backup code is required'
+        error: 'An MFA token, backup code, or emailed code is required'
       });
     }
 
@@ -289,9 +289,9 @@ exports.verifyMFALogin = async (req, res) => {
       });
     }
 
-    const user = await User.findById(sessionVerification.userId).select('+mfaSecret +mfaBackupCodes');
+    const user = await User.findById(sessionVerification.userId).select('+mfaSecret +mfaBackupCodes +actionOtp');
 
-    if (!user || !user.mfaEnabled) {
+    if (!user || (!user.mfaEnabled && !user.mfaEmailEnabled)) {
       return res.status(400).json({
         success: false,
         error: 'MFA is not enabled for this account'
@@ -300,8 +300,10 @@ exports.verifyMFALogin = async (req, res) => {
 
     let isValid = false;
 
-    // Verify with token or backup code
-    if (token) {
+    // Verify with emailed code, authenticator token, or backup code
+    if (emailOtp) {
+      isValid = await require('../services/verification.service').verifyLoginOtp(user, emailOtp);
+    } else if (token && user.mfaSecret) {
       isValid = mfaService.verifyToken(user.mfaSecret, token);
     } else if (backupCode) {
       const verification = mfaService.verifyBackupCode(backupCode, user.mfaBackupCodes);
@@ -370,6 +372,68 @@ exports.verifyMFALogin = async (req, res) => {
       success: false,
       error: 'Failed to verify MFA'
     });
+  }
+};
+
+/**
+ * Re-send the login OTP email mid-login (requires a valid MFA session token).
+ * @route POST /api/v1/auth/mfa/send-login-otp
+ */
+exports.sendLoginOtp = async (req, res) => {
+  try {
+    const { mfaSessionToken } = req.body;
+    if (!mfaSessionToken) {
+      return res.status(400).json({ success: false, error: 'MFA session token is required' });
+    }
+    const sessionVerification = mfaService.verifyMFASessionToken(mfaSessionToken);
+    if (!sessionVerification.valid) {
+      return res.status(401).json({ success: false, error: 'Invalid or expired MFA session' });
+    }
+    const user = await User.findById(sessionVerification.userId);
+    if (!user || !user.mfaEmailEnabled) {
+      return res.status(400).json({ success: false, error: 'Email MFA is not enabled for this account' });
+    }
+    const sent = await require('../services/verification.service').sendLoginOtp(user);
+    if (!sent) {
+      return res.status(503).json({ success: false, error: 'Email delivery is not configured on the server' });
+    }
+    return res.json({ success: true, message: 'A new code was emailed to you.' });
+  } catch (error) {
+    console.error('Send login OTP error:', error);
+    return res.status(500).json({ success: false, error: 'Could not send the code' });
+  }
+};
+
+/**
+ * Enable/disable email-OTP MFA for the logged-in user (password required to
+ * disable — same bar as the TOTP flows).
+ * @route POST /api/v1/auth/mfa/email
+ */
+exports.setEmailMfa = async (req, res) => {
+  try {
+    const { enabled, password } = req.body;
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+
+    if (enabled) {
+      if (!user.email) {
+        return res.status(400).json({ success: false, error: 'Add an email address to your account first' });
+      }
+      user.mfaEmailEnabled = true;
+      await user.save({ validateBeforeSave: false });
+      return res.json({ success: true, message: 'Email codes are now required at login.' });
+    }
+
+    // Disabling a second factor needs the password.
+    if (!password || !(await user.correctPassword(password))) {
+      return res.status(401).json({ success: false, error: 'Your password is required to turn off email MFA' });
+    }
+    user.mfaEmailEnabled = false;
+    await user.save({ validateBeforeSave: false });
+    return res.json({ success: true, message: 'Email MFA disabled.' });
+  } catch (error) {
+    console.error('Set email MFA error:', error);
+    return res.status(500).json({ success: false, error: 'Could not update email MFA' });
   }
 };
 

@@ -47,24 +47,28 @@ const formatPhoneNumber = (phoneNumber) => {
 
 /**
  * Format phone number specifically for Kenya (without + prefix)
+ *
+ * Canonical storage/lookup form is 254XXXXXXXXX — "+254...", "0712...",
+ * "0112..." and whitespace/dash variants all normalize to it.
  */
 const formatKenyanPhone = (phoneNumber) => {
   if (!phoneNumber) return null;
-  
-  // Remove all non-digit characters
-  const cleaned = phoneNumber.replace(/\D/g, '');
-  
+
+  // Remove all non-digit characters (strips +, spaces, dashes)
+  const cleaned = String(phoneNumber).replace(/\D/g, '');
+
   // Handle different formats - return 254XXXXXXXX format
   if (cleaned.startsWith('254')) {
     return cleaned;
-  } else if (cleaned.startsWith('07')) {
+  } else if (cleaned.startsWith('0') && cleaned.length === 10) {
+    // Local 07XX/01XX/02XX numbers: drop the leading 0
     return `254${cleaned.substring(1)}`;
   } else if (cleaned.startsWith('7')) {
     return `254${cleaned}`;
   } else if (cleaned.length === 9) {
     return `254${cleaned}`;
   }
-  
+
   return null; // Return null for invalid numbers
 };
 

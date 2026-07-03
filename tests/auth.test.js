@@ -50,6 +50,26 @@ describe('Authentication Tests', () => {
       expect(response.body.user).not.toHaveProperty('password');
     });
 
+    it('should create a user with a real-world idNumber (regression)', async () => {
+      // The old national-ID validator applied a fictional checksum that
+      // rejected most real 8-digit IDs, 400-ing signup for real users.
+      const response = await request(app)
+        .post('/api/v1/auth/signup')
+        .send({
+          email: 'idnumber@example.com',
+          password: 'Test123!',
+          firstName: 'Id',
+          lastName: 'Holder',
+          phoneNumber: '254712345670',
+          idNumber: '12345678',
+          roles: ['landlord']
+        })
+        .expect(201);
+
+      expect(response.body).toHaveProperty('token');
+      expect(response.body.user.role).toBe('landlord');
+    });
+
     it('should reject signup with missing required fields', async () => {
       const response = await request(app)
         .post('/api/v1/auth/signup')
@@ -176,6 +196,57 @@ describe('Authentication Tests', () => {
         .expect(400);
 
       expect(response.body).toHaveProperty('error');
+    });
+  });
+
+  describe('Phone number normalization', () => {
+    // Prod had "+254724093238" and bare "254..." rows coexisting, and two
+    // accounts for the same number in different formats — exact-string
+    // matching let variants slip past both the dup-check and the unique
+    // index. All formats must collapse to canonical 254XXXXXXXXX.
+    const baseUser = {
+      password: 'Test123!',
+      firstName: 'Format',
+      lastName: 'Variant',
+      role: 'tenant'
+    };
+
+    it('should store signup phone in canonical 254 form and reject format variants as duplicates', async () => {
+      await request(app)
+        .post('/api/v1/auth/signup')
+        .send({ ...baseUser, email: 'plus@example.com', phone: '+254712345678' })
+        .expect(201);
+
+      const stored = await User.findOne({ email: 'plus@example.com' });
+      expect(stored.phone).toBe('254712345678');
+
+      await request(app)
+        .post('/api/v1/auth/signup')
+        .send({ ...baseUser, email: 'local@example.com', phone: '0712345678' })
+        .expect(409);
+
+      await request(app)
+        .post('/api/v1/auth/signup')
+        .send({ ...baseUser, email: 'bare@example.com', phone: '254712345678' })
+        .expect(409);
+
+      expect(await User.countDocuments({})).toBe(1);
+    });
+
+    it('should login by phone regardless of input format', async () => {
+      await request(app)
+        .post('/api/v1/auth/signup')
+        .send({ ...baseUser, email: 'phoneformats@example.com', phone: '254712345678' })
+        .expect(201);
+
+      for (const identifier of ['254712345678', '+254712345678', '0712345678']) {
+        const response = await request(app)
+          .post('/api/v1/auth/login')
+          .send({ identifier, password: 'Test123!' })
+          .expect(200);
+
+        expect(response.body).toHaveProperty('token');
+      }
     });
   });
 

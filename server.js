@@ -72,8 +72,9 @@ const logger = createLogger({
     new transports.Console({
       format: format.combine(
         format.colorize(),
-        format.printf(({ timestamp, level, message }) => {
-          return `[${timestamp}] ${level}: ${message}`;
+        format.printf(({ timestamp, level, message, stack, ...meta }) => {
+          const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
+          return `[${timestamp}] ${level}: ${message}${metaStr}${stack ? `\n${stack}` : ''}`;
         })
       )
     }),
@@ -1046,7 +1047,7 @@ try {
   app.use('/api', consolidatedRoutes);
   logger.info('✅ Consolidated route tree mounted at /api (versioned + unversioned)');
 } catch (err) {
-  logger.error('❌ Failed to mount consolidated routes:', err.message);
+  logger.error(`❌ Failed to mount consolidated routes: ${err.stack || err.message || err}`);
 }
 
 /* Static Files
@@ -1061,8 +1062,8 @@ if (fs.existsSync(publicDir)) {
   logger.warn('⚠️ Public directory not found, static files not served');
 }
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+// Serve uploaded files (UPLOAD_DIR = persistent Fly volume in production)
+app.use('/uploads', express.static(path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, 'uploads')), {
   maxAge: '7d',
   etag: true
 })); */
@@ -1130,7 +1131,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
       // Log the error with Winston logger
       logger.error('Global error handler:', {
         error: err.message,
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+        name: err.name,
+        code: err.code,
+        stack: err.stack,
         path: req.path,
         method: req.method,
         ip: req.ip,

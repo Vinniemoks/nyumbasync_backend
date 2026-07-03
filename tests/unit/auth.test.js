@@ -29,6 +29,19 @@ describe('Kenyan Phone Authentication', () => {
     expect(formatKenyanPhone('0712345678')).toBe('254712345678');
   });
 
+  // Regression: national ID is a format-only check (7-8 digits). The old
+  // mod-11 checksum was fictional and rejected most real IDs, breaking signup.
+  test.each([
+    ['12345678', true],  // 8 digits — failed the old checksum
+    ['1234567', true],   // 7 digits (older IDs)
+    ['123456', false],   // too short
+    ['123456789', false],// too long
+    ['1234567a', false], // non-numeric
+    ['', false]
+  ])('validates national ID %s', (id, expected) => {
+    expect(validateNationalID(id)).toBe(expected);
+  });
+
   test('blocks invalid M-Pesa codes', async () => {
     const mockReq = { body: { phone: '254712345678', code: '1234' } };
     const mockRes = { status: jest.fn().mockReturnThis(), json: jest.fn() };

@@ -208,4 +208,115 @@ describe('Live M-Pesa payment flow', () => {
     // No STK attempt, no lingering pending payment beyond what we can settle.
     expect(mpesaService.initiateSTKPush).not.toHaveBeenCalled();
   });
+
+  // A success callback whose metadata Amount matches a partial payment.
+  const successCallbackFor = (checkoutId, amount) => ({
+    Body: {
+      stkCallback: {
+        CheckoutRequestID: checkoutId,
+        ResultCode: 0,
+        ResultDesc: 'The service request is processed successfully.',
+        CallbackMetadata: {
+          Item: [
+            { Name: 'Amount', Value: amount },
+            // Receipts must look real: 10 alphanumeric chars.
+            { Name: 'MpesaReceiptNumber', Value: `QGH${amount}XXXXXXX`.slice(0, 10) },
+            { Name: 'TransactionDate', Value: 20260620140500 },
+            { Name: 'PhoneNumber', Value: 254712345678 }
+          ]
+        }
+      }
+    }
+  });
+
+  test('partial payment settles part of the invoice; next payment defaults to the remaining balance', async () => {
+    const invoice = await makeInvoice(); // total 50,000
+
+    // Pay 20,000 of it.
+    mpesaService.initiateSTKPush.mockResolvedValueOnce({ CheckoutRequestID: 'ws_CO_PART1', ResponseCode: '0' });
+    const res1 = mockRes();
+    await controller.initiateStkPush(
+      { body: { phoneNumber: '0712345678', invoiceId: invoice._id, amount: 20000 }, user: { id: tenant._id } },
+      res1
+    );
+    expect(res1.statusCode).toBe(202);
+    expect(mpesaService.initiateSTKPush.mock.calls[0][1]).toBe(20000);
+
+    await controller.mpesaCallback({ body: successCallbackFor('ws_CO_PART1', 20000) }, mockRes());
+
+    const partiallyPaid = await Invoice.findById(invoice._id);
+    expect(partiallyPaid.status).toBe('partially_paid');
+    expect(partiallyPaid.amountPaid).toBe(20000);
+    expect(partiallyPaid.balance).toBe(30000);
+
+    // Paying again with no amount defaults to the remaining 30,000 (not the total).
+    mpesaService.initiateSTKPush.mockResolvedValueOnce({ CheckoutRequestID: 'ws_CO_PART2', ResponseCode: '0' });
+    const res2 = mockRes();
+    await controller.initiateStkPush(
+      { body: { phoneNumber: '0712345678', invoiceId: invoice._id }, user: { id: tenant._id } },
+      res2
+    );
+    expect(res2.statusCode).toBe(202);
+    expect(mpesaService.initiateSTKPush.mock.calls[1][1]).toBe(30000);
+
+    await controller.mpesaCallback({ body: successCallbackFor('ws_CO_PART2', 30000) }, mockRes());
+    const paid = await Invoice.findById(invoice._id);
+    expect(paid.status).toBe('paid');
+    expect(paid.amountPaid).toBe(50000);
+  });
+
+  test('rejects a payment above the outstanding balance', async () => {
+    const invoice = await makeInvoice();
+    const res = mockRes();
+    await controller.initiateStkPush(
+      { body: { phoneNumber: '0712345678', invoiceId: invoice._id, amount: 60000 }, user: { id: tenant._id } },
+      res
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/exceeds the outstanding balance/i);
+    expect(mpesaService.initiateSTKPush).not.toHaveBeenCalled();
+  });
+
+  test('landlord prompts the tenant phone for a partial amount', async () => {
+    const invoice = await makeInvoice();
+
+    const res = mockRes();
+    await controller.promptTenantStkPush(
+      { body: { invoiceId: invoice._id, amount: 15000 }, user: { id: landlord._id } },
+      res
+    );
+    expect(res.statusCode).toBe(202);
+
+    // STK went to the TENANT's phone for the requested partial amount.
+    const [stkPhone, stkAmount] = mpesaService.initiateSTKPush.mock.calls[0];
+    expect(stkPhone).toBe('254712345678');
+    expect(stkAmount).toBe(15000);
+
+    const payment = await Payment.findById(res.body.transactionId);
+    expect(String(payment.tenant)).toBe(String(tenant._id));
+    expect(String(payment.initiatedBy)).toBe(String(landlord._id));
+    expect(payment.amount).toBe(15000);
+  });
+
+  test("landlord cannot prompt another landlord's invoice", async () => {
+    const invoice = await makeInvoice();
+    const otherLandlord = await User.create({
+      phone: '254733999888', firstName: 'Olly', lastName: 'Other',
+      email: 'olly@example.com', role: 'landlord', password: 'password123'
+    });
+
+    const res = mockRes();
+    await controller.promptTenantStkPush(
+      { body: { invoiceId: invoice._id }, user: { id: otherLandlord._id } },
+      res
+    );
+    expect(res.statusCode).toBe(403);
+    expect(mpesaService.initiateSTKPush).not.toHaveBeenCalled();
+  });
+
+  test('prompt requires an invoiceId', async () => {
+    const res = mockRes();
+    await controller.promptTenantStkPush({ body: {}, user: { id: landlord._id } }, res);
+    expect(res.statusCode).toBe(400);
+  });
 });

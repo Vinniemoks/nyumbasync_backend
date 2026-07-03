@@ -8,6 +8,10 @@ module.exports = {
   transformIgnorePatterns: ['/node_modules/'],
   
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+
+  // A nested clone of this repo at ./nyumbasync_backend/ once made every
+  // suite run twice; the clone is deleted, this guards against it reappearing.
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/nyumbasync_backend/'],
   
   moduleFileExtensions: ['js', 'json', 'node'],
   

@@ -7,7 +7,7 @@ const PATTERNS = {
     LOCAL_LANDLINE_01: /^01\d{8}$/,
     LOCAL_LANDLINE_02: /^02\d{8}$/,
   },
-  NATIONAL_ID: /^\d{8}$/,
+  NATIONAL_ID: /^\d{7,8}$/,
   LEASE_DURATION: /^\d+(months|years)$/,
   POSTAL_CODE: /^\d{5}$/,
 };
@@ -33,17 +33,6 @@ const utils = {
    * Remove all non-digit characters from a string
    */
   cleanPhone: (phone) => phone.replace(/\D/g, ''),
-  
-  /**
-   * Calculate National ID checksum
-   */
-  calculateChecksum: (digits) => {
-    let sum = 0;
-    digits.forEach((digit, index) => {
-      sum += digit * (digits.length + 1 - index);
-    });
-    return (sum % 11) % 10;
-  },
 };
 
 /**
@@ -75,15 +64,10 @@ module.exports = {
    * @returns {boolean} - True if valid ID with correct checksum
    */
   validateNationalID: (id) => {
-    if (!id || !PATTERNS.NATIONAL_ID.test(id)) {
-      return false;
-    }
-    
-    const digits = id.split('').map(Number);
-    const providedChecksum = digits.pop();
-    const calculatedChecksum = utils.calculateChecksum(digits);
-    
-    return calculatedChecksum === providedChecksum;
+    // Format-only check: Kenyan national IDs are 7-8 digits and have NO
+    // public checksum algorithm. The old mod-11 checksum here rejected
+    // ~90% of real IDs, which broke signup for real users.
+    return !!id && PATTERNS.NATIONAL_ID.test(String(id).trim());
   },
 
   /**

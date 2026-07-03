@@ -32,6 +32,13 @@ router.post('/mpesa',
   paymentController.initiateStkPush
 );
 
+// Landlord/manager/agent prompts the tenant's phone for an invoice payment
+// (full outstanding balance by default, or a partial amount).
+router.post('/mpesa/prompt',
+  authenticate(['landlord', 'manager', 'agent', 'admin']),
+  paymentController.promptTenantStkPush
+);
+
 // Paybill fallback when STK push fails — issue an expiring account number.
 router.post('/mpesa/paybill',
   authenticate('tenant'),
@@ -64,9 +71,10 @@ router.post('/:id/verify',
   paymentController.verifyPayment
 );
 
-// Poll a payment's status after STK push / Paybill fallback.
+// Poll a payment's status after STK push / Paybill fallback. Tenants poll
+// their own payments; landlords/managers/agents poll prompts they initiated.
 router.get('/status/:id',
-  authenticate('tenant'),
+  authenticate(['tenant', 'landlord', 'manager', 'agent', 'admin']),
   paymentController.checkPaymentStatus
 );
 

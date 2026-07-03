@@ -133,7 +133,9 @@ describe('Password History Security Tests', () => {
         .expect(200);
 
       expect(res.body).to.have.property('success', true);
-    });
+      // 6 password changes = ~12 bcrypt hashes; under full parallel suite
+      // load this exceeds the 10s global timeout, so it gets its own.
+    }, 30000);
 
     it('should require minimum password length', async () => {
       const res = await request(app)

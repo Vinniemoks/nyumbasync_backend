@@ -58,7 +58,11 @@ const propertySchema = new Schema({
     county: { type: String, required: true, trim: true, default: 'Nairobi' },
     postalCode: { type: String, trim: true },
     coordinates: {
-      type: { type: String, default: 'Point', enum: ['Point'] },
+      // No default for `type`: a bare { type: 'Point' } with no coordinates
+      // array fails 2dsphere key extraction at insert time, after Mongoose
+      // validation has already passed. The pre('validate') hook below keeps
+      // this subdocument fully absent unless a [lng, lat] pair is provided.
+      type: { type: String, enum: ['Point'] },
       coordinates: {
         type: [Number],
         validate: {
@@ -429,6 +433,19 @@ propertySchema.methods.incrementViews = function() {
 };
 
 // Middleware
+propertySchema.pre('validate', function(next) {
+  // Only persist the GeoJSON subdocument when a [lng, lat] pair is provided.
+  // A partial value ({ type: 'Point' } alone, or an empty coordinates array)
+  // passes validation but is rejected by the 2dsphere index at insert time.
+  const geo = this.address && this.address.coordinates;
+  if (geo && Array.isArray(geo.coordinates) && geo.coordinates.length === 2) {
+    geo.type = 'Point';
+  } else if (this.address) {
+    this.address.coordinates = undefined;
+  }
+  next();
+});
+
 propertySchema.pre('save', function(next) {
   if (this.images && this.images.length > 0) {
     let primaryCount = 0;

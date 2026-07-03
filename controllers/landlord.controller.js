@@ -10,6 +10,7 @@ const Contact = require('../models/contact.model');
 const Document = require('../models/document.model');
 const AuditLog = require('../models/audit-log.model');
 const { sendEmail } = require('../services/email.service');
+const { formatKenyanPhone } = require('../utils/formatters');
 const { sendSMS } = require('../services/sms.service');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
@@ -28,8 +29,10 @@ exports.createLandlordAccount = async (req, res) => {
       return res.status(403).json({ error: 'Only super admins can create landlord accounts' });
     }
     
-    // Check if user already exists
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    // Check if user already exists (phones are stored in canonical 254... form)
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone: formatKenyanPhone(phone) || phone }]
+    });
     if (existingUser) {
       return res.status(400).json({ error: 'User with this email or phone already exists' });
     }

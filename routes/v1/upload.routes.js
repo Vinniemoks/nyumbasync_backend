@@ -13,10 +13,21 @@ const logger = createLogger({
   transports: [new (require('winston')).transports.Console()]
 });
 
+// Upload root: the persistent Fly volume in production (UPLOAD_DIR), the repo
+// directory as a local-dev fallback. Machine disk is ephemeral on Fly.
+const UPLOADS_ROOT = process.env.UPLOAD_DIR || 'uploads';
+
+// Public URL for a stored file, relative to the uploads root — the stored
+// filesystem path may be absolute (volume) so it can't be used in URLs directly.
+const publicFileUrl = (req, filePath) => {
+  const rel = path.relative(UPLOADS_ROOT, filePath).split(path.sep).join('/');
+  return `${req.protocol}://${req.get('host')}/uploads/${rel}`;
+};
+
 // File storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = req.params.type ? `uploads/${req.params.type}` : 'uploads/general';
+    const uploadDir = path.join(UPLOADS_ROOT, req.params.type || 'general');
     // Create directory if it doesn't exist
     fs.mkdir(uploadDir, { recursive: true })
       .then(() => cb(null, uploadDir))
@@ -60,7 +71,7 @@ const upload = multer({
 // Middleware to ensure uploads directory exists
 const ensureUploadDir = async (req, res, next) => {
   try {
-    await fs.mkdir('uploads', { recursive: true });
+    await fs.mkdir(UPLOADS_ROOT, { recursive: true });
     next();
   } catch (error) {
     logger.error('Error creating uploads directory:', error);
@@ -99,7 +110,7 @@ const processImage = async (req, res, next) => {
 
         processedFiles.push({
           ...file,
-          thumbnail: thumbnailPath.replace('uploads/', '')
+          thumbnail: path.relative(UPLOADS_ROOT, thumbnailPath).split(path.sep).join('/')
         });
       } else {
         processedFiles.push(file);
@@ -132,7 +143,7 @@ router.post('/:type', ensureUploadDir, upload.single('file'), processImage, asyn
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const fileUrl = `${baseUrl}/${req.file.path}`;
+    const fileUrl = publicFileUrl(req, req.file.path);
     const thumbnailUrl = req.file.thumbnail ? `${baseUrl}/uploads/${req.file.thumbnail}` : null;
 
     // Log upload activity
@@ -180,7 +191,7 @@ router.post('/:type/multiple', ensureUploadDir, upload.array('files', 10), proce
       originalname: file.originalname,
       size: file.size,
       mimetype: file.mimetype,
-      url: `${baseUrl}/${file.path}`,
+      url: publicFileUrl(req, file.path),
       thumbnailUrl: file.thumbnail ? `${baseUrl}/uploads/${file.thumbnail}` : null,
       uploadType: req.params.type,
       uploadedBy: req.user.id,
@@ -211,7 +222,7 @@ router.get('/user', async (req, res) => {
   try {
     const userId = req.user.id;
     
-    const uploadsDir = 'uploads';
+    const uploadsDir = UPLOADS_ROOT;
     const files = [];
     
     // Read all subdirectories
@@ -228,14 +239,13 @@ router.get('/user', async (req, res) => {
           if (filename.startsWith(userId) && !filename.includes('-thumb')) {
             const filePath = path.join(subdirPath, filename);
             const fileStats = await fs.stat(filePath);
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
-            
+
             files.push({
               id: filename,
               filename: filename,
               size: fileStats.size,
               uploadType: subdir,
-              url: `${baseUrl}/${filePath.replace(/\\/g, '/')}`,
+              url: publicFileUrl(req, filePath),
               uploadedAt: fileStats.birthtime.toISOString(),
               lastModified: fileStats.mtime.toISOString()
             });
@@ -273,7 +283,7 @@ router.get('/user/:userId', async (req, res) => {
       });
     }
 
-    const uploadsDir = 'uploads';
+    const uploadsDir = UPLOADS_ROOT;
     const files = [];
     
     // Read all subdirectories
@@ -290,14 +300,13 @@ router.get('/user/:userId', async (req, res) => {
           if (filename.startsWith(userId) && !filename.includes('-thumb')) {
             const filePath = path.join(subdirPath, filename);
             const fileStats = await fs.stat(filePath);
-            const baseUrl = `${req.protocol}://${req.get('host')}`;
-            
+
             files.push({
               id: filename,
               filename: filename,
               size: fileStats.size,
               uploadType: subdir,
-              url: `${baseUrl}/${filePath.replace(/\\/g, '/')}`,
+              url: publicFileUrl(req, filePath),
               uploadedAt: fileStats.birthtime.toISOString(),
               lastModified: fileStats.mtime.toISOString()
             });
@@ -339,7 +348,7 @@ router.delete('/:filename', async (req, res) => {
     // Find the file in subdirectories
     let filePath = null;
     let thumbnailPath = null;
-    const uploadsDir = 'uploads';
+    const uploadsDir = UPLOADS_ROOT;
     
     const subdirs = await fs.readdir(uploadsDir);
     
@@ -421,7 +430,7 @@ router.get('/info/:filename', async (req, res) => {
     // Find the file in subdirectories
     let filePath = null;
     let uploadType = null;
-    const uploadsDir = 'uploads';
+    const uploadsDir = UPLOADS_ROOT;
     
     const subdirs = await fs.readdir(uploadsDir);
     
@@ -450,7 +459,6 @@ router.get('/info/:filename', async (req, res) => {
     }
 
     const fileStats = await fs.stat(filePath);
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
 
     res.status(200).json({
       file: {
@@ -458,7 +466,7 @@ router.get('/info/:filename', async (req, res) => {
         filename: filename,
         size: fileStats.size,
         uploadType: uploadType,
-        url: `${baseUrl}/${filePath.replace(/\\/g, '/')}`,
+        url: publicFileUrl(req, filePath),
         uploadedAt: fileStats.birthtime.toISOString(),
         lastModified: fileStats.mtime.toISOString(),
         isImage: filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? true : false
@@ -489,7 +497,7 @@ router.post('/cleanup', async (req, res) => {
     
     let deletedCount = 0;
     let totalSize = 0;
-    const uploadsDir = 'uploads';
+    const uploadsDir = UPLOADS_ROOT;
     
     const subdirs = await fs.readdir(uploadsDir);
     

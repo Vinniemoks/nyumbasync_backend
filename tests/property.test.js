@@ -89,6 +89,21 @@ describe('Property Controller Tests', () => {
       expect(response.body).toHaveProperty('landlord');
     });
 
+    it('should create property without address.coordinates', async () => {
+      // Regression: the schema used to default coordinates.type to 'Point'
+      // with no coordinates array, which passed validation but was rejected
+      // by the 2dsphere index at insert time (500 in production).
+      const body = validBody();
+      delete body.address.coordinates;
+      const response = await request(app)
+        .post('/api/v1/properties')
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send(body)
+        .expect(201);
+      expect(response.body).toHaveProperty('title', 'New Property');
+      expect(response.body.address.coordinates).toBeUndefined();
+    });
+
     it('should reject deposit exceeding 3x rent', async () => {
       const response = await request(app)
         .post('/api/v1/properties')

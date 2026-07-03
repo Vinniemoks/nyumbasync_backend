@@ -114,5 +114,41 @@ module.exports = [
     path: '/mfa/verify-login',
     handler: asyncHandler(require('../../controllers/mfa.controller').verifyMFALogin),
     config: { source: 'auth.routes' }
+  },
+
+  // Re-send the email login code mid-login (gated by the MFA session token)
+  {
+    method: 'POST',
+    path: '/mfa/send-login-otp',
+    handler: asyncHandler(require('../../controllers/mfa.controller').sendLoginOtp),
+    config: { source: 'auth.routes' }
+  },
+
+  // Turn email-OTP MFA on/off for the logged-in account
+  {
+    method: 'POST',
+    path: '/mfa/email',
+    handler: [authenticate(), asyncHandler(require('../../controllers/mfa.controller').setEmailMfa)],
+    config: { source: 'auth.routes' }
+  },
+
+  // Email confirmation: link token (GET/POST) or { email, code }
+  {
+    method: 'GET',
+    path: '/verify-email',
+    handler: asyncHandler(authController.verifyEmail),
+    config: { source: 'auth.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/verify-email',
+    handler: asyncHandler(authController.verifyEmail),
+    config: { source: 'auth.routes' }
+  },
+  {
+    method: 'POST',
+    path: '/resend-verification',
+    handler: [authenticate(), asyncHandler(authController.resendVerification)],
+    config: { source: 'auth.routes' }
   }
 ];
