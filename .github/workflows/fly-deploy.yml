@@ -1,0 +1,19 @@
+name: Deploy to Fly.io
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    name: Deploy nyumbasync-api
+    runs-on: ubuntu-latest
+    # One deploy at a time; a newer push supersedes an in-flight one
+    concurrency:
+      group: fly-deploy
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
