@@ -39,12 +39,10 @@ const connectWithRetry = async () => {
   }
 };
 
-// Kenyan timezone configuration
-mongoose.set('timestamps', {
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  currentTime: () => new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' })
-});
+// NOTE: a global mongoose.set('timestamps', ...) override used to live here,
+// but "timestamps" is not a valid global option in Mongoose 6 — it threw at
+// module load, crashing every script that required this file. Schemas manage
+// their own timestamps; nothing depended on the intended override.
 
 module.exports = {
   connectWithRetry,
