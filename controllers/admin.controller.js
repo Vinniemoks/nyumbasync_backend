@@ -605,3 +605,197 @@ exports.systemMaintenance = async (req, res) => {
     res.status(500).json({ error: 'Maintenance action failed' });
   }
 };
+/**
+ * User administration (list / create / edit) and the login audit trail.
+ * Route guards allow admin+super_admin; anything touching admin-level
+ * roles additionally requires the requester to be a super_admin.
+ */
+
+const LoginAudit = require('../models/login-audit.model');
+const { formatKenyanPhone } = require('../utils/formatters');
+
+const ADMIN_LEVEL_ROLES = ['admin', 'super_admin'];
+const ASSIGNABLE_ROLES = ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin', 'super_admin'];
+
+const isSuper = (reqUser) => {
+  const roles = Array.isArray(reqUser.roles) ? reqUser.roles : [reqUser.role];
+  return roles.includes('super_admin');
+};
+
+// GET /admin/users?search=&role=&page=&limit=
+exports.listUsers = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const filter = {};
+    if (req.query.role) filter.$or = [{ role: req.query.role }, { roles: req.query.role }];
+    if (req.query.search) {
+      const rx = new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$and = [{ $or: [{ email: rx }, { firstName: rx }, { lastName: rx }, { phone: rx }] }];
+    }
+
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select('email phone firstName lastName role roles status isEmailVerified mfaEnabled lastLogin createdAt')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    res.json({ users, total, page, pages: Math.ceil(total / limit) });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to list users' });
+  }
+};
+
+// POST /admin/users — create a user with initial credentials.
+exports.createUser = async (req, res) => {
+  try {
+    const { email, phone, firstName, lastName, password, role, roles } = req.body;
+    if (!email || !phone || !firstName || !lastName) {
+      return res.status(400).json({ error: 'email, phone, firstName and lastName are required' });
+    }
+
+    const requestedRoles = [...new Set((Array.isArray(roles) && roles.length ? roles : [role || 'tenant']).filter(Boolean))];
+    const invalid = requestedRoles.filter((r) => !ASSIGNABLE_ROLES.includes(r));
+    if (invalid.length) {
+      return res.status(400).json({ error: `Invalid role(s): ${invalid.join(', ')}` });
+    }
+    // Only a super_admin may mint admin-level accounts.
+    if (requestedRoles.some((r) => ADMIN_LEVEL_ROLES.includes(r)) && !isSuper(req.user)) {
+      return res.status(403).json({ error: 'Only a super admin can create admin accounts' });
+    }
+
+    const normalizedPhone = formatKenyanPhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ error: 'Invalid Kenyan phone (must start with 2547 or 2541)' });
+    }
+
+    const exists = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: normalizedPhone }] });
+    if (exists) {
+      return res.status(409).json({ error: 'A user with that email or phone already exists' });
+    }
+
+    // Use the given password or generate a strong one to hand to the staff
+    // member; the model's pre-save hook hashes it.
+    const crypto = require('crypto');
+    const initialPassword = password || crypto.randomBytes(9).toString('base64url') + '!2b';
+    if (initialPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    const user = await User.create({
+      email: email.toLowerCase(),
+      phone: normalizedPhone,
+      firstName,
+      lastName,
+      password: initialPassword,
+      role: requestedRoles[0],
+      roles: requestedRoles,
+      isEmailVerified: true, // provisioned by an admin, not self-signup
+    });
+
+    logAdminActivity(req.user._id, 'USER_CREATED', { targetUser: user._id, roles: requestedRoles });
+
+    res.status(201).json({
+      message: 'User created',
+      user: {
+        id: user._id, email: user.email, phone: user.phone,
+        firstName: user.firstName, lastName: user.lastName,
+        role: user.role, roles: user.roles,
+      },
+      // Returned exactly once so the admin can hand it over; never stored in plaintext.
+      initialPassword: password ? undefined : initialPassword,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create user', details: error.message });
+  }
+};
+
+// PATCH /admin/users/:userId — edit profile, roles, status, or reset password.
+exports.updateUserAdmin = async (req, res) => {
+  try {
+    const target = await User.findById(req.params.userId).select('+password');
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    const targetRoles = Array.isArray(target.roles) && target.roles.length ? target.roles : [target.role];
+    const requesterSuper = isSuper(req.user);
+
+    // Editing an admin-level account (or granting admin-level roles) is
+    // super_admin-only; nobody can edit a super_admin except a super_admin.
+    if (targetRoles.some((r) => ADMIN_LEVEL_ROLES.includes(r)) && !requesterSuper) {
+      return res.status(403).json({ error: 'Only a super admin can modify admin accounts' });
+    }
+
+    const { firstName, lastName, email, phone, role, roles, status, password } = req.body;
+
+    if (roles || role) {
+      const newRoles = [...new Set((Array.isArray(roles) && roles.length ? roles : [role]).filter(Boolean))];
+      const invalid = newRoles.filter((r) => !ASSIGNABLE_ROLES.includes(r));
+      if (invalid.length) return res.status(400).json({ error: `Invalid role(s): ${invalid.join(', ')}` });
+      if (newRoles.some((r) => ADMIN_LEVEL_ROLES.includes(r)) && !requesterSuper) {
+        return res.status(403).json({ error: 'Only a super admin can grant admin roles' });
+      }
+      target.roles = newRoles;
+      target.role = newRoles[0];
+    }
+
+    if (firstName) target.firstName = firstName;
+    if (lastName) target.lastName = lastName;
+    if (email) target.email = String(email).toLowerCase();
+    if (phone) {
+      const normalized = formatKenyanPhone(phone);
+      if (!normalized) return res.status(400).json({ error: 'Invalid Kenyan phone' });
+      target.phone = normalized;
+    }
+    if (status) {
+      if (!['active', 'inactive', 'suspended'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      target.status = status;
+    }
+    if (password) {
+      if (String(password).length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+      }
+      target.password = password; // hashed by the pre-save hook
+    }
+
+    await target.save();
+    logAdminActivity(req.user._id, 'USER_UPDATED', { targetUser: target._id, fields: Object.keys(req.body) });
+
+    res.json({
+      message: 'User updated',
+      user: {
+        id: target._id, email: target.email, phone: target.phone,
+        firstName: target.firstName, lastName: target.lastName,
+        role: target.role, roles: target.roles, status: target.status,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update user', details: error.message });
+  }
+};
+
+// GET /admin/audit/logins?page=&limit=&success=&identifier=
+exports.getLoginAudit = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const filter = {};
+    if (req.query.success === 'true') filter.success = true;
+    if (req.query.success === 'false') filter.success = false;
+    if (req.query.identifier) filter.identifier = String(req.query.identifier).toLowerCase();
+
+    const [entries, total] = await Promise.all([
+      LoginAudit.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      LoginAudit.countDocuments(filter),
+    ]);
+
+    res.json({ entries, total, page, pages: Math.ceil(total / limit) });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to load login audit' });
+  }
+};

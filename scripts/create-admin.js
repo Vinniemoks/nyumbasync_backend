@@ -8,7 +8,10 @@
  *
  * Usage:
  *   node scripts/create-admin.js --email admin@example.com --phone 254712345678 \
- *        --first Jane --last Mokua [--password 'S3cure!pass']
+ *        --first Jane --last Mokua [--password 'S3cure!pass'] [--super]
+ *
+ * --super grants super_admin (full hierarchy: can create/edit other admins
+ * and super admins); without it the account gets the plain admin role.
  *
  * If --password is omitted a strong random one is generated and printed.
  * If a user with that email already exists, the script promotes it to admin
@@ -42,6 +45,8 @@ async function main() {
 
   await connectWithRetry();
 
+  const adminRole = process.argv.includes('--super') ? 'super_admin' : 'admin';
+
   const existing = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
   // Generate a password only when we'll actually set one (new account).
@@ -51,13 +56,13 @@ async function main() {
     generated = true;
   }
   if (existing) {
-    const roles = new Set([...(existing.roles || [existing.role]), 'admin']);
+    const roles = new Set([...(existing.roles || [existing.role]), adminRole]);
     existing.roles = [...roles];
-    existing.role = 'admin';
+    existing.role = adminRole;
     // Only touch the password when one was explicitly provided.
     if (arg('password')) existing.password = password; // hashed by pre-save hook
     await existing.save();
-    console.log(`Promoted existing user ${email} to admin${arg('password') ? ' and reset password' : ''}.`);
+    console.log(`Promoted existing user ${email} to ${adminRole}${arg('password') ? ' and reset password' : ''}.`);
   } else {
     if (!phone || !first || !last) {
       console.error('Creating a new user requires --phone, --first and --last.');
@@ -69,11 +74,11 @@ async function main() {
       firstName: first,
       lastName: last,
       password, // hashed by the model's pre-save hook — never pre-hash here
-      role: 'admin',
-      roles: ['admin'],
+      role: adminRole,
+      roles: [adminRole],
       isEmailVerified: true,
     });
-    console.log(`Created admin ${email}.`);
+    console.log(`Created ${adminRole} ${email}.`);
   }
 
   if (generated) {

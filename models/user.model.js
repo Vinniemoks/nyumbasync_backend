@@ -105,13 +105,13 @@ const UserSchema = new mongoose.Schema({
   // vendor has roles: ['tenant', 'vendor'] and switches `role` between them.
   role: {
     type: String,
-    enum: ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin'],
+    enum: ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin', 'super_admin'],
     required: true,
     default: 'tenant'
   },
   roles: {
     type: [String],
-    enum: ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin'],
+    enum: ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin', 'super_admin'],
     default: undefined
   },
 

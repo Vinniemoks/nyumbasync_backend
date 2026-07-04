@@ -337,6 +337,19 @@ exports.login = async (req, res) => {
     const { identifier, password } = req.body;
     const accountLockoutService = require('../services/account-lockout.service');
     const mfaService = require('../services/mfa.service');
+    const LoginAudit = require('../models/login-audit.model');
+
+    // Fire-and-forget audit trail of every attempt — never blocks login.
+    const audit = (fields) => {
+      try {
+        LoginAudit.create({
+          identifier: typeof identifier === 'string' ? identifier.toLowerCase() : undefined,
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+          ...fields,
+        }).catch(() => {});
+      } catch (_) { /* auditing must never break auth */ }
+    };
 
     // Validate required fields
     if (!identifier || !password) {
@@ -352,6 +365,7 @@ exports.login = async (req, res) => {
     // Check if account is locked
     const lockStatus = await accountLockoutService.isLocked(identifier);
     if (lockStatus.locked) {
+      audit({ success: false, reason: 'account_locked' });
       return res.status(423).json({
         error: 'Account locked',
         message: lockStatus.message,
@@ -372,6 +386,7 @@ exports.login = async (req, res) => {
     if (!user) {
       // Record failed attempt even if user not found (prevent user enumeration)
       await accountLockoutService.recordFailedAttempt(identifier);
+      audit({ success: false, reason: 'unknown_identifier' });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -380,6 +395,7 @@ exports.login = async (req, res) => {
     if (!isValidPassword) {
       // Record failed login attempt
       const lockoutStatus = await accountLockoutService.recordFailedAttempt(identifier);
+      audit({ success: false, reason: 'wrong_password', user: user._id, email: user.email, role: user.role });
 
       return res.status(401).json({
         error: 'Invalid credentials',
@@ -397,6 +413,7 @@ exports.login = async (req, res) => {
       const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
 
       logger.info(`MFA required for user ${user._id}`);
+      audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role });
 
       return res.status(200).json({
         success: true,
@@ -417,6 +434,7 @@ exports.login = async (req, res) => {
         logger.error('Login OTP email failed:', mailErr);
       }
       logger.info(`Email MFA required for user ${user._id} (sent=${sent})`);
+      audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role });
       return res.status(200).json({
         success: true,
         mfaRequired: true,
@@ -447,6 +465,7 @@ exports.login = async (req, res) => {
     await user.save();
 
     logger.info(`User ${user._id} logged in successfully`);
+    audit({ success: true, reason: 'ok', user: user._id, email: user.email, role: user.role });
 
     res.json({
       success: true,

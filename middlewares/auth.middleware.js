@@ -93,6 +93,10 @@ const authenticate = (roles = 'any') => {
         const userRoles = Array.isArray(user.roles)
           ? user.roles
           : [user.role].filter(Boolean);
+        // Role hierarchy: super_admin satisfies every requirement (it can do
+        // anything an admin — or anyone else — can), and admin satisfies
+        // routes that ask for admin.
+        if (userRoles.includes('super_admin')) return next();
         if (!requiredRoles.some(role => userRoles.includes(role))) {
           logAuthAttempt(user._id, 'UNAUTHORIZED_ROLE', `Required: ${requiredRoles.join(', ')}`);
           return res.status(403).json({

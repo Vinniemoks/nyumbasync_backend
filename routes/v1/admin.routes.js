@@ -43,10 +43,61 @@ module.exports = [
       authenticate('admin'),
       asyncHandler(adminController.getDashboardStats)
     ],
-    config: { 
+    config: {
       source: 'admin.routes',
       description: 'Get admin dashboard statistics'
     }
+  },
+  {
+    // Alias — the web admin panel calls /dashboard/stats.
+    method: 'GET',
+    path: '/dashboard/stats',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(adminController.getDashboardStats)
+    ],
+    config: {
+      source: 'admin.routes',
+      description: 'Get admin dashboard statistics (alias)'
+    }
+  },
+
+  // User administration (list / create / edit) + login audit
+  {
+    method: 'GET',
+    path: '/users',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(adminController.listUsers)
+    ],
+    config: { source: 'admin.routes', description: 'List users with search/role filters' }
+  },
+  {
+    method: 'POST',
+    path: '/users',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(adminController.createUser)
+    ],
+    config: { source: 'admin.routes', description: 'Create a user with initial credentials' }
+  },
+  {
+    method: 'PATCH',
+    path: '/users/:userId',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(adminController.updateUserAdmin)
+    ],
+    config: { source: 'admin.routes', description: 'Edit a user (profile, roles, status, password reset)' }
+  },
+  {
+    method: 'GET',
+    path: '/audit/logins',
+    handler: [
+      authenticate('admin'),
+      asyncHandler(adminController.getLoginAudit)
+    ],
+    config: { source: 'admin.routes', description: 'Login attempt audit trail' }
   },
 
   // Lease management routes
