@@ -11,6 +11,14 @@ module.exports = [
     handler: asyncHandler(authController.login),
     config: { source: 'auth.routes' }
   },
+
+  // Verify IP for high-ranked admin login from new IP
+  {
+    method: 'POST',
+    path: '/verify-ip',
+    handler: asyncHandler(authController.verifyIp),
+    config: { source: 'auth.routes' }
+  },
   
   // Signup
   {
@@ -124,6 +132,22 @@ module.exports = [
     config: { source: 'auth.routes' }
   },
 
+  // Google OAuth
+  {
+    method: 'POST',
+    path: '/google',
+    handler: asyncHandler(authController.googleAuth),
+    config: { source: 'auth.routes' }
+  },
+
+  // Apple OAuth
+  {
+    method: 'POST',
+    path: '/apple',
+    handler: asyncHandler(authController.appleAuth),
+    config: { source: 'auth.routes' }
+  },
+
   // Turn email-OTP MFA on/off for the logged-in account
   {
     method: 'POST',
@@ -149,6 +173,13 @@ module.exports = [
     method: 'POST',
     path: '/resend-verification',
     handler: [authenticate(), asyncHandler(authController.resendVerification)],
+    config: { source: 'auth.routes' }
+  },
+  // Activate account via admin-provisioned activation token
+  {
+    method: 'POST',
+    path: '/activate',
+    handler: asyncHandler(authController.activateAccount),
     config: { source: 'auth.routes' }
   }
 ];

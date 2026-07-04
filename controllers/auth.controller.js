@@ -1,4 +1,5 @@
 const User = require('../models/user.model');
+const crypto = require('crypto');
 const { initiateSTKPush } = require('../services/mpesa.service');
 const { generateToken } = require('../utils/auth'); // Corrected import name
 const { validatePhone } = require('../utils/kenyanValidators');
@@ -447,6 +448,93 @@ exports.login = async (req, res) => {
       });
     }
 
+    // --- First-login password change check ---
+    if (user.requirePasswordChange) {
+      const jwt = require('jsonwebtoken');
+      const tempToken = jwt.sign(
+        { userId: user._id, purpose: 'password-change' },
+        process.env.JWT_SECRET,
+        { expiresIn: '5m', algorithm: 'HS256' }
+      );
+
+      logger.info(`Password change required for user ${user._id}`);
+      audit({ success: true, reason: 'require_password_change', user: user._id, email: user.email, role: user.role });
+
+      return res.status(200).json({
+        requirePasswordChange: true,
+        message: 'You must change your password before continuing',
+        token: tempToken
+      });
+    }
+
+    // --- New IP verification for high-ranked admins ---
+    const userIp = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const isAdminRole = ['admin', 'super_admin'].includes(user.role);
+    const isKnownIp = user.knownIps && user.knownIps.some(entry => entry.ip === userIp);
+
+    if (isAdminRole && !isKnownIp) {
+      // Generate 6-digit verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const hashedCode = crypto
+        .createHash('sha256')
+        .update(verificationCode)
+        .digest('hex');
+
+      user.ipVerificationCode = hashedCode;
+      user.ipVerificationCodeExpiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+      await user.save();
+
+      // Email the code
+      let emailSent = false;
+      try {
+        emailSent = await emailService.sendEmail({
+          to: user.email,
+          subject: 'NyumbaSync - New Login Verification Code',
+          html: `<p>Hello ${user.firstName},</p><p>A login was attempted from a new IP address: <strong>${userIp}</strong>.</p><p>Your verification code is: <strong>${verificationCode}</strong></p><p>This code will expire in 5 minutes.</p><p>If you did not attempt this login, please contact support immediately.</p>`
+        });
+      } catch (emailErr) {
+        logger.error('Failed to send IP verification email:', emailErr);
+      }
+
+      // Generate ipSessionToken
+      const jwt = require('jsonwebtoken');
+      const ipSessionToken = jwt.sign(
+        { userId: user._id, expectedIp: userIp, purpose: 'ip-verification' },
+        process.env.JWT_SECRET,
+        { expiresIn: '5m', algorithm: 'HS256' }
+      );
+
+      logger.info(`IP verification required for admin user ${user._id} from ${userIp}`);
+      audit({ success: true, reason: 'require_ip_verification', user: user._id, email: user.email, role: user.role });
+
+      return res.status(200).json({
+        requireIpVerification: true,
+        ipSessionToken,
+        emailSent,
+        message: 'A verification code has been sent to your email'
+      });
+    }
+
+    // --- IP tracking on successful login ---
+    // Update knownIps (up to 20 entries, update lastSeen if IP already exists)
+    if (!user.knownIps) user.knownIps = [];
+    const knownIpIndex = user.knownIps.findIndex(entry => entry.ip === userIp);
+    if (knownIpIndex !== -1) {
+      user.knownIps[knownIpIndex].lastSeen = new Date();
+    } else {
+      user.knownIps.push({ ip: userIp, firstSeen: new Date(), lastSeen: new Date() });
+      if (user.knownIps.length > 20) {
+        user.knownIps = user.knownIps.slice(-20);
+      }
+    }
+
+    // Append to loginIps (keep last 10)
+    if (!user.loginIps) user.loginIps = [];
+    user.loginIps.push(userIp);
+    if (user.loginIps.length > 10) {
+      user.loginIps = user.loginIps.slice(-10);
+    }
+
     // Generate tokens (no MFA required)
     const token = generateToken({
       id: user._id,
@@ -464,7 +552,7 @@ exports.login = async (req, res) => {
     user.lastLogin = Date.now();
     await user.save();
 
-    logger.info(`User ${user._id} logged in successfully`);
+    logger.info(`User ${user._id} logged in successfully from ${userIp}`);
     audit({ success: true, reason: 'ok', user: user._id, email: user.email, role: user.role });
 
     res.json({
@@ -486,6 +574,110 @@ exports.login = async (req, res) => {
   } catch (error) {
     logger.error('Login error:', error);
     res.status(500).json({ error: 'Login failed', details: error.message });
+  }
+};
+
+// Verify IP for high-ranked admin login from new IP
+exports.verifyIp = async (req, res) => {
+  try {
+    const { ipSessionToken, code } = req.body;
+
+    if (!ipSessionToken || !code) {
+      return res.status(400).json({ error: 'ipSessionToken and code are required' });
+    }
+
+    // Verify the JWT
+    const jwt = require('jsonwebtoken');
+    let decoded;
+    try {
+      decoded = jwt.verify(ipSessionToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired session token' });
+    }
+
+    if (decoded.purpose !== 'ip-verification') {
+      return res.status(401).json({ error: 'Invalid token purpose' });
+    }
+
+    // Find user and include the hidden verification code field
+    const user = await User.findById(decoded.userId).select('+ipVerificationCode');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if code is expired
+    if (!user.ipVerificationCodeExpiry || user.ipVerificationCodeExpiry < Date.now()) {
+      return res.status(400).json({ error: 'Verification code expired' });
+    }
+
+    // Verify code
+    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+    if (user.ipVerificationCode !== hashedCode) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    // Clear verification code
+    user.ipVerificationCode = undefined;
+    user.ipVerificationCodeExpiry = undefined;
+
+    // Record the IP as known
+    const userIp = decoded.expectedIp || req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    if (!user.knownIps) user.knownIps = [];
+    const knownIpIndex = user.knownIps.findIndex(entry => entry.ip === userIp);
+    if (knownIpIndex !== -1) {
+      user.knownIps[knownIpIndex].lastSeen = new Date();
+    } else {
+      user.knownIps.push({ ip: userIp, firstSeen: new Date(), lastSeen: new Date() });
+      if (user.knownIps.length > 20) {
+        user.knownIps = user.knownIps.slice(-20);
+      }
+    }
+
+    // Append to loginIps (keep last 10)
+    if (!user.loginIps) user.loginIps = [];
+    user.loginIps.push(userIp);
+    if (user.loginIps.length > 10) {
+      user.loginIps = user.loginIps.slice(-10);
+    }
+
+    // Update last login
+    user.lastLogin = Date.now();
+    await user.save();
+
+    // Generate tokens (same as normal login)
+    const token = generateToken({
+      id: user._id,
+      email: user.email,
+      phone: user.phone,
+      role: user.role
+    });
+
+    const refreshToken = generateToken({
+      id: user._id,
+      type: 'refresh'
+    }, '7d');
+
+    logger.info(`Admin user ${user._id} verified IP ${userIp} and logged in successfully`);
+
+    res.json({
+      success: true,
+      token,
+      refreshToken,
+      expiresIn: 3600,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        roles: user.roles,
+        phone: user.phone,
+        mfaEnabled: user.mfaEnabled || false
+      }
+    });
+  } catch (error) {
+    logger.error('IP verification error:', error);
+    res.status(500).json({ error: 'IP verification failed', details: error.message });
   }
 };
 
@@ -983,5 +1175,274 @@ exports.changePassword = async (req, res) => {
   } catch (error) {
     logger.error('Change password error:', error);
     res.status(500).json({ error: 'Failed to change password', details: error.message });
+  }
+};
+
+// ───────────────────────────────────────────
+// OAuth Authentication (Google & Apple)
+// ───────────────────────────────────────────
+
+/**
+ * Google OAuth — POST /api/v1/auth/google
+ * Accepts a Google ID token from the frontend and returns a NyumbaSync JWT.
+ * Requires: google-auth-library (npm install google-auth-library)
+ */
+exports.googleAuth = async (req, res) => {
+  try {
+    const { OAuth2Client } = require('google-auth-library');
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ error: 'Google ID token is required' });
+    }
+
+    // Verify the Google ID token
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const {
+      sub: googleId,
+      email,
+      given_name: firstName,
+      family_name: lastName,
+      email_verified,
+    } = payload;
+
+    // Find existing user by email or googleId
+    const orConditions = [{ googleId }];
+    if (email) {
+      orConditions.push({ email: email.toLowerCase() });
+    }
+    let user = await User.findOne({ $or: orConditions });
+
+    if (!user) {
+      // Create new OAuth user with a random password placeholder
+      const crypto = require('crypto');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+
+      user = new User({
+        firstName: firstName || 'Google',
+        lastName: lastName || 'User',
+        email: email ? email.toLowerCase() : undefined,
+        phone: `google_${googleId}`,
+        password: randomPassword,
+        googleId,
+        role: 'tenant',
+        roles: ['tenant'],
+        emailVerified: email_verified === true,
+        status: 'active',
+      });
+
+      await user.save();
+    } else {
+      // Link Google ID if not already set
+      if (!user.googleId) {
+        user.googleId = googleId;
+        await user.save();
+      }
+    }
+
+    // Generate JWT and refresh token (same response as normal login)
+    const token = generateToken({
+      id: user._id,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    });
+
+    const refreshToken = generateToken(
+      { id: user._id, type: 'refresh' },
+      '7d'
+    );
+
+    user.lastLogin = Date.now();
+    await user.save();
+
+    logger.info(`Google OAuth login: user ${user._id}`);
+
+    res.json({
+      success: true,
+      token,
+      refreshToken,
+      expiresIn: 3600,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        roles: user.roles,
+        phone: user.phone,
+        mfaEnabled: user.mfaEnabled || false,
+      },
+      requiresPhoneUpdate: user.phone?.startsWith('google_') || user.phone?.startsWith('apple_'),
+    });
+  } catch (error) {
+    logger.error('Google auth error:', error);
+    res.status(500).json({ error: 'Google authentication failed', details: error.message });
+  }
+};
+
+/**
+ * Apple OAuth — POST /api/v1/auth/apple
+ * Accepts an Apple identity token (JWT) and optional user object from the frontend.
+ * Verifies the token using Apple's public keys via jsonwebtoken (already installed).
+ */
+exports.appleAuth = async (req, res) => {
+  try {
+    const jwt = require('jsonwebtoken');
+    const { createPublicKey } = require('crypto');
+    const axios = require('axios');
+
+    const { identityToken, user } = req.body;
+
+    if (!identityToken) {
+      return res.status(400).json({ error: 'Apple identity token is required' });
+    }
+
+    // Decode the header to get the key ID (kid) without verification
+    const decoded = jwt.decode(identityToken, { complete: true });
+    if (!decoded || !decoded.header || !decoded.header.kid) {
+      return res.status(400).json({ error: 'Invalid Apple identity token' });
+    }
+
+    // Fetch Apple's public keys
+    const { data: jwks } = await axios.get('https://appleid.apple.com/auth/keys');
+    const jwk = jwks.keys.find((k) => k.kid === decoded.header.kid);
+    if (!jwk) {
+      return res.status(400).json({ error: 'Apple signing key not found' });
+    }
+
+    // Convert JWK to PEM using Node's built-in crypto
+    const publicKey = createPublicKey({ key: jwk, format: 'jwk' });
+    const pem = publicKey.export({ format: 'pem', type: 'spki' });
+
+    // Verify the Apple identity token
+    const payload = jwt.verify(identityToken, pem, {
+      algorithms: ['RS256'],
+      issuer: 'https://appleid.apple.com',
+      audience: process.env.APPLE_CLIENT_ID,
+    });
+
+    const appleId = payload.sub;
+    const email = payload.email;
+    const emailVerified =
+      payload.email_verified === true || payload.email_verified === 'true';
+
+    // Find existing user by email or appleId
+    const orConditions = [{ appleId }];
+    if (email) {
+      orConditions.push({ email: email.toLowerCase() });
+    }
+    let existingUser = await User.findOne({ $or: orConditions });
+
+    if (!existingUser) {
+      // Create new OAuth user with a random password placeholder
+      const crypto = require('crypto');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+
+      existingUser = new User({
+        firstName: user?.firstName || 'Apple',
+        lastName: user?.lastName || 'User',
+        email: email ? email.toLowerCase() : undefined,
+        phone: `apple_${appleId}`,
+        password: randomPassword,
+        appleId,
+        role: 'tenant',
+        roles: ['tenant'],
+        emailVerified: emailVerified,
+        status: 'active',
+      });
+
+      await existingUser.save();
+    } else {
+      // Link Apple ID if not already set
+      if (!existingUser.appleId) {
+        existingUser.appleId = appleId;
+        await existingUser.save();
+      }
+    }
+
+    // Generate JWT and refresh token (same response as normal login)
+    const token = generateToken({
+      id: existingUser._id,
+      email: existingUser.email,
+      phone: existingUser.phone,
+      role: existingUser.role,
+    });
+
+    const refreshToken = generateToken(
+      { id: existingUser._id, type: 'refresh' },
+      '7d'
+    );
+
+    existingUser.lastLogin = Date.now();
+    await existingUser.save();
+
+    logger.info(`Apple OAuth login: user ${existingUser._id}`);
+
+    res.json({
+      success: true,
+      token,
+      refreshToken,
+      expiresIn: 3600,
+      user: {
+        id: existingUser._id,
+        email: existingUser.email,
+        firstName: existingUser.firstName,
+        lastName: existingUser.lastName,
+        role: existingUser.role,
+        roles: existingUser.roles,
+        phone: existingUser.phone,
+        mfaEnabled: existingUser.mfaEnabled || false,
+      },
+      requiresPhoneUpdate:
+        existingUser.phone?.startsWith('google_') ||
+        existingUser.phone?.startsWith('apple_'),
+    });
+  } catch (error) {
+    logger.error('Apple auth error:', error);
+    res.status(500).json({ error: 'Apple authentication failed', details: error.message });
+  }
+};
+
+// Activate account via admin-provisioned activation token
+exports.activateAccount = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ error: 'Activation token is required' });
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      activationToken: hashedToken,
+      activationExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired activation token' });
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerified = true;
+    user.activationToken = undefined;
+    user.activationExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    logger.info(`Account activated for user ${user._id}`);
+
+    res.json({
+      success: true,
+      message: 'Account activated successfully. You can now log in.'
+    });
+  } catch (error) {
+    logger.error('Account activation error:', error);
+    res.status(500).json({ error: 'Account activation failed' });
   }
 };

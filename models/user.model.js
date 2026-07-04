@@ -194,7 +194,60 @@ const UserSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  lockedUntil: Date
+  lockedUntil: Date,
+
+  // Email activation token
+  activationToken: String,
+  activationExpires: {
+    type: Date,
+    default: () => Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+  },
+
+  // Admin provisioning flags
+  requirePasswordChange: {
+    type: Boolean,
+    default: false
+  },
+  isAdminProvisioned: {
+    type: Boolean,
+    default: false
+  },
+
+  // OAuth IDs
+  googleId: {
+    type: String,
+    sparse: true,
+    unique: true
+  },
+  appleId: {
+    type: String,
+    sparse: true,
+    unique: true
+  },
+
+  // Audit / IP tracking
+  knownIps: [{
+    ip: String,
+    firstSeen: { type: Date, default: Date.now },
+    lastSeen: { type: Date, default: Date.now }
+  }],
+  loginIps: {
+    type: [String],
+    default: []
+  },
+
+  // Reference to admin who created this user
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+  // IP verification for high-ranked admin logins from new IPs
+  ipVerificationCode: {
+    type: String,
+    select: false
+  },
+  ipVerificationCodeExpiry: Date
 }, {
   timestamps: {
     createdAt: 'joinedAt',
@@ -215,6 +268,11 @@ UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 UserSchema.index({ role: 1 });
 UserSchema.index({ status: 1 });
 UserSchema.index({ subcounty: 1 });
+UserSchema.index({ activationToken: 1 }, { sparse: true });
+UserSchema.index({ googleId: 1 }, { unique: true, sparse: true });
+UserSchema.index({ appleId: 1 }, { unique: true, sparse: true });
+UserSchema.index({ createdBy: 1 });
+UserSchema.index({ isAdminProvisioned: 1 });
 
 // Middleware
 

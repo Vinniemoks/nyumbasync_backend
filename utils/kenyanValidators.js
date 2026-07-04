@@ -47,6 +47,10 @@ module.exports = {
    */
   validatePhone: (phone) => {
     if (!phone) return false;
+    // Allow OAuth placeholder phones (google_xxx, apple_xxx)
+    if (typeof phone === 'string' && (/^google_/.test(phone) || /^apple_/.test(phone))) {
+      return true;
+    }
     
     const cleanPhone = utils.cleanPhone(phone);
     

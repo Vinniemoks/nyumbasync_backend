@@ -6,6 +6,7 @@ const { sendEmail } = require('../services/email.service');
 const { sendSMS } = require('../services/sms.service'); 
 const { generateReport } = require('../services/report.service');
 const { logAdminActivity } = require('../utils/logger');
+const logger = require('../utils/logger');
 
 /**
  * Admin Dashboard Statistics
@@ -709,6 +710,9 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
     }
 
+    const activationToken = crypto.randomBytes(32).toString('hex');
+    const hashedActivationToken = crypto.createHash('sha256').update(activationToken).digest('hex');
+
     const user = await User.create({
       email: email.toLowerCase(),
       phone: normalizedPhone,
@@ -717,8 +721,28 @@ exports.createUser = async (req, res) => {
       password: initialPassword,
       role: requestedRoles[0],
       roles: requestedRoles,
-      isEmailVerified: true, // provisioned by an admin, not self-signup
+      isEmailVerified: false,
+      isAdminProvisioned: true,
+      requirePasswordChange: true,
+      createdBy: req.user._id,
+      activationToken: hashedActivationToken,
+      activationExpires: Date.now() + 24 * 60 * 60 * 1000,
     });
+
+    // Send activation email
+    const emailService = require('../services/emailService');
+    const activationUrl = `${process.env.FRONTEND_URL || 'https://app.nyumbasync.com'}/activate?token=${activationToken}`;
+
+    try {
+      await emailService.sendEmail({
+        to: user.email,
+        subject: 'Activate Your NyumbaSync Account',
+        text: `Welcome to NyumbaSync! Your account has been created by an administrator. Please activate your account by clicking this link: ${activationUrl}\n\nThis link will expire in 24 hours.`,
+        html: `<p>Welcome to NyumbaSync, ${user.firstName}!</p><p>Your account has been created by an administrator. Please <a href="${activationUrl}">activate your account</a>.</p><p>This link will expire in 24 hours.</p>`
+      });
+    } catch (emailError) {
+      logger.error('Failed to send activation email:', emailError);
+    }
 
     logAdminActivity(req.user._id, 'USER_CREATED', { targetUser: user._id, roles: requestedRoles });
 
