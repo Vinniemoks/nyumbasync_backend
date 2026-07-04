@@ -16,40 +16,63 @@ exports.getDashboardStats = async (req, res) => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     
-    const [users, properties, transactions, revenue, activeLeases] = await Promise.all([
-      User.countDocuments(),
-      Property.countDocuments(),
-      Transaction.countDocuments({ 
-        status: 'completed',
-        createdAt: { $gte: startOfMonth }
-      }),
+    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const Maintenance = require('../models/maintenance.model');
+
+    const countRole = (role) =>
+      User.countDocuments({ $or: [{ role }, { roles: role }] });
+
+    const monthlySum = (from, to) =>
       Transaction.aggregate([
-        {
-          $match: {
-            status: 'completed',
-            createdAt: { $gte: startOfMonth }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: '$amount' }
-          }
-        }
-      ]),
-      Lease.countDocuments({ 
-        status: 'active',
-        endDate: { $gte: new Date() }
-      })
+        { $match: { status: 'completed', createdAt: to ? { $gte: from, $lt: to } : { $gte: from } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]).then((r) => r[0]?.total || 0);
+
+    const [
+      users, activeUsers, properties, occupiedProperties,
+      transactions, monthlyRevenue, prevMonthlyRevenue, activeLeases,
+      tenants, landlords, managers, agents, vendors,
+      pendingMaintenance, totalMaintenance, completedMaintenance,
+      newUsersThisMonth, newUsersPrevMonth,
+    ] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ status: 'active' }),
+      Property.countDocuments(),
+      Property.countDocuments({ status: 'occupied' }),
+      Transaction.countDocuments({ status: 'completed', createdAt: { $gte: startOfMonth } }),
+      monthlySum(startOfMonth),
+      monthlySum(startOfPrevMonth, startOfMonth),
+      Lease.countDocuments({ status: 'active', endDate: { $gte: new Date() } }),
+      countRole('tenant'), countRole('landlord'), countRole('manager'),
+      countRole('agent'), countRole('vendor'),
+      Maintenance.countDocuments({ status: { $in: ['reported', 'assigned', 'in_progress'] } }),
+      Maintenance.countDocuments(),
+      Maintenance.countDocuments({ status: 'completed' }),
+      User.countDocuments({ createdAt: { $gte: startOfMonth } }),
+      User.countDocuments({ createdAt: { $gte: startOfPrevMonth, $lt: startOfMonth } }),
     ]);
+
+    const pct = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+    const growth = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 1000) / 10 : 0);
 
     res.json({
       stats: {
         totalUsers: users,
+        activeUsers,
         totalProperties: properties,
+        occupancyRate: pct(occupiedProperties, properties),
         monthlyTransactions: transactions,
-        monthlyRevenue: revenue[0]?.total || 0,
-        activeLeases: activeLeases,
+        monthlyRevenue,
+        revenueGrowth: growth(monthlyRevenue, prevMonthlyRevenue),
+        userGrowth: growth(newUsersThisMonth, newUsersPrevMonth),
+        activeLeases,
+        activeTenants: tenants,
+        activeLandlords: landlords,
+        activeManagers: managers,
+        activeAgents: agents,
+        activeVendors: vendors,
+        pendingMaintenance,
+        maintenanceResolutionRate: pct(completedMaintenance, totalMaintenance),
         currency: 'KES'
       },
       lastUpdated: now.toISOString()
