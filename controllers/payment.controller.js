@@ -11,6 +11,7 @@ const emailService = require('../services/emailService');
 const smsService = require('../services/sms.service');
 const { generateUniqueAccountRef } = require('../utils/payment-ref');
 const { sendToUser } = require('../websocket/server');
+const logger = require('../utils/logger');
 
 // How long a Paybill fallback account number stays valid before it expires and
 // any payment to it is auto-reversed.
@@ -157,6 +158,16 @@ exports.initiateStkPush = async (req, res) => {
       ...(invoiceId && { invoice: invoiceId })
     });
 
+    logger.info('PAYMENT_INITIATED', {
+      paymentId: payment._id,
+      tenant: req.user.id,
+      landlord: ctx.landlord,
+      amount: ctx.amount,
+      invoiceId,
+      propertyId,
+      payerPhone
+    });
+
     // AccountReference is capped at 12 chars by Daraja; prefer the invoice
     // number, else the client ref, else the payment id.
     const reference = String(
@@ -277,9 +288,22 @@ exports.promptTenantStkPush = async (req, res) => {
 // don't retry a payment we've already recorded.
 exports.mpesaCallback = async (req, res) => {
   const stk = req.body?.Body?.stkCallback;
-  if (!stk) {
+  if (!stk || typeof stk.CheckoutRequestID === 'undefined') {
     return res.status(400).json({ error: 'Malformed callback' });
   }
+
+  const items = stk.CallbackMetadata?.Item || [];
+  const receipt = metaValue(items, 'MpesaReceiptNumber');
+  const cbAmount = Math.round(Number(metaValue(items, 'Amount')));
+
+  // Basic callback validation and audit trail.
+  logger.info('MPESA_CALLBACK_RECEIVED', {
+    checkoutRequestId: stk.CheckoutRequestID,
+    resultCode: stk.ResultCode,
+    receipt,
+    amount: cbAmount,
+    sourceIp: req?.ip || req?.connection?.remoteAddress
+  });
 
   try {
     const payment = await Payment.findOne({ mpesaRequestId: stk.CheckoutRequestID });
@@ -297,14 +321,42 @@ exports.mpesaCallback = async (req, res) => {
       return res.status(200).end();
     }
 
+    // Idempotency: a receipt may only be used once, even across different
+    // CheckoutRequestIDs, to prevent replay attacks.
+    if (receipt) {
+      const existingReceipt = await Payment.findOne({ mpesaReceipt: receipt, _id: { $ne: payment._id } });
+      if (existingReceipt) {
+        logger.warn('MPESA_CALLBACK_DUPLICATE_RECEIPT', { receipt, paymentId: payment._id });
+        return res.status(200).end();
+      }
+    }
+
     if (stk.ResultCode === 0) {
-      const items = stk.CallbackMetadata?.Item || [];
-      payment.mpesaReceipt = metaValue(items, 'MpesaReceiptNumber');
+      // Validate amount matches the pending intent (tolerate nothing — exact match).
+      if (Number.isFinite(cbAmount) && cbAmount !== payment.amount) {
+        logger.warn('MPESA_CALLBACK_AMOUNT_MISMATCH', {
+          paymentId: payment._id,
+          expected: payment.amount,
+          received: cbAmount
+        });
+        payment.status = 'failed';
+        payment.failureReason = `Amount mismatch: expected KES ${payment.amount}, received KES ${cbAmount}`;
+        await payment.save();
+        return res.status(200).end();
+      }
+
+      payment.mpesaReceipt = receipt;
       const cbPhone = metaValue(items, 'PhoneNumber');
       if (cbPhone) payment.phoneUsed = normalizePhone(cbPhone);
       payment.mpesaTransactionDate = parseMpesaDate(metaValue(items, 'TransactionDate'));
       payment.status = 'completed';
       await payment.save();
+
+      logger.info('MPESA_CALLBACK_SETTLED', {
+        paymentId: payment._id,
+        receipt,
+        amount: payment.amount
+      });
 
       // Settle the bound/open invoice, then email a receipt — both best-effort.
       await settleInvoiceForPayment(payment);
@@ -467,17 +519,25 @@ exports.requestPaybillFallback = async (req, res) => {
 };
 
 // C2B Validation — Safaricom calls this before completing a Paybill payment.
-// Accept only a known, pending, unexpired account number with a sufficient
-// amount; otherwise reject so the payment is cancelled.
+// Accept only a known, pending, unexpired account number with an exact amount
+// match; otherwise reject so the payment is cancelled.
 exports.c2bValidation = async (req, res) => {
   try {
     const ref = String(req.body.BillRefNumber || '').toUpperCase().trim();
-    const amount = Number(req.body.TransAmount);
+    const amount = Math.round(Number(req.body.TransAmount));
     const payment = await Payment.findOne({ accountRef: ref, channel: 'C2B_PAYBILL' });
     const ok = payment
       && payment.status === 'pending'
       && (!payment.expiresAt || payment.expiresAt > new Date())
-      && amount >= payment.amount;
+      && amount === payment.amount;
+
+    logger.info('MPESA_C2B_VALIDATION', {
+      ref,
+      amount,
+      expected: payment?.amount,
+      accepted: !!ok,
+      sourceIp: req?.ip || req?.connection?.remoteAddress
+    });
 
     if (ok) return res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
     return res.status(200).json({ ResultCode: 'C2B00012', ResultDesc: 'Invalid or expired account number' });
@@ -494,11 +554,30 @@ exports.c2bConfirmation = async (req, res) => {
   try {
     const ref = String(req.body.BillRefNumber || '').toUpperCase().trim();
     const receipt = req.body.TransID;
-    const amount = Number(req.body.TransAmount);
+    const amount = Math.round(Number(req.body.TransAmount));
     const payment = await Payment.findOne({ accountRef: ref, channel: 'C2B_PAYBILL' });
     const valid = payment
       && payment.status === 'pending'
-      && (!payment.expiresAt || payment.expiresAt > new Date());
+      && (!payment.expiresAt || payment.expiresAt > new Date())
+      && amount === payment.amount;
+
+    logger.info('MPESA_C2B_CONFIRMATION', {
+      ref,
+      receipt,
+      amount,
+      expected: payment?.amount,
+      accepted: !!valid,
+      sourceIp: req?.ip || req?.connection?.remoteAddress
+    });
+
+    // Idempotency / replay protection: receipt must be unique.
+    if (receipt) {
+      const existingReceipt = await Payment.findOne({ mpesaReceipt: receipt, _id: { $ne: payment?._id } });
+      if (existingReceipt) {
+        logger.warn('MPESA_C2B_DUPLICATE_RECEIPT', { receipt, ref });
+        return res.status(200).json({ ResultCode: 0, ResultDesc: 'Confirmation received' });
+      }
+    }
 
     if (valid) {
       payment.mpesaReceipt = receipt;
@@ -506,6 +585,12 @@ exports.c2bConfirmation = async (req, res) => {
       payment.mpesaTransactionDate = parseMpesaDate(req.body.TransTime);
       payment.status = 'completed';
       await payment.save();
+
+      logger.info('MPESA_C2B_SETTLED', {
+        paymentId: payment._id,
+        receipt,
+        amount: payment.amount
+      });
 
       await settleInvoiceForPayment(payment);
 

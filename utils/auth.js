@@ -35,16 +35,14 @@ const verifyToken = (token) => {
 };
 
 /**
- * Strict Kenyan phone validation (254 prefix only)
+ * Kenyan phone validation (accepts all common formats)
  * @param {string} phone - Phone number to validate
- * @returns {boolean} True if valid Kenyan number in 254 format
+ * @returns {boolean} True if valid Kenyan mobile number
  */
 const validateKenyanPhone = (phone) => {
-  console.log('Validating phone:', phone);
-  const regex = /^254[17][0-9]{8}$/; // Modified regex using [0-9]
-  const isValid = regex.test(phone);
-  console.log('Validation result:', isValid);
-  return isValid;
+  if (!phone) return false;
+  const cleaned = String(phone).replace(/\D/g, '');
+  return /^(254[17]\d{8}|0[17]\d{8}|[17]\d{8})$/.test(cleaned);
 };
 
 /**
@@ -53,13 +51,12 @@ const validateKenyanPhone = (phone) => {
  * @returns {string|null} Standardized 254... format or null if invalid
  */
 const formatToStrictKenyan = (phone) => {
-  // First check if already in correct format
-  if (/^254[17][0-9]{8}$/.test(phone)) return phone; // Modified regex using [0-9]
+  if (!phone) return null;
+  const cleaned = String(phone).replace(/\D/g, '');
 
-  // Convert from other Kenyan formats
-  const cleaned = phone.replace(/D/g, ''); 
-  if (/^0[17][0-9]{8}$/.test(cleaned)) return `254${cleaned.substring(1)}`; 
-  if (/^[17][0-9]{8}$/.test(cleaned)) return `254${cleaned}`;
+  if (/^254[17]\d{8}$/.test(cleaned)) return cleaned;
+  if (/^0[17]\d{8}$/.test(cleaned)) return `254${cleaned.substring(1)}`;
+  if (/^[17]\d{8}$/.test(cleaned)) return `254${cleaned}`;
 
   return null; // Invalid format
 };

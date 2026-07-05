@@ -183,8 +183,8 @@ const validateEmail = (email) => {
 };
 
 const validatePhone = (phone) => {
-  const re = /^[\+]?[1-9][\d]{0,15}$/;
-  return re.test(phone.replace(/\s/g, ''));
+  const cleaned = String(phone).replace(/\D/g, '');
+  return /^(254[17]\d{8}|0[17]\d{8}|[17]\d{8})$/.test(cleaned);
 };
 
 const validatePassword = (password) => {

@@ -26,9 +26,8 @@ const logger = require('../../utils/logger');
 // ============================================================
 
 const validatePhone = (phone) => {
-  const cleaned = String(phone).replace(/[\s\-\(\)\+]/g, '');
-  const kenyanRegex = /^(254[71]\d{8}|0[71]\d{8})$/;
-  return kenyanRegex.test(cleaned);
+  const cleaned = String(phone).replace(/\D/g, '');
+  return /^(254[71]\d{8}|0[71]\d{8}|[71]\d{8})$/.test(cleaned);
 };
 
 const validatePhoneArray = (phones) => {

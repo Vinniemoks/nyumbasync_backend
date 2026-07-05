@@ -291,7 +291,13 @@ exports.verifyMFALogin = async (req, res) => {
 
     const user = await User.findById(sessionVerification.userId).select('+mfaSecret +mfaBackupCodes +actionOtp');
 
-    if (!user || (!user.mfaEnabled && !user.mfaEmailEnabled)) {
+    // Admin accounts may be forced into MFA at login even if they never enabled
+    // it in their profile, so allow the session for any existing user.
+    const adminRoles = ['admin', 'super_admin'];
+    const isAdminAccount = user && (adminRoles.includes(user.role) ||
+      (Array.isArray(user.roles) && user.roles.some(r => adminRoles.includes(r))));
+
+    if (!user || (!isAdminAccount && !user.mfaEnabled && !user.mfaEmailEnabled)) {
       return res.status(400).json({
         success: false,
         error: 'MFA is not enabled for this account'
@@ -324,7 +330,7 @@ exports.verifyMFALogin = async (req, res) => {
     if (!isValid) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid MFA token or backup code'
+        error: 'Invalid or expired code. Please try again or request a new code.'
       });
     }
 
@@ -390,14 +396,30 @@ exports.sendLoginOtp = async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid or expired MFA session' });
     }
     const user = await User.findById(sessionVerification.userId);
-    if (!user || !user.mfaEmailEnabled) {
+    const adminRoles = ['admin', 'super_admin'];
+    const isAdminAccount = user && (adminRoles.includes(user.role) ||
+      (Array.isArray(user.roles) && user.roles.some(r => adminRoles.includes(r))));
+
+    if (!user || (!isAdminAccount && !user.mfaEmailEnabled)) {
       return res.status(400).json({ success: false, error: 'Email MFA is not enabled for this account' });
     }
-    const sent = await require('../services/verification.service').sendLoginOtp(user);
-    if (!sent) {
-      return res.status(503).json({ success: false, error: 'Email delivery is not configured on the server' });
+
+    const channels = await require('../services/verification.service').sendLoginOtp(user);
+    const anyChannelSent = channels.emailSent || channels.whatsappSent;
+    if (!anyChannelSent) {
+      return res.status(503).json({ success: false, error: 'Messaging delivery is not configured on the server' });
     }
-    return res.json({ success: true, message: 'A new code was emailed to you.' });
+
+    return res.json({
+      success: true,
+      emailSent: channels.emailSent,
+      whatsappSent: channels.whatsappSent,
+      message: channels.emailSent && channels.whatsappSent
+        ? 'A new code was sent to your email and WhatsApp.'
+        : channels.emailSent
+          ? 'A new code was emailed to you.'
+          : 'A new code was sent to your WhatsApp.'
+    });
   } catch (error) {
     console.error('Send login OTP error:', error);
     return res.status(500).json({ success: false, error: 'Could not send the code' });

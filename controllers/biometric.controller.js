@@ -2,6 +2,7 @@ const User = require('../models/user.model');
 const crypto = require('crypto');
 const base64url = require('base64url');
 const { generateToken } = require('../utils/auth');
+const { formatKenyanPhone } = require('../utils/formatters');
 const logger = require('../utils/logger');
 
 /**
@@ -121,7 +122,7 @@ exports.loginChallenge = async (req, res) => {
         const { identifier } = req.body; // email or phone
 
         const user = await User.findOne({
-            $or: [{ email: identifier }, { phone: identifier }]
+            $or: [{ email: identifier }, { phone: formatKenyanPhone(identifier) || identifier }]
         });
 
         if (!user || !user.biometricEnabled) {
@@ -166,7 +167,7 @@ exports.loginVerify = async (req, res) => {
         const { credential, identifier } = req.body;
 
         const user = await User.findOne({
-            $or: [{ email: identifier }, { phone: identifier }]
+            $or: [{ email: identifier }, { phone: formatKenyanPhone(identifier) || identifier }]
         });
 
         if (!user || !user.biometricEnabled) {

@@ -16,10 +16,12 @@ describe('Kenyan Phone Authentication', () => {
   // Test valid Kenyan numbers
   test.each([
     ['254712345678', true],
-    ['254112345678', true], // Airtel
-    ['0712345678', true],   // Local format
-    ['712345678', false],    // Short local - Corrected expectation
-    ['25471234567', false], // Too short
+    ['254112345678', true],  // Airtel / newer Safaricom 01 prefix
+    ['0712345678', true],    // Local format
+    ['0112345678', true],    // Newer local 01 prefix
+    ['712345678', true],     // Bare 9-digit mobile
+    ['112345678', true],     // Bare 9-digit mobile starting with 1
+    ['25471234567', false],  // Too short
     ['2547123456789', false] // Too long
   ])('validates %s', (phone, expected) => {
     expect(validatePhone(phone)).toBe(expected);
@@ -27,6 +29,11 @@ describe('Kenyan Phone Authentication', () => {
 
   test('converts local to intl format', () => {
     expect(formatKenyanPhone('0712345678')).toBe('254712345678');
+    expect(formatKenyanPhone('0112345678')).toBe('254112345678');
+    expect(formatKenyanPhone('712345678')).toBe('254712345678');
+    expect(formatKenyanPhone('112345678')).toBe('254112345678');
+    expect(formatKenyanPhone('+254712345678')).toBe('254712345678');
+    expect(formatKenyanPhone('254712345678')).toBe('254712345678');
   });
 
   // Regression: national ID is a format-only check (7-8 digits). The old

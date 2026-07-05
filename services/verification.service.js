@@ -1,10 +1,10 @@
 const crypto = require('crypto');
 const emailService = require('./emailService');
+const whatsappService = require('../src/services/whatsappService');
 
-// Email verification (signup) and email-OTP login codes. WhatsApp delivery
-// plugs in here once WhatsApp Business/Twilio credentials are configured —
-// every sender returns false when its channel is unavailable so callers can
-// degrade gracefully instead of blocking signup/login.
+// Email verification (signup) and email/WhatsApp-OTP login codes. Each
+// sender returns false when its channel is unavailable so callers can degrade
+// gracefully instead of blocking signup/login.
 
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 
@@ -66,22 +66,54 @@ const verifyEmail = async ({ token, email, code }, User) => {
 };
 
 /**
- * Email a 6-digit login OTP (the email-MFA channel). Returns true if sent.
+ * Generate and deliver an 8-digit login OTP to the user's email and WhatsApp.
+ * Returns the delivery status per channel so callers can report what was sent.
  */
 const sendLoginOtp = async (user) => {
-  if (!user.email) return false;
-  const code = String(crypto.randomInt(100000, 1000000));
+  const code = String(crypto.randomInt(10000000, 100000000));
   user.actionOtp = sha256(code);
   user.actionOtpExpiry = new Date(Date.now() + LOGIN_OTP_TTL_MS);
   user.actionOtpPurpose = LOGIN_OTP_PURPOSE;
   await user.save({ validateBeforeSave: false });
 
-  return emailService.sendEmail({
-    to: user.email,
-    subject: 'Your NyumbaSync login code',
-    text: `Your login code is ${code}. It expires in 10 minutes. If this wasn't you, change your password immediately.`,
-    html: `<p>Your login code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>It expires in 10 minutes. If this wasn't you, change your password immediately.</p>`
-  });
+  const emailPromise = user.email
+    ? emailService.sendEmail({
+        to: user.email,
+        subject: 'Your NyumbaSync login code',
+        text: `Your login code is ${code}. It expires in 10 minutes. If this wasn't you, change your password immediately.`,
+        html: `<p>Your login code is:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in 10 minutes. If this wasn't you, change your password immediately.</p>`
+      }).then(() => true).catch(() => false)
+    : Promise.resolve(false);
+
+  // WhatsApp delivery uses the pre-approved login-code template when possible,
+  // falling back to a best-effort text message if the template is unavailable.
+  const whatsappPromise = user.phone
+    ? (async () => {
+        try {
+          const result = await whatsappService.sendTemplatedMessage({
+            templateName: 'nyumbasync_login_code',
+            to: user.phone,
+            language: 'en',
+            variables: [user.firstName || 'User', code, '10'],
+            tags: ['login_otp'],
+            priority: 'high'
+          });
+          return result.success === true;
+        } catch (templateErr) {
+          try {
+            const text = `Hello ${user.firstName || 'User'}, your NyumbaSync login code is ${code}. It expires in 10 minutes. If you did not request this, change your password immediately.`;
+            const result = await whatsappService.sendAutoReply(user.phone, text);
+            return result && result.success === true;
+          } catch (textErr) {
+            return false;
+          }
+        }
+      })()
+    : Promise.resolve(false);
+
+  const [emailSent, whatsappSent] = await Promise.all([emailPromise, whatsappPromise]);
+
+  return { emailSent, whatsappSent };
 };
 
 /**

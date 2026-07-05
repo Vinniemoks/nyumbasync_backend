@@ -23,8 +23,10 @@ const mockRes = () => {
 };
 
 const lastEmail = () => emailService.sendEmail.mock.calls.at(-1)[0];
-// Anchor near the word "code" — a bare \d{6} can match inside the hex link token.
-const lastEmailedCode = () => lastEmail().text.match(/code[^\d]{0,20}(\d{6})/i)[1];
+// Anchor near the word "code" — supports 6-digit email-verification codes and
+// 8-digit login OTPs. A bare \d+ can match inside the hex link token, so we
+// bound the length.
+const lastEmailedCode = () => lastEmail().text.match(/code[^\d]{0,20}(\d{6,8})/i)[1];
 const lastEmailedLinkToken = () => lastEmail().text.match(/token=([a-f0-9]+)/)[1];
 
 describe('Email verification + email-OTP MFA', () => {
@@ -134,7 +136,7 @@ describe('Email verification + email-OTP MFA', () => {
     const code = lastEmailedCode();
 
     const wrong = mockRes();
-    await mfaController.verifyMFALogin({ body: { mfaSessionToken, emailOtp: '000000' } }, wrong);
+    await mfaController.verifyMFALogin({ body: { mfaSessionToken, emailOtp: '00000000' } }, wrong);
     expect(wrong.statusCode).toBe(401);
 
     const ok = mockRes();

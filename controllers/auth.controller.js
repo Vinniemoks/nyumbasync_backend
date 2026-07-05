@@ -408,6 +408,40 @@ exports.login = async (req, res) => {
     // Reset failed attempts on successful password verification
     await accountLockoutService.resetAttempts(identifier);
 
+    // --- Mandatory admin 2FA: email + WhatsApp 8-digit code ---
+    // Any account whose active role or role set includes admin/super_admin must
+    // complete an 8-digit OTP delivered to both email and WhatsApp before a JWT
+    // is issued.
+    const adminRoles = ['admin', 'super_admin'];
+    const isAdminAccount = adminRoles.includes(user.role) ||
+      (Array.isArray(user.roles) && user.roles.some(r => adminRoles.includes(r)));
+
+    if (isAdminAccount) {
+      const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
+      let channels = { email: false, whatsapp: false };
+      try {
+        channels = await require('../services/verification.service').sendLoginOtp(user);
+      } catch (otpErr) {
+        logger.error('Admin login OTP delivery failed:', otpErr);
+      }
+
+      const anyChannelSent = channels.emailSent || channels.whatsappSent;
+      logger.info(`Admin 2FA required for user ${user._id} (email=${channels.emailSent}, whatsapp=${channels.whatsappSent})`);
+      audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role, method: 'email_whatsapp' });
+
+      return res.status(200).json({
+        success: true,
+        mfaRequired: true,
+        mfaMethod: 'email_whatsapp',
+        mfaSessionToken,
+        emailOtpSent: channels.emailSent,
+        whatsappOtpSent: channels.whatsappSent,
+        message: anyChannelSent
+          ? 'Enter the 8-digit code we sent to your email and WhatsApp to complete login'
+          : 'Could not send the login code — messaging delivery is not configured. Contact support.'
+      });
+    }
+
     // Check if MFA is enabled (authenticator app)
     if (user.mfaEnabled && user.mfaSecret) {
       // Generate MFA session token (valid for 5 minutes)
@@ -425,25 +459,25 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Email-OTP MFA — for accounts that opted in without an authenticator app.
+    // Email-OTP MFA — for non-admin accounts that opted in without an authenticator app.
     if (user.mfaEmailEnabled) {
       const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
-      let sent = false;
+      let channels = { emailSent: false, whatsappSent: false };
       try {
-        sent = !!(await require('../services/verification.service').sendLoginOtp(user));
-      } catch (mailErr) {
-        logger.error('Login OTP email failed:', mailErr);
+        channels = await require('../services/verification.service').sendLoginOtp(user);
+      } catch (otpErr) {
+        logger.error('Login OTP delivery failed:', otpErr);
       }
-      logger.info(`Email MFA required for user ${user._id} (sent=${sent})`);
-      audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role });
+      logger.info(`Email MFA required for user ${user._id} (email=${channels.emailSent})`);
+      audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role, method: 'email' });
       return res.status(200).json({
         success: true,
         mfaRequired: true,
         mfaMethod: 'email',
         mfaSessionToken,
-        emailOtpSent: sent,
-        message: sent
-          ? 'Enter the code we just emailed you to complete login'
+        emailOtpSent: channels.emailSent,
+        message: channels.emailSent
+          ? 'Enter the 8-digit code we just emailed you to complete login'
           : 'Could not send the email code — email delivery is not configured. Contact support.'
       });
     }

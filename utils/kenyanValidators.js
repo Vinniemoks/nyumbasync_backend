@@ -2,10 +2,10 @@
 const PATTERNS = {
   KRA_PIN: /^[A-Z]\d{9}[A-Z]$/,
   PHONE: {
-    INTERNATIONAL: /^254\d{9}$/,
+    INTERNATIONAL: /^254[17]\d{8}$/,
     LOCAL_MOBILE: /^07\d{8}$/,
-    LOCAL_LANDLINE_01: /^01\d{8}$/,
-    LOCAL_LANDLINE_02: /^02\d{8}$/,
+    LOCAL_MOBILE_01: /^01\d{8}$/,
+    BARE_MOBILE: /^[17]\d{8}$/,
   },
   NATIONAL_ID: /^\d{7,8}$/,
   LEASE_DURATION: /^\d+(months|years)$/,
@@ -41,7 +41,8 @@ const utils = {
 module.exports = {
   /**
    * Validates Kenyan phone numbers
-   * Supports: 254XXXXXXXXX, 07XXXXXXXX, 01XXXXXXXX, 02XXXXXXXX
+   * Supports: +254XXXXXXXXX, 254XXXXXXXXX, 07XXXXXXXX, 01XXXXXXXX,
+   *           and bare 9-digit mobile numbers starting with 7 or 1.
    * @param {string} phone - Phone number to validate
    * @returns {boolean} - True if valid format
    */
@@ -51,14 +52,14 @@ module.exports = {
     if (typeof phone === 'string' && (/^google_/.test(phone) || /^apple_/.test(phone))) {
       return true;
     }
-    
+
     const cleanPhone = utils.cleanPhone(phone);
-    
+
     return (
       PATTERNS.PHONE.INTERNATIONAL.test(cleanPhone) ||
       PATTERNS.PHONE.LOCAL_MOBILE.test(cleanPhone) ||
-      PATTERNS.PHONE.LOCAL_LANDLINE_01.test(cleanPhone) ||
-      PATTERNS.PHONE.LOCAL_LANDLINE_02.test(cleanPhone)
+      PATTERNS.PHONE.LOCAL_MOBILE_01.test(cleanPhone) ||
+      PATTERNS.PHONE.BARE_MOBILE.test(cleanPhone)
     );
   },
 

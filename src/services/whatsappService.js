@@ -192,6 +192,12 @@ const TEMPLATE_REGISTRY = {
     language: 'en',
     variables: 6,
     description: 'Emergency maintenance alert for landlords'
+  },
+  nyumbasync_login_code: {
+    category: 'UTILITY',
+    language: 'en',
+    variables: 3,
+    description: 'One-time login code delivered to verified users'
   }
 };
 
@@ -576,7 +582,8 @@ class WhatsAppService {
       nyumbasync_viewing_confirmation: `Viewing confirmed: ${variables[1] || 'Property'} on ${variables[2] || 'TBD'} at ${variables[3] || 'TBD'}.`,
       nyumbasync_lease_expiry: `Lease expiry: ${variables[2] || 'Property'} expires ${variables[1] || 'soon'}.`,
       nyumbasync_welcome: `Welcome ${variables[0] || 'Tenant'} to ${variables[1] || 'NyumbaSync'}!`,
-      nyumbasync_emergency_alert: `EMERGENCY: ${variables[2] || 'Issue'} at ${variables[1] || 'Property'}.`
+      nyumbasync_emergency_alert: `EMERGENCY: ${variables[2] || 'Issue'} at ${variables[1] || 'Property'}.`,
+      nyumbasync_login_code: `Login code for ${variables[0] || 'User'}: ${variables[1] || '********'} (expires in ${variables[2] || '10'} minutes).`
     };
     return previews[templateName] || `[Template: ${templateName}]`;
   }

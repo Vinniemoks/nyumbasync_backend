@@ -1,6 +1,6 @@
 const { body, validationResult } = require('express-validator');
 const User = require('../models/user.model');
-const { validateKenyanPhone } = require('../utils/auth');
+const { validateKenyanPhone, formatToStrictKenyan } = require('../utils/auth');
 
 const validatePhoneRegistration = [
   body('phone')
@@ -8,13 +8,14 @@ const validatePhoneRegistration = [
     .notEmpty().withMessage('Phone number is required')
     .custom(phone => {
       if (!validateKenyanPhone(phone)) {
-        throw new Error('Invalid Kenyan phone. Use format 2547... or 2541...');
+        throw new Error('Invalid Kenyan phone. Use 07..., 01..., 254... or +254...');
       }
       return true;
     })
     .custom(async phone => {
-      // Increased timeout for this query
-      const existingUser = await User.findOne({ phone, mpesaVerified: true }).maxTimeMS(20000);
+      // Normalize to canonical 254XXXXXXXXX before the uniqueness lookup.
+      const normalized = formatToStrictKenyan(phone);
+      const existingUser = await User.findOne({ phone: normalized, mpesaVerified: true }).maxTimeMS(20000);
       if (existingUser) {
         throw new Error('Phone number already registered');
       }
@@ -46,7 +47,7 @@ const validateVerificationCode = [
     .notEmpty().withMessage('Phone number is required')
     .custom(phone => {
       if (!validateKenyanPhone(phone)) {
-        throw new Error('Invalid Kenyan phone format');
+        throw new Error('Invalid Kenyan phone. Use 07..., 01..., 254... or +254...');
       }
       return true;
     }),

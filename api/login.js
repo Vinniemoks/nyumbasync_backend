@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/user.model');
+const { formatKenyanPhone } = require('../utils/formatters');
 const winston = require('winston');
 require('dotenv').config();
 
@@ -139,10 +140,12 @@ router.post('/login', loginLimiter, validateLogin, async (req, res) => {
       timestamp: new Date().toISOString()
     });
 
-    // Find user by email or phone
-    const query = identifierType === 'email' 
+    // Find user by email or phone. Phones are stored in canonical 254XXXXXXXXX
+    // form, so normalize the identifier before matching (accepts +254..., 07...,
+    // 01..., 7..., 1...).
+    const query = identifierType === 'email'
       ? { email: identifier.toLowerCase() }
-      : { phone: identifier };
+      : { phone: formatKenyanPhone(identifier) || identifier };
 
     const user = await User.findOne(query).select('+password');
 
