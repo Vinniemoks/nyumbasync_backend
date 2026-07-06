@@ -7,8 +7,8 @@ const sgEmailService = require('./emailService');
 
 // Create transporter
 // Defaults target Zoho Mail for support@nyumbasync.co.ke.
-const createTransporter = () => {
-  return nodemailer.createTransporter({
+const createTransport = () => {
+  return nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.zoho.com',
     port: parseInt(process.env.EMAIL_PORT || '587'),
     secure: process.env.EMAIL_SECURE === 'true',
@@ -129,7 +129,7 @@ const sendEmail = async (to, subject, template, data, options = {}) => {
       return { success: false, message: 'Email not configured' };
     }
 
-    const transporter = createTransporter();
+    const transporter = createTransport();
 
     const mailOptions = {
       from: process.env.EMAIL_FROM || 'NyumbaSync Support <support@nyumbasync.co.ke>',
