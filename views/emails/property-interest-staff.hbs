@@ -1,0 +1,65 @@
+<div class="greeting">Hello {{recipientName}},</div>
+
+<div class="message">
+  <p>A tenant has expressed interest in <strong>{{propertyTitle}}</strong> owned by {{landlordName}}.</p>
+  <p>Please follow up with the tenant and landlord to ensure the inquiry is handled promptly.</p>
+</div>
+
+<div class="info-box">
+  <h3>Property Details</h3>
+  <div class="info-row">
+    <span class="info-label">Property</span>
+    <span class="info-value">{{propertyTitle}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Address</span>
+    <span class="info-value">{{propertyAddress}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Monthly Rent</span>
+    <span class="info-value">KES {{propertyRent}}</span>
+  </div>
+  {{#each propertyUtilities}}
+  <div class="info-row">
+    <span class="info-label">{{this.name}}</span>
+    <span class="info-value">KES {{this.amount}}</span>
+  </div>
+  {{/each}}
+</div>
+
+<div class="info-box">
+  <h3>Tenant Details</h3>
+  <div class="info-row">
+    <span class="info-label">Name</span>
+    <span class="info-value">{{tenantName}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Email</span>
+    <span class="info-value">{{tenantEmail}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Phone</span>
+    <span class="info-value">{{tenantPhone}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Preferred Move-in</span>
+    <span class="info-value">{{preferredMoveInDate}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">Message</span>
+    <span class="info-value">{{message}}</span>
+  </div>
+</div>
+
+<div style="text-align: center;">
+  <a href="{{propertyUrl}}" class="button" style="background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);">View Property</a>
+</div>
+
+<div class="message">
+  <p>If the button above does not work, copy and paste this link into your browser:</p>
+  <p><a href="{{propertyUrl}}">{{propertyUrl}}</a></p>
+</div>
+
+<div class="message">
+  <p>From NyumbaSync team</p>
+</div>

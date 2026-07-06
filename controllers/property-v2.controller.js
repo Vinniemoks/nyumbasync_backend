@@ -3,8 +3,37 @@
  * Enhanced property controller for core models
  */
 
-const { Property, Contact } = require('../models');
+const { Property, Contact, User, PropertyInterest } = require('../models');
 const logger = require('../utils/logger');
+const propertyNotificationService = require('../services/property-notification.service');
+
+/**
+ * Sanitize incoming utilities array.
+ */
+const normalizeUtilities = (utilities = []) => {
+  return utilities
+    .filter(u => u.name && u.name.trim())
+    .map(u => ({
+      name: u.name.trim(),
+      amount: Math.round(parseFloat(u.amount) || 0),
+      isMandatory: Boolean(u.isMandatory),
+      isCustom: Boolean(u.isCustom)
+    }));
+};
+
+/**
+ * Sanitize incoming houses/units array.
+ */
+const normalizeHouses = (houses = []) => {
+  return houses
+    .filter(h => h.houseNumber && String(h.houseNumber).trim())
+    .map(h => ({
+      houseNumber: String(h.houseNumber).trim(),
+      floor: h.floor ? parseInt(h.floor) : undefined,
+      number: h.number ? String(h.number).trim() : String(h.houseNumber).trim(),
+      status: ['available', 'occupied', 'maintenance'].includes(h.status) ? h.status : 'available'
+    }));
+};
 
 /**
  * Get all properties with filtering and pagination
@@ -134,7 +163,33 @@ exports.getPropertyById = async (req, res) => {
  */
 exports.createProperty = async (req, res) => {
   try {
-    const property = await Property.create(req.body);
+    const payload = { ...req.body };
+
+    // Enforce the authenticated landlord when not provided by an admin/manager
+    if (!payload.landlord && req.user) {
+      payload.landlord = req.user._id;
+    }
+
+    // Normalize financial and unit fields
+    if (payload.utilities) {
+      payload.utilities = normalizeUtilities(payload.utilities);
+    }
+    if (payload.houses) {
+      payload.houses = normalizeHouses(payload.houses);
+    }
+    if (!payload.houses || payload.houses.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one house/unit is required'
+      });
+    }
+
+    // Derive availability from units
+    const hasAvailableUnit = payload.houses.some(h => h.status === 'available');
+    payload.status = hasAvailableUnit ? 'available' : 'occupied';
+    payload.isAvailable = hasAvailableUnit;
+
+    const property = await Property.create(payload);
 
     res.status(201).json({
       success: true,
@@ -156,9 +211,35 @@ exports.createProperty = async (req, res) => {
  */
 exports.updateProperty = async (req, res) => {
   try {
+    const payload = { ...req.body };
+
+    // Only managers/admins may reassign a property to another landlord
+    if (payload.landlord && req.user) {
+      const canReassign = ['manager', 'admin', 'super_admin'].includes(req.user.role);
+      if (!canReassign) {
+        delete payload.landlord;
+      }
+    }
+
+    if (payload.utilities) {
+      payload.utilities = normalizeUtilities(payload.utilities);
+    }
+    if (payload.houses) {
+      payload.houses = normalizeHouses(payload.houses);
+      if (payload.houses.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'At least one house/unit is required'
+        });
+      }
+      const hasAvailableUnit = payload.houses.some(h => h.status === 'available');
+      payload.status = hasAvailableUnit ? 'available' : 'occupied';
+      payload.isAvailable = hasAvailableUnit;
+    }
+
     const property = await Property.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      payload,
       { new: true, runValidators: true }
     );
 
@@ -217,16 +298,7 @@ exports.deleteProperty = async (req, res) => {
  */
 exports.getAvailableProperties = async (req, res) => {
   try {
-    const filters = {
-      city: req.query.city,
-      area: req.query.area,
-      type: req.query.type,
-      minRent: req.query.minRent ? parseInt(req.query.minRent) : undefined,
-      maxRent: req.query.maxRent ? parseInt(req.query.maxRent) : undefined,
-      bedrooms: req.query.bedrooms ? parseInt(req.query.bedrooms) : undefined,
-      amenities: req.query.amenities ? req.query.amenities.split(',') : undefined
-    };
-
+    const filters = buildAvailabilityFilters(req.query);
     const properties = await Property.findAvailable(filters);
 
     res.json({
@@ -242,6 +314,41 @@ exports.getAvailableProperties = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get publicly listed properties only
+ * GET /api/v2/properties/public
+ */
+exports.getPublicProperties = async (req, res) => {
+  try {
+    const filters = buildAvailabilityFilters(req.query);
+    const properties = await Property.findAvailable(filters)
+      .where('listing.isListed')
+      .equals(true);
+
+    res.json({
+      success: true,
+      count: properties.length,
+      data: properties
+    });
+  } catch (error) {
+    logger.error(`Error getting public properties: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+const buildAvailabilityFilters = (query) => ({
+  city: query.city,
+  area: query.area,
+  type: query.type,
+  minRent: query.minRent ? parseInt(query.minRent) : undefined,
+  maxRent: query.maxRent ? parseInt(query.maxRent) : undefined,
+  bedrooms: query.bedrooms ? parseInt(query.bedrooms) : undefined,
+  amenities: query.amenities ? query.amenities.split(',') : undefined
+});
 
 /**
  * Link contact to property
@@ -473,6 +580,99 @@ exports.getRentStats = async (req, res) => {
   } catch (error) {
     logger.error(`Error getting rent stats: ${error.message}`);
     res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get a property for public/tenant viewing
+ * GET /api/v2/properties/:id/public
+ */
+exports.getPublicPropertyById = async (req, res) => {
+  try {
+    const property = await Property.findOne({
+      _id: req.params.id,
+      'listing.isListed': true,
+      status: 'available',
+      isAvailable: true
+    }).populate('landlord', 'firstName lastName email');
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        error: 'Property not found or not publicly listed'
+      });
+    }
+
+    await property.incrementViews();
+
+    res.json({
+      success: true,
+      data: property
+    });
+  } catch (error) {
+    logger.error(`Error getting public property: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Express interest in a property
+ * POST /api/v2/properties/:id/interest
+ */
+exports.expressInterest = async (req, res) => {
+  try {
+    const { message, preferredMoveInDate } = req.body;
+    const property = await Property.findById(req.params.id)
+      .populate('landlord', 'firstName lastName email phone');
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        error: 'Property not found'
+      });
+    }
+
+    if (!property.listing?.isListed || property.status !== 'available') {
+      return res.status(400).json({
+        success: false,
+        error: 'This property is not available for interest'
+      });
+    }
+
+    const tenantId = req.user._id;
+
+    const interest = await PropertyInterest.create({
+      property: property._id,
+      tenant: tenantId,
+      message: message ? String(message).trim() : undefined,
+      preferredMoveInDate: preferredMoveInDate ? new Date(preferredMoveInDate) : undefined
+    });
+
+    // Notify landlord and internal staff
+    try {
+      await propertyNotificationService.notifyInterest({
+        property,
+        tenant: req.user,
+        interest
+      });
+    } catch (notifyErr) {
+      logger.error(`Interest notification failed: ${notifyErr.message}`);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Your interest has been recorded. The landlord will be in touch.',
+      data: interest
+    });
+  } catch (error) {
+    logger.error(`Error expressing interest: ${error.message}`);
+    res.status(400).json({
       success: false,
       error: error.message
     });

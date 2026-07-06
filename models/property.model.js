@@ -110,6 +110,14 @@ const propertySchema = new Schema({
   },
   serviceCharge: { type: Number, default: 0, min: 0 },
 
+  // Optional service/utilities (water, security, garbage, custom "Other")
+  utilities: [{
+    name: { type: String, required: true, trim: true },
+    amount: { type: Number, required: true, min: 0, set: v => Math.round(v) },
+    isMandatory: { type: Boolean, default: false },
+    isCustom: { type: Boolean, default: false }
+  }],
+
   // Kenyan Utilities
   waterSource: { type: String, enum: ['county', 'borehole', 'tank', 'well'], default: 'county' },
   waterSchedule: { type: Map, of: String },
@@ -223,9 +231,11 @@ const propertySchema = new Schema({
     performedBy: { type: Schema.Types.ObjectId, ref: 'User' }
   }],
 
-  // Houses
+  // Houses / Units
   houses: [{
-    number: { type: String, required: true, trim: true },
+    houseNumber: { type: String, required: true, trim: true },
+    floor: { type: Number, min: 0, max: 100 },
+    number: { type: String, trim: true },   // kept for backward compatibility
     lastPayment: { type: Date },
     tenant: { type: Schema.Types.ObjectId, ref: 'User' },
     status: { type: String, enum: ['occupied', 'available', 'maintenance'], default: 'available' }
@@ -324,6 +334,12 @@ propertySchema.virtual('depositAmount').get(function() {
 propertySchema.virtual('formattedRent').get(function() {
   if (!this.rent || this.rent.amount == null) return null;
   return `KES ${this.rent.amount.toLocaleString('en-KE')}`;
+});
+
+propertySchema.virtual('totalMonthlyCost').get(function() {
+  const rent = this.rent?.amount || 0;
+  const utilitiesTotal = (this.utilities || []).reduce((sum, u) => sum + (u.amount || 0), 0);
+  return rent + utilitiesTotal;
 });
 
 propertySchema.virtual('coordinates').get(function() {

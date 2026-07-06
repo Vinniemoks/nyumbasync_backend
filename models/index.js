@@ -18,6 +18,7 @@ const LandlordProfile = require('./landlord-profile.model');
 const VendorManagement = require('./vendor-management.model');
 const Workflow = require('./workflow.model');
 const Subscription = require('./subscription.model');
+const PropertyInterest = require('./property-interest.model');
 
 module.exports = {
   // Core Models - The Three Pillars
@@ -39,5 +40,8 @@ module.exports = {
   // Landlord Portal Models
   LandlordProfile,
   VendorManagement,
-  Workflow
+  Workflow,
+
+  // Property Interest
+  PropertyInterest
 };
