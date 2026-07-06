@@ -3,6 +3,11 @@ const adminController = require('../../controllers/admin.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 const { body, param, validationResult } = require('express-validator');
 
+const adminRoles = [
+  'admin', 'super_admin', 'support_admin', 'finance_admin',
+  'operations_admin', 'sales_customer_service_admin', 'viewer'
+];
+
 // Validation middleware
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -40,7 +45,7 @@ module.exports = [
     method: 'GET',
     path: '/dashboard',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.getDashboardStats)
     ],
     config: {
@@ -53,7 +58,7 @@ module.exports = [
     method: 'GET',
     path: '/dashboard/stats',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.getDashboardStats)
     ],
     config: {
@@ -67,7 +72,7 @@ module.exports = [
     method: 'GET',
     path: '/users',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.listUsers)
     ],
     config: { source: 'admin.routes', description: 'List users with search/role filters' }
@@ -76,7 +81,7 @@ module.exports = [
     method: 'POST',
     path: '/users',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.createUser)
     ],
     config: { source: 'admin.routes', description: 'Create a user with initial credentials' }
@@ -85,7 +90,7 @@ module.exports = [
     method: 'PATCH',
     path: '/users/:userId',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.updateUserAdmin)
     ],
     config: { source: 'admin.routes', description: 'Edit a user (profile, roles, status, password reset)' }
@@ -94,7 +99,7 @@ module.exports = [
     method: 'GET',
     path: '/audit/logins',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.getLoginAudit)
     ],
     config: { source: 'admin.routes', description: 'Login attempt audit trail' }
@@ -105,7 +110,7 @@ module.exports = [
     method: 'GET',
     path: '/leases',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.getLeases)
     ],
     config: { 
@@ -117,7 +122,7 @@ module.exports = [
     method: 'POST',
     path: '/leases',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       [
         body('propertyId').isMongoId(),
         body('tenantId').isMongoId(),
@@ -137,7 +142,7 @@ module.exports = [
     method: 'PUT',
     path: '/leases/:leaseId',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       validateLeaseId,
       [
         body('endDate').optional().isISO8601(),
@@ -156,7 +161,7 @@ module.exports = [
     method: 'DELETE',
     path: '/leases/:leaseId',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       validateLeaseId,
       asyncHandler(adminController.terminateLease)
     ],
@@ -169,7 +174,7 @@ module.exports = [
     method: 'POST',
     path: '/leases/:leaseId/renew',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       validateLeaseId,
       [
         body('extensionMonths').isInt({ min: 1, max: 24 }),
@@ -188,7 +193,7 @@ module.exports = [
     method: 'POST',
     path: '/users/manage',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       validateUserManagement,
       asyncHandler(adminController.manageUsers)
     ],
@@ -203,7 +208,7 @@ module.exports = [
     method: 'GET',
     path: '/compliance',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       asyncHandler(adminController.checkCompliance)
     ],
     config: { 
@@ -215,7 +220,7 @@ module.exports = [
     method: 'POST',
     path: '/notices',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       [
         body('title').isString().trim().notEmpty(),
         body('message').isString().trim().notEmpty(),
@@ -235,7 +240,7 @@ module.exports = [
     method: 'GET',
     path: '/reports/rent',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       [
         param('year').optional().isInt({ min: 2020, max: 2030 }),
         param('month').optional().isInt({ min: 1, max: 12 }),
@@ -254,7 +259,7 @@ module.exports = [
     method: 'POST',
     path: '/maintenance',
     handler: [
-      authenticate('admin'),
+      authenticate(adminRoles),
       [
         body('action').isIn(['backup', 'restore', 'cleanup']),
         body('confirm').isBoolean().equals(true),

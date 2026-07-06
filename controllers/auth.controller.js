@@ -416,7 +416,10 @@ exports.login = async (req, res) => {
     // If no factor is configured yet, password-only login is allowed once so
     // the admin can set up TOTP from the dashboard; this is logged as a
     // security warning.
-    const adminRoles = ['admin', 'super_admin'];
+    const adminRoles = [
+      'admin', 'super_admin', 'support_admin', 'finance_admin',
+      'operations_admin', 'sales_customer_service_admin', 'viewer'
+    ];
     const isAdminAccount = adminRoles.includes(user.role) ||
       (Array.isArray(user.roles) && user.roles.some(r => adminRoles.includes(r)));
 
@@ -436,7 +439,7 @@ exports.login = async (req, res) => {
       }
 
       // 2) Email OTP fallback
-      if (user.mfaEmailEnabled || user.email) {
+      if (user.mfaEmailEnabled) {
         const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
         let channels = { emailSent: false, whatsappSent: false };
         try {

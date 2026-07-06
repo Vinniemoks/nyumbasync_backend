@@ -730,16 +730,21 @@ exports.createUser = async (req, res) => {
     });
 
     // Send activation email
-    const emailService = require('../services/emailService');
+    const emailService = require('../services/email.service');
     const activationUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/activate?token=${activationToken}`;
 
     try {
-      await emailService.sendEmail({
-        to: user.email,
-        subject: 'Activate Your NyumbaSync Account',
-        text: `Welcome to NyumbaSync! Your account has been created by an administrator. Please activate your account by clicking this link: ${activationUrl}\n\nThis link will expire in 24 hours.`,
-        html: `<p>Welcome to NyumbaSync, ${user.firstName}!</p><p>Your account has been created by an administrator. Please <a href="${activationUrl}">activate your account</a>.</p><p>This link will expire in 24 hours.</p>`
-      });
+      await emailService.sendEmail(
+        user.email,
+        'Activate Your NyumbaSync Account - NyumbaSync',
+        'account-activation',
+        {
+          name: user.firstName || 'User',
+          activationUrl,
+          appUrl: process.env.FRONTEND_URL || 'https://nyumbasync.co.ke',
+          year: new Date().getFullYear()
+        }
+      );
     } catch (emailError) {
       logger.error('Failed to send activation email:', emailError);
     }
