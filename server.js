@@ -176,7 +176,8 @@ const loadRoute = (routeName) => {
         // Log individual routes in debug mode
         if (process.env.LOG_LEVEL === 'debug') {
           routeConfig.forEach((config, index) => {
-            logger.debug(`  📍 Route ${index + 1}: ${config.method.toUpperCase()} ${config.path}`);
+            const method = typeof config.method === 'string' ? config.method.toUpperCase() : String(config.method).toUpperCase();
+            logger.debug(`  📍 Route ${index + 1}: ${method} ${config.path}`);
           });
         }
 
@@ -366,7 +367,8 @@ const validateRouteHandlers = (routes) => {
 
   routes.stack?.forEach(layer => {
     if (layer.route) {
-      Object.values(layer.route.methods).forEach(method => {
+      // Express stores methods as { get: true, post: true, ... }
+      Object.keys(layer.route.methods).forEach(method => {
         layer.route.stack.forEach(routeLayer => {
           validateHandler(routeLayer.handle, `${method.toUpperCase()} ${layer.route.path}`);
         });
