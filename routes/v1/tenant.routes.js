@@ -161,5 +161,13 @@ module.exports = [
     path: '/deposit/current',
     handler: [authenticate('tenant'), asyncHandler(depositController.getCurrentDepositRefund)],
     config: { source: 'tenant.routes' }
+  },
+
+  // Current rent status (amount due, due date, property)
+  {
+    method: 'GET',
+    path: '/rent/current',
+    handler: [authenticate('tenant'), asyncHandler(tenantController.getCurrentRent)],
+    config: { source: 'tenant.routes' }
   }
 ];

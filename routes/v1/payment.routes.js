@@ -60,7 +60,7 @@ router.post('/mpesa',
 // (full outstanding balance by default, or a partial amount).
 router.post('/mpesa/prompt',
   initiateLimiter,
-  authenticate(['landlord', 'manager', 'agent', 'admin']),
+  authenticate(['landlord', 'manager', 'agent', 'admin', 'super_admin']),
   paymentController.promptTenantStkPush
 );
 

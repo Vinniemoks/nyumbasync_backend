@@ -64,8 +64,13 @@ const settleInvoiceForPayment = async (payment) => {
 // Resolve property, landlord and the authoritative amount for a payment.
 // Invoice payments are capped at the outstanding balance; the client may pay
 // it in full (default) or send a smaller `amount` for a partial payment.
+const isValidObjectId = (v) => mongoose.isValidObjectId(v) && String(v).length === 24;
+
 const resolvePaymentContext = async ({ tenantId, invoiceId, propertyId, amount }) => {
   if (invoiceId) {
+    if (!isValidObjectId(invoiceId)) {
+      return { error: { status: 400, message: 'Invalid invoice identifier' } };
+    }
     const invoice = await Invoice.findById(invoiceId);
     if (!invoice) return { error: { status: 404, message: 'Invoice not found' } };
     if (tenantId && String(invoice.tenant) !== String(tenantId)) {
@@ -96,6 +101,9 @@ const resolvePaymentContext = async ({ tenantId, invoiceId, propertyId, amount }
   // Ad-hoc rent payment: use the given property, else the tenant's active lease.
   let property = propertyId;
   let landlord;
+  if (property && !isValidObjectId(property)) {
+    return { error: { status: 400, message: 'Invalid property identifier' } };
+  }
   if (!property) {
     const lease = await Lease.findOne({ tenant: tenantId, status: 'active' });
     if (lease) { property = lease.property; landlord = lease.landlord; }

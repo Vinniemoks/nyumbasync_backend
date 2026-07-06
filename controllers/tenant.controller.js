@@ -58,4 +58,44 @@ exports.getTenantStats = async (req, res) => {
   }
 };
 
+// Get current rent status for the authenticated tenant.
+// Returns the active lease details (amount, due date, property) or 404 if
+// there is no active lease.
+exports.getCurrentRent = async (req, res) => {
+  try {
+    const tenantId = req.user.id;
+
+    const lease = await Lease.findOne({ tenant: tenantId, status: 'active' })
+      .populate('property', 'name rent address landlord')
+      .lean();
+
+    if (!lease) {
+      return res.status(404).json({
+        error: 'No active lease found',
+        message: 'You do not have an active lease. Contact your landlord or property manager.'
+      });
+    }
+
+    const today = new Date();
+    const dueDate = lease.nextPaymentDate || lease.rentDueDate;
+    const isOverdue = dueDate ? new Date(dueDate) < today : false;
+
+    res.json({
+      amount: lease.rentAmount || lease.property?.rent?.amount || 0,
+      dueDate: dueDate ? new Date(dueDate).toISOString().split('T')[0] : null,
+      status: isOverdue ? 'overdue' : 'due',
+      propertyId: lease.property?._id,
+      propertyName: lease.property?.name,
+      landlordId: lease.property?.landlord || lease.landlord,
+      lastPaymentDate: lease.lastPaymentDate || null,
+      autopayEnabled: lease.autopayEnabled || false,
+      nextAutopayDate: lease.nextAutopayDate || null,
+      nextAutopayAmount: lease.nextAutopayAmount || null,
+    });
+  } catch (error) {
+    logger.error('Error fetching current rent:', error);
+    res.status(500).json({ error: 'Failed to fetch current rent status' });
+  }
+};
+
 module.exports = exports;
