@@ -697,7 +697,7 @@ const allowedOrigins = [
   'https://mokuavinnie.tech',
   'https://nyumbasync.co.ke',
   'https://app.nyumbasync.co.ke',
-  'https://nyumbasync-backend.onrender.com',
+  'https://nyumbasync-api.fly.dev',
   // M-Pesa callbacks
   'https://sandbox.safaricom.co.ke',
   'https://api.safaricom.co.ke',
