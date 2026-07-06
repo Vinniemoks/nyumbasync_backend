@@ -15,6 +15,13 @@ primary_region = "jnb"
   RATE_LIMIT_WINDOW = "900000"
   RATE_LIMIT_MAX_REQUESTS = "300"
   MAX_FILE_SIZE = "10485760"
+  # Zoho Mail SMTP defaults (non-sensitive). Set EMAIL_USER and EMAIL_PASSWORD
+  # via `flyctl secrets set` to activate outbound email.
+  EMAIL_FROM = "support@nyumbasync.co.ke"
+  EMAIL_HOST = "smtp.zoho.com"
+  EMAIL_PORT = "587"
+  EMAIL_SECURE = "false"
+  EMAIL_USER = "support@nyumbasync.co.ke"
   # All generated/uploaded files live on the persistent volume (see [mounts]);
   # anything written elsewhere is lost on deploy/restart.
   UPLOAD_DIR = "/data/uploads"
