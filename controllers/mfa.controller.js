@@ -293,9 +293,27 @@ exports.verifyMFALogin = async (req, res) => {
 
     // Admin accounts may be forced into MFA at login even if they never enabled
     // it in their profile, so allow the session for any existing user.
-    const adminRoles = ['admin', 'super_admin'];
+    // Keep this list in sync with the login controller in auth.controller.js.
+    const adminRoles = [
+      'admin', 'super_admin', 'support_admin', 'finance_admin',
+      'operations_admin', 'sales_customer_service_admin', 'viewer'
+    ];
     const isAdminAccount = user && (adminRoles.includes(user.role) ||
       (Array.isArray(user.roles) && user.roles.some(r => adminRoles.includes(r))));
+
+    console.log(sanitizeLog('MFA verify-login lookup', {
+      userId: user ? user._id : null,
+      role: user ? user.role : null,
+      roles: user ? user.roles : null,
+      isAdminAccount,
+      mfaEnabled: user ? user.mfaEnabled : null,
+      mfaEmailEnabled: user ? user.mfaEmailEnabled : null,
+      hasMfaSecret: user ? !!user.mfaSecret : null,
+      hasActionOtp: user ? !!user.actionOtp : null,
+      actionOtpPurpose: user ? user.actionOtpPurpose : null,
+      actionOtpExpiry: user ? user.actionOtpExpiry : null,
+      method: emailOtp ? 'emailOtp' : token ? 'totp' : backupCode ? 'backupCode' : 'none'
+    }));
 
     if (!user || (!isAdminAccount && !user.mfaEnabled && !user.mfaEmailEnabled)) {
       return res.status(400).json({
@@ -309,6 +327,14 @@ exports.verifyMFALogin = async (req, res) => {
     // Verify with emailed code, authenticator token, or backup code
     if (emailOtp) {
       isValid = await require('../services/verification.service').verifyLoginOtp(user, emailOtp);
+      if (!isValid) {
+        console.log(sanitizeLog('Email OTP verification failed', {
+          userId: user._id,
+          hasActionOtp: !!user.actionOtp,
+          purpose: user.actionOtpPurpose,
+          expired: user.actionOtpExpiry ? user.actionOtpExpiry < new Date() : true
+        }));
+      }
     } else if (token && user.mfaSecret) {
       isValid = mfaService.verifyToken(user.mfaSecret, token);
     } else if (backupCode) {
