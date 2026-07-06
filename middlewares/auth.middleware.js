@@ -268,7 +268,7 @@ module.exports = {
   verifyEmailConfirmed, // Email verification check
   
   // Convenience middleware combinations
-  authAdmin: authenticate(['admin', 'superadmin']),
+  authAdmin: authenticate(['admin', 'super_admin']),
   authLandlord: authenticate('landlord'),
   authTenant: [authenticate('tenant'), verifyTenant()],
   

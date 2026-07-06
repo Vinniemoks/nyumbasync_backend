@@ -630,7 +630,8 @@ exports.login = async (req, res) => {
         role: user.role,
         roles: user.roles,
         phone: user.phone,
-        mfaEnabled: user.mfaEnabled || false
+        mfaEnabled: user.mfaEnabled || false,
+        emailVerified: user.emailVerified || false
       }
     });
   } catch (error) {
@@ -734,7 +735,8 @@ exports.verifyIp = async (req, res) => {
         role: user.role,
         roles: user.roles,
         phone: user.phone,
-        mfaEnabled: user.mfaEnabled || false
+        mfaEnabled: user.mfaEnabled || false,
+        emailVerified: user.emailVerified || false
       }
     });
   } catch (error) {
@@ -1021,8 +1023,10 @@ exports.getCurrentUser = async (req, res) => {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      roles: user.roles,
       phone: user.phone,
-      mfaEnabled: user.mfaEnabled || false
+      mfaEnabled: user.mfaEnabled || false,
+      emailVerified: user.emailVerified || false
     });
   } catch (error) {
     logger.error('Get current user error:', error);
@@ -1056,7 +1060,7 @@ exports.forgotPassword = async (req, res) => {
 
     // Send reset email
     try {
-      const resetUrl = `${process.env.FRONTEND_URL || 'https://app.nyumbasync.com'}/reset-password/${resetToken}`;
+      const resetUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/reset-password?token=${resetToken}`;
       await emailService.sendEmail({
         to: user.email,
         subject: 'NyumbaSync - Password Reset',

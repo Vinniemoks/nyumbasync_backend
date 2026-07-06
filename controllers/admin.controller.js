@@ -731,7 +731,7 @@ exports.createUser = async (req, res) => {
 
     // Send activation email
     const emailService = require('../services/emailService');
-    const activationUrl = `${process.env.FRONTEND_URL || 'https://app.nyumbasync.com'}/activate?token=${activationToken}`;
+    const activationUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/activate?token=${activationToken}`;
 
     try {
       await emailService.sendEmail({

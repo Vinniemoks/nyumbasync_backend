@@ -19,9 +19,10 @@ primary_region = "jnb"
   # via `flyctl secrets set` to activate outbound email.
   EMAIL_FROM = "support@nyumbasync.co.ke"
   EMAIL_HOST = "smtp.zoho.com"
-  EMAIL_PORT = "587"
-  EMAIL_SECURE = "false"
+  EMAIL_PORT = "465"
+  EMAIL_SECURE = "true"
   EMAIL_USER = "support@nyumbasync.co.ke"
+  FRONTEND_URL = "https://nyumbasync.co.ke"
   # All generated/uploaded files live on the persistent volume (see [mounts]);
   # anything written elsewhere is lost on deploy/restart.
   UPLOAD_DIR = "/data/uploads"
