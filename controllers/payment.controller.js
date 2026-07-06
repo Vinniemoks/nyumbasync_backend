@@ -18,6 +18,10 @@ const logger = require('../utils/logger');
 const C2B_TTL_MS = (parseInt(process.env.MPESA_C2B_TTL_MINUTES, 10) || 10) * 60 * 1000;
 // Bank transfers get a longer window (the tenant has to make the transfer).
 const BANK_TTL_MS = (parseInt(process.env.BANK_TTL_HOURS, 10) || 48) * 60 * 60 * 1000;
+// Minimum amount the platform will accept for a rent/M-Pesa payment. M-Pesa
+// itself may reject very small amounts, but allowing KES 1 makes testing and
+// micro-payments possible.
+const MIN_PAYMENT_AMOUNT = 1;
 
 // ---- helpers --------------------------------------------------------------
 
@@ -74,8 +78,8 @@ const resolvePaymentContext = async ({ tenantId, invoiceId, propertyId, amount }
     let payAmount = balance;
     if (amount != null && amount !== '') {
       payAmount = Math.round(Number(amount));
-      if (!Number.isInteger(payAmount) || payAmount < 100) {
-        return { error: { status: 400, message: 'Amount must be a whole number of at least KES 100' } };
+      if (!Number.isInteger(payAmount) || payAmount < MIN_PAYMENT_AMOUNT) {
+        return { error: { status: 400, message: 'Amount must be a whole number of at least KES 1' } };
       }
       if (payAmount > balance) {
         return { error: { status: 400, message: `Amount exceeds the outstanding balance of KES ${balance.toLocaleString()}` } };
@@ -124,8 +128,8 @@ exports.initiateStkPush = async (req, res) => {
     // resolvePaymentContext (partial payments are allowed, overpayment is not).
     if (!invoiceId) {
       const amt = Math.round(Number(amount));
-      if (!Number.isInteger(amt) || amt < 100) {
-        return res.status(400).json({ error: 'Amount must be a whole number of at least KES 100' });
+      if (!Number.isInteger(amt) || amt < MIN_PAYMENT_AMOUNT) {
+        return res.status(400).json({ error: 'Amount must be a whole number of at least KES 1' });
       }
     }
 
@@ -134,8 +138,8 @@ exports.initiateStkPush = async (req, res) => {
     });
     if (ctx.error) return res.status(ctx.error.status).json({ error: ctx.error.message });
 
-    if (!Number.isInteger(ctx.amount) || ctx.amount < 100) {
-      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 100' });
+    if (!Number.isInteger(ctx.amount) || ctx.amount < MIN_PAYMENT_AMOUNT) {
+      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 1' });
     }
 
     if (!mpesaService.isConfigured()) {
@@ -463,8 +467,8 @@ exports.requestPaybillFallback = async (req, res) => {
     } else {
       const ctx = await resolvePaymentContext({ tenantId: req.user.id, invoiceId, propertyId, amount });
       if (ctx.error) return res.status(ctx.error.status).json({ error: ctx.error.message });
-      if (!Number.isInteger(ctx.amount) || ctx.amount < 100) {
-        return res.status(400).json({ error: 'Amount must be a whole number of at least KES 100' });
+      if (!Number.isInteger(ctx.amount) || ctx.amount < MIN_PAYMENT_AMOUNT) {
+        return res.status(400).json({ error: 'Amount must be a whole number of at least KES 1' });
       }
       payment = await Payment.create({
         tenant: req.user.id,
@@ -693,8 +697,8 @@ exports.initiateBankPayment = async (req, res) => {
     const { invoiceId, propertyId, amount } = req.body;
     const ctx = await resolvePaymentContext({ tenantId: req.user.id, invoiceId, propertyId, amount });
     if (ctx.error) return res.status(ctx.error.status).json({ error: ctx.error.message });
-    if (!Number.isInteger(ctx.amount) || ctx.amount < 100) {
-      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 100' });
+    if (!Number.isInteger(ctx.amount) || ctx.amount < MIN_PAYMENT_AMOUNT) {
+      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 1' });
     }
 
     const bank = await resolveBankDetails(ctx.landlord);
@@ -851,8 +855,8 @@ exports.initiateCardPayment = async (req, res) => {
     const { invoiceId, propertyId, amount } = req.body;
     const ctx = await resolvePaymentContext({ tenantId: req.user.id, invoiceId, propertyId, amount });
     if (ctx.error) return res.status(ctx.error.status).json({ error: ctx.error.message });
-    if (!Number.isInteger(ctx.amount) || ctx.amount < 100) {
-      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 100' });
+    if (!Number.isInteger(ctx.amount) || ctx.amount < MIN_PAYMENT_AMOUNT) {
+      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 1' });
     }
 
     const tenant = await User.findById(req.user.id).select('email firstName');

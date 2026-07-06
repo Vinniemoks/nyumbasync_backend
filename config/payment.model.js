@@ -28,7 +28,7 @@ const PaymentSchema = new mongoose.Schema({
   // Kenyan shilling amounts
   amount: {
     type: Number,
-    min: 100, // Minimum rent KES 100
+    min: 1, // Minimum payment KES 1
     get: v => Math.round(v), // No cents
     set: v => Math.round(v)
   },

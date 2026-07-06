@@ -46,7 +46,7 @@ const PaymentSchema = new Schema({
   amount: {
     type: Number,
     required: [true, 'Payment amount is required'],
-    min: [100, 'Minimum payment is KES 100'],
+    min: [1, 'Minimum payment is KES 1'],
     max: [1000000, 'Maximum payment is KES 1,000,000'],
     get: v => Math.round(v), // Store whole shillings only
     set: v => Math.round(v)
