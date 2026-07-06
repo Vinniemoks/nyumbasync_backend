@@ -366,7 +366,10 @@ exports.verifyMFALogin = async (req, res) => {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role
+          name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+          role: user.role,
+          roles: user.roles,
+          emailVerified: user.emailVerified || false
         },
         accessToken,
         refreshToken

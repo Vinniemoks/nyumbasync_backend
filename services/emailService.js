@@ -30,8 +30,16 @@ class EmailService {
 
   /**
    * Send an email using the best available transport.
+   * @param {Object} options
+   * @param {string|string[]} options.to
+   * @param {string} options.subject
+   * @param {string} options.html
+   * @param {string} [options.text]
+   * @param {Array} [options.attachments]
+   * @param {string} [options.from] - Optional sender override. Defaults to the
+   *   configured SMTP user or SendGrid from address.
    */
-  async sendEmail({ to, subject, html, text, attachments }) {
+  async sendEmail({ to, subject, html, text, attachments, from }) {
     const transport = this.getTransport();
 
     if (!transport) {
@@ -40,14 +48,14 @@ class EmailService {
     }
 
     if (transport === 'smtp') {
-      return smtp.send({ to, subject, html, text, attachments });
+      return smtp.send({ to, subject, html, text, attachments, from });
     }
 
     // SendGrid path
     try {
       const msg = {
         to,
-        from: process.env.SENDGRID_FROM_EMAIL || 'noreply@nyumbasync.com',
+        from: from || process.env.SENDGRID_FROM_EMAIL || 'noreply@nyumbasync.com',
         subject,
         text: text || this.stripHtml(html),
         html,
@@ -202,6 +210,51 @@ class EmailService {
   getLeaseExpiryTemplate(data) {
     const urgencyColor = data.daysRemaining <= 30 ? '#ef4444' : '#f59e0b';
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Lease Expiry Notice</title></head><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f4f4f4;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:20px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;"><tr><td style="background-color:${urgencyColor};padding:40px 20px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:28px;">Lease Expiry Notice</h1><p style="color:#fff;margin:10px 0 0;font-size:18px;font-weight:600;">${data.daysRemaining} Days Remaining</p></td></tr><tr><td style="padding:40px 30px;"><p style="color:#374151;font-size:16px;margin:0 0 20px;">Dear ${data.tenantName},</p><p style="color:#374151;font-size:16px;margin:0 0 30px;">This is a reminder that your lease agreement will expire soon. Please review the details below:</p><table width="100%" cellpadding="12" cellspacing="0" style="background:#f9fafb;border-radius:6px;margin-bottom:30px;"><tr><td style="color:#6b7280;font-size:14px;border-bottom:1px solid #e5e7eb;">Property</td><td align="right" style="color:#111827;font-size:14px;font-weight:600;border-bottom:1px solid #e5e7eb;">${data.propertyName}</td></tr><tr><td style="color:#6b7280;font-size:14px;border-bottom:1px solid #e5e7eb;">Lease Expiry Date</td><td align="right" style="color:${urgencyColor};font-size:16px;font-weight:700;border-bottom:1px solid #e5e7eb;">${data.expiryDate}</td></tr><tr><td style="color:#6b7280;font-size:14px;border-bottom:1px solid #e5e7eb;">Days Remaining</td><td align="right" style="color:${urgencyColor};font-size:18px;font-weight:700;border-bottom:1px solid #e5e7eb;">${data.daysRemaining} days</td></tr><tr><td style="color:#6b7280;font-size:14px;">Monthly Rent</td><td align="right" style="color:#111827;font-size:14px;">KES ${data.monthlyRent.toLocaleString()}</td></tr></table><div style="background-color:${data.daysRemaining <= 30 ? '#fee2e2' : '#fef3c7'};padding:16px;border-radius:6px;border-left:4px solid ${urgencyColor};margin-bottom:20px;"><p style="color:#374151;font-size:14px;margin:0;font-weight:600;">⚠️ Action Required</p><p style="color:#6b7280;font-size:14px;margin:8px 0 0;">Please contact your landlord to discuss lease renewal or move-out arrangements.</p></div><p style="color:#374151;font-size:14px;margin:0;">Best regards,<br><strong>NyumbaSync Team</strong></p></td></tr><tr><td style="background:#f9fafb;padding:20px 30px;text-align:center;border-top:1px solid #e5e7eb;"><p style="color:#6b7280;font-size:12px;margin:0;">&copy; ${new Date().getFullYear()} NyumbaSync. All rights reserved.</p></td></tr></table></td></tr></table></body></html>`;
+  }
+
+  getPasswordResetTemplate(data) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset your NyumbaSync password</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#15803d 0%,#166534 100%);padding:40px 30px;text-align:center;">
+              <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">Reset your password</h1>
+              <p style="color:#dcfce7;margin:10px 0 0;font-size:16px;">NyumbaSync Account Security</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 30px;">
+              <p style="color:#374151;font-size:16px;line-height:1.6;margin:0 0 20px;">Hi ${data.userName || data.userEmail},</p>
+              <p style="color:#374151;font-size:16px;line-height:1.6;margin:0 0 30px;">We received a request to reset the password for your NyumbaSync account. Tap the button below to choose a new password. This link expires in <strong>10 minutes</strong>.</p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${data.resetUrl}" style="display:inline-block;padding:14px 32px;background:#15803d;color:#ffffff;font-size:16px;font-weight:600;border-radius:8px;text-decoration:none;">Reset my password</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 20px;">If the button doesn't work, copy and paste this link into your browser:</p>
+              <p style="background:#f0fdf4;padding:12px;border-radius:6px;word-break:break-all;margin:0 0 30px;font-size:13px;color:#166534;">${data.resetUrl}</p>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;" />
+              <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 20px;"><strong>Didn't request this?</strong> If you did not ask for a password reset, <a href="${data.loginUrl}" style="color:#15803d;text-decoration:underline;font-weight:600;">log in to your account</a> and change your password immediately to keep your account secure.</p>
+              <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:30px 0 0;">From the NyumbaSync team</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
   }
 
   getWelcomeEmailTemplate(data) {

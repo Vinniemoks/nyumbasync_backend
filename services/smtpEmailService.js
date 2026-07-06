@@ -48,15 +48,16 @@ class SmtpEmailService {
     return !!this.transporter;
   }
 
-  async send({ to, subject, html, text, attachments }) {
+  async send({ to, subject, html, text, attachments, from }) {
     if (!this.transporter) {
       logger.warn('SMTP not configured — email not sent');
       return false;
     }
 
     try {
+      const sender = from || this.from;
       const info = await this.transporter.sendMail({
-        from: `"NyumbaSync" <${this.from}>`,
+        from: `"NyumbaSync" <${sender}>`,
         to,
         subject,
         text: text || this.stripHtml(html),

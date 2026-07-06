@@ -627,6 +627,7 @@ exports.login = async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
         role: user.role,
         roles: user.roles,
         phone: user.phone,
@@ -732,6 +733,7 @@ exports.verifyIp = async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
         role: user.role,
         roles: user.roles,
         phone: user.phone,
@@ -1022,6 +1024,7 @@ exports.getCurrentUser = async (req, res) => {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
       role: user.role,
       roles: user.roles,
       phone: user.phone,
@@ -1061,11 +1064,19 @@ exports.forgotPassword = async (req, res) => {
     // Send reset email
     try {
       const resetUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/reset-password?token=${resetToken}`;
+      const loginUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/login`;
+      const html = emailService.getPasswordResetTemplate({
+        userName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+        userEmail: user.email,
+        resetUrl,
+        loginUrl
+      });
       await emailService.sendEmail({
+        from: 'support@nyumbasync.co.ke',
         to: user.email,
-        subject: 'NyumbaSync - Password Reset',
-        text: `You requested a password reset. Use this link (valid for 10 minutes): ${resetUrl}\n\nIf you did not request this, ignore this email.`,
-        html: `<p>You requested a password reset.</p><p><a href="${resetUrl}">Reset your password</a> (valid for 10 minutes)</p><p>If you did not request this, ignore this email.</p>`
+        subject: 'Reset your NyumbaSync password',
+        text: `Hi ${user.firstName || user.email},\n\nWe received a request to reset your NyumbaSync password. Use this link (valid for 10 minutes): ${resetUrl}\n\nIf you did not request this, log in at ${loginUrl} and change your password immediately.\n\nFrom the NyumbaSync team`,
+        html
       });
     } catch (emailError) {
       logger.error('Failed to send reset email:', emailError);
@@ -1340,10 +1351,12 @@ exports.googleAuth = async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
         role: user.role,
         roles: user.roles,
         phone: user.phone,
         mfaEnabled: user.mfaEnabled || false,
+        emailVerified: user.emailVerified || false,
       },
       requiresPhoneUpdate: user.phone?.startsWith('google_') || user.phone?.startsWith('apple_'),
     });

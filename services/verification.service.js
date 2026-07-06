@@ -29,6 +29,7 @@ const sendEmailVerification = async (user) => {
 
   const link = `${CLIENT_URL()}/verify-email?token=${token}`;
   return emailService.sendEmail({
+    from: 'support@nyumbasync.co.ke',
     to: user.email,
     subject: 'Confirm your NyumbaSync account',
     text: `Welcome to NyumbaSync, ${user.firstName || ''}!\n\nConfirm your email by opening this link: ${link}\n\nOr enter this code in the app: ${code}\n\nThe link and code expire in 24 hours.`,
@@ -78,6 +79,7 @@ const sendLoginOtp = async (user) => {
 
   const emailPromise = user.email
     ? emailService.sendEmail({
+        from: 'support@nyumbasync.co.ke',
         to: user.email,
         subject: 'Your NyumbaSync login code',
         text: `Your login code is ${code}. It expires in 10 minutes. If this wasn't you, change your password immediately.`,
