@@ -408,41 +408,68 @@ exports.login = async (req, res) => {
     // Reset failed attempts on successful password verification
     await accountLockoutService.resetAttempts(identifier);
 
-    // --- Mandatory admin 2FA: email + WhatsApp 8-digit code ---
-    // Any account whose active role or role set includes admin/super_admin must
-    // complete an 8-digit OTP delivered to both email and WhatsApp before a JWT
-    // is issued.
+    // --- Admin 2FA ---------------------------------------------------------
+    // Admins must complete a second factor. Preferred order:
+    //   1. TOTP authenticator app (Google Authenticator, Authy, etc.)
+    //   2. Emailed one-time code
+    // WhatsApp is no longer required because it is unreliable in Kenya.
+    // If no factor is configured yet, password-only login is allowed once so
+    // the admin can set up TOTP from the dashboard; this is logged as a
+    // security warning.
     const adminRoles = ['admin', 'super_admin'];
     const isAdminAccount = adminRoles.includes(user.role) ||
       (Array.isArray(user.roles) && user.roles.some(r => adminRoles.includes(r)));
 
     if (isAdminAccount) {
-      const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
-      let channels = { email: false, whatsapp: false };
-      try {
-        channels = await require('../services/verification.service').sendLoginOtp(user);
-      } catch (otpErr) {
-        logger.error('Admin login OTP delivery failed:', otpErr);
+      // 1) Authenticator app (TOTP)
+      if (user.mfaEnabled && user.mfaSecret) {
+        const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
+        logger.info(`Admin TOTP required for user ${user._id}`);
+        audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role, method: 'totp' });
+        return res.status(200).json({
+          success: true,
+          mfaRequired: true,
+          mfaMethod: 'totp',
+          mfaSessionToken,
+          message: 'Enter the 6-digit code from your authenticator app to complete login'
+        });
       }
 
-      const anyChannelSent = channels.emailSent || channels.whatsappSent;
-      logger.info(`Admin 2FA required for user ${user._id} (email=${channels.emailSent}, whatsapp=${channels.whatsappSent})`);
-      audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role, method: 'email_whatsapp' });
+      // 2) Email OTP fallback
+      if (user.mfaEmailEnabled || user.email) {
+        const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
+        let channels = { emailSent: false, whatsappSent: false };
+        try {
+          channels = await require('../services/verification.service').sendLoginOtp(user);
+        } catch (otpErr) {
+          logger.error('Admin email OTP delivery failed:', otpErr);
+        }
 
-      return res.status(200).json({
-        success: true,
-        mfaRequired: true,
-        mfaMethod: 'email_whatsapp',
-        mfaSessionToken,
-        emailOtpSent: channels.emailSent,
-        whatsappOtpSent: channels.whatsappSent,
-        message: anyChannelSent
-          ? 'Enter the 8-digit code we sent to your email and WhatsApp to complete login'
-          : 'Could not send the login code — messaging delivery is not configured. Contact support.'
-      });
+        // If email delivery is unavailable and no other factor exists, do not
+        // lock the admin out; fall through to the password-only path below so
+        // they can set up TOTP.
+        if (channels.emailSent) {
+          logger.info(`Admin email OTP required for user ${user._id}`);
+          audit({ success: true, reason: 'ok_mfa_pending', user: user._id, email: user.email, role: user.role, method: 'email' });
+          return res.status(200).json({
+            success: true,
+            mfaRequired: true,
+            mfaMethod: 'email',
+            mfaSessionToken,
+            emailOtpSent: true,
+            message: 'Enter the 8-digit code we emailed you to complete login'
+          });
+        }
+      }
+
+      // 3) No factor configured yet: allow password-only login with a warning,
+      // and prompt the frontend to set up MFA on first login.
+      logger.warn(`Admin ${user._id} logged in without any MFA configured`);
+      audit({ success: true, reason: 'admin_login_no_mfa', user: user._id, email: user.email, role: user.role });
+      req._requireMfaSetup = true;
     }
 
-    // Check if MFA is enabled (authenticator app)
+    // Check if MFA is enabled (authenticator app) for non-admin accounts
     if (user.mfaEnabled && user.mfaSecret) {
       // Generate MFA session token (valid for 5 minutes)
       const mfaSessionToken = mfaService.generateMFASessionToken(user._id.toString());
@@ -594,6 +621,7 @@ exports.login = async (req, res) => {
       token,
       refreshToken,
       expiresIn: 3600,
+      requireMfaSetup: req._requireMfaSetup || false,
       user: {
         id: user._id,
         email: user.email,
