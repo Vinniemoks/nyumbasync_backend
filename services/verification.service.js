@@ -12,6 +12,8 @@ const CLIENT_URL = () => process.env.CLIENT_URL || 'https://nyumbasync.co.ke';
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // links/codes valid for a day
 const LOGIN_OTP_TTL_MS = 10 * 60 * 1000;
 const LOGIN_OTP_PURPOSE = 'login';
+const STEP_UP_OTP_TTL_MS = 10 * 60 * 1000;
+const STEP_UP_OTP_PURPOSE = 'step-up';
 
 /**
  * Issue an email-verification token + 6-digit code for a user and send the
@@ -134,4 +136,47 @@ const verifyLoginOtp = async (user, code) => {
   return true;
 };
 
-module.exports = { sendEmailVerification, verifyEmail, sendLoginOtp, verifyLoginOtp };
+/**
+ * Generate and deliver an 8-digit step-up OTP to the user's email.
+ * Returns true if the email was sent.
+ */
+const sendStepUpOtp = async (user) => {
+  const code = String(crypto.randomInt(10000000, 100000000));
+  user.actionOtp = sha256(code);
+  user.actionOtpExpiry = new Date(Date.now() + STEP_UP_OTP_TTL_MS);
+  user.actionOtpPurpose = STEP_UP_OTP_PURPOSE;
+  await user.save({ validateBeforeSave: false });
+
+  if (!user.email) return false;
+
+  try {
+    await emailService.sendEmail({
+      from: 'support@nyumbasync.co.ke',
+      to: user.email,
+      subject: 'Your NyumbaSync verification code',
+      text: `Your verification code is ${code}. It expires in 10 minutes. If this wasn't you, change your password immediately.`,
+      html: `<p>Your verification code is:</p><p style="font-size:32px;font-weight:bold;letter-spacing:6px">${code}</p><p>It expires in 10 minutes. If this wasn't you, change your password immediately.</p>`
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Check a step-up OTP for a user document that has +actionOtp selected.
+ * Consumes the code on success.
+ */
+const verifyStepUpOtp = async (user, code) => {
+  if (!code || !user.actionOtp || user.actionOtpPurpose !== STEP_UP_OTP_PURPOSE) return false;
+  if (!user.actionOtpExpiry || user.actionOtpExpiry < new Date()) return false;
+  if (sha256(code) !== user.actionOtp) return false;
+
+  user.actionOtp = undefined;
+  user.actionOtpExpiry = undefined;
+  user.actionOtpPurpose = undefined;
+  await user.save({ validateBeforeSave: false });
+  return true;
+};
+
+module.exports = { sendEmailVerification, verifyEmail, sendLoginOtp, verifyLoginOtp, sendStepUpOtp, verifyStepUpOtp };

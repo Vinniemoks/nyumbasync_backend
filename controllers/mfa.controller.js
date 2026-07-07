@@ -125,41 +125,65 @@ exports.verifyMFA = async (req, res) => {
 
 /**
  * Step-up verification: re-confirm the authenticated user's identity with a
- * TOTP token or backup code. Unlike verifyMFA (which activates MFA), this has
- * no side effects — it just answers "is this really you, right now?". Used to
- * gate privileged actions such as switching into an admin role.
+ * TOTP token, backup code, or emailed OTP. Unlike verifyMFA (which activates
+ * MFA), this has no side effects — it just answers "is this really you, right
+ * now?". Used to gate privileged actions such as switching into an admin role.
  * @route POST /api/v1/auth/mfa/step-up
  */
 exports.verifyStepUp = async (req, res) => {
   try {
-    const { token, backupCode } = req.body;
+    const { token, backupCode, emailOtp } = req.body;
 
-    if (!token && !backupCode) {
+    if (!token && !backupCode && !emailOtp) {
       return res.status(400).json({
         success: false,
-        error: 'An MFA token or backup code is required'
+        error: 'An MFA token, backup code, or emailed code is required'
       });
     }
 
-    const user = await User.findById(req.user.id).select('+mfaSecret +mfaBackupCodes');
+    const user = await User.findById(req.user.id).select('+mfaSecret +mfaBackupCodes +actionOtp');
 
-    if (!user || !user.mfaEnabled || !user.mfaSecret) {
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Email OTP is allowed for accounts that have email MFA enabled, even if
+    // they never set up an authenticator app.
+    const hasTotp = user.mfaEnabled && user.mfaSecret;
+    const hasEmailMfa = user.mfaEmailEnabled;
+
+    if (!hasTotp && !hasEmailMfa) {
       return res.status(400).json({
         success: false,
         error: 'MFA is not enabled for this account'
       });
     }
 
+    if (emailOtp && !hasEmailMfa) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email verification is not enabled for this account'
+      });
+    }
+
     let isValid = false;
-    if (backupCode) {
+    let method = 'totp';
+    if (emailOtp) {
+      isValid = await require('../services/verification.service').verifyStepUpOtp(user, emailOtp);
+      method = 'email_otp';
+    } else if (backupCode && hasTotp) {
       const result = mfaService.verifyBackupCode(backupCode, user.mfaBackupCodes || []);
       isValid = result.valid;
+      method = 'backup_code';
       // Consume the used backup code so it can't be replayed.
       if (isValid) {
         user.mfaBackupCodes = result.remainingCodes;
         await user.save();
       }
-    } else {
+    } else if (token && hasTotp) {
       isValid = mfaService.verifyToken(user.mfaSecret, token);
     }
 
@@ -172,13 +196,34 @@ exports.verifyStepUp = async (req, res) => {
 
     console.log(sanitizeLog('Step-up MFA verification succeeded', {
       userId: user._id,
-      method: backupCode ? 'backup_code' : 'totp'
+      method
     }));
 
     return res.status(200).json({ success: true, verified: true });
   } catch (error) {
     console.error('Step-up MFA error:', error);
     return res.status(500).json({ success: false, error: 'Step-up verification failed' });
+  }
+};
+
+/**
+ * Send a step-up verification code to the authenticated user's email.
+ * @route POST /api/v1/auth/mfa/step-up/send-otp
+ */
+exports.sendStepUpOtp = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || !user.mfaEmailEnabled) {
+      return res.status(400).json({ success: false, error: 'Email verification is not enabled for this account' });
+    }
+    const emailSent = await require('../services/verification.service').sendStepUpOtp(user);
+    if (!emailSent) {
+      return res.status(503).json({ success: false, error: 'Could not send the verification code. Email delivery may not be configured.' });
+    }
+    return res.json({ success: true, message: 'Verification code sent to your email' });
+  } catch (error) {
+    console.error('Send step-up OTP error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send verification code' });
   }
 };
 

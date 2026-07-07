@@ -27,11 +27,19 @@ router.post('/verify', mfaController.verifyMFA);
 
 /**
  * @route   POST /api/v1/auth/mfa/step-up
- * @desc    Re-verify identity (TOTP/backup code) to authorize a privileged
- *          action such as switching into an admin role. No side effects.
+ * @desc    Re-verify identity (TOTP/backup code/email OTP) to authorize a
+ *          privileged action such as switching into an admin role. No side
+ *          effects.
  * @access  Private
  */
 router.post('/step-up', mfaController.verifyStepUp);
+
+/**
+ * @route   POST /api/v1/auth/mfa/step-up/send-otp
+ * @desc    Send an email OTP for step-up verification.
+ * @access  Private
+ */
+router.post('/step-up/send-otp', mfaController.sendStepUpOtp);
 
 /**
  * @route   POST /api/v1/auth/mfa/disable
