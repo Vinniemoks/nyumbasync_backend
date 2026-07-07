@@ -19,17 +19,17 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const nodemailer = require('nodemailer');
 
 // ─── Configuration ──────────────────────────────────────────────────────────
-const HOST         = process.env.SMTP_HOST || 'smtp.zoho.com';
-const PORT         = parseInt(process.env.SMTP_PORT, 10) || 587;
-const USER         = process.env.SMTP_USER;
-const PASS         = process.env.SMTP_PASS;
-const FROM         = process.env.SMTP_FROM || USER;
+const HOST         = process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp.zoho.com';
+const PORT         = parseInt(process.env.SMTP_PORT || process.env.EMAIL_PORT, 10) || 587;
+const USER         = process.env.SMTP_USER || process.env.EMAIL_USER;
+const PASS         = process.env.SMTP_PASS || process.env.EMAIL_PASSWORD;
+const FROM         = process.env.SMTP_FROM || process.env.EMAIL_FROM || USER;
 const RECIPIENT    = process.argv[2] || USER; // default: send to yourself
 
 // ─── Safety check ───────────────────────────────────────────────────────────
 if (!USER || !PASS) {
-  console.error('\n❌  SMTP_USER or SMTP_PASS is not set.');
-  console.error('    Please add them to nyumbasync_backend/.env and try again.\n');
+  console.error('\n❌  SMTP_USER/SMTP_PASS or EMAIL_USER/EMAIL_PASSWORD is not set.');
+  console.error('    Please add them to nyumbasync_backend/.env or fly secrets and try again.\n');
   console.error('    Example:');
   console.error('      SMTP_USER=support@nyumbasync.com');
   console.error('      SMTP_PASS=your-zoho-app-specific-password\n');

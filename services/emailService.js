@@ -257,6 +257,53 @@ class EmailService {
 </html>`;
   }
 
+  getEmailVerificationTemplate(data) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm your NyumbaSync email</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);">
+          <tr>
+            <td style="background:linear-gradient(135deg,#15803d 0%,#166534 100%);padding:40px 30px;text-align:center;">
+              <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">Confirm your email</h1>
+              <p style="color:#dcfce7;margin:10px 0 0;font-size:16px;">NyumbaSync Account Verification</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 30px;">
+              <p style="color:#374151;font-size:16px;line-height:1.6;margin:0 0 20px;">Hi ${data.userName || data.userEmail},</p>
+              <p style="color:#374151;font-size:16px;line-height:1.6;margin:0 0 30px;">Thanks for joining NyumbaSync. Please confirm your email address to secure your account and unlock full access. This link expires in <strong>24 hours</strong>.</p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${data.verifyUrl}" style="display:inline-block;padding:14px 32px;background:#15803d;color:#ffffff;font-size:16px;font-weight:600;border-radius:8px;text-decoration:none;">Confirm my email</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 20px;">If the button doesn't work, copy and paste this link into your browser:</p>
+              <p style="background:#f0fdf4;padding:12px;border-radius:6px;word-break:break-all;margin:0 0 30px;font-size:13px;color:#166534;">${data.verifyUrl}</p>
+              <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 20px;">Or enter this verification code in the app:</p>
+              <p style="background:#f0fdf4;padding:16px;border-radius:6px;text-align:center;margin:0 0 30px;font-size:24px;font-weight:700;letter-spacing:6px;color:#166534;">${data.code}</p>
+              <hr style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;" />
+              <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 20px;"><strong>Didn't create an account?</strong> If you did not sign up for NyumbaSync, you can safely ignore this email.</p>
+              <p style="color:#6b7280;font-size:13px;line-height:1.5;margin:30px 0 0;">From the NyumbaSync team</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  }
+
   getWelcomeEmailTemplate(data) {
     const features = data.userType === 'landlord'
       ? [

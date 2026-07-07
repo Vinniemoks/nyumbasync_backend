@@ -30,18 +30,18 @@ const sendEmailVerification = async (user) => {
   await user.save({ validateBeforeSave: false });
 
   const link = `${CLIENT_URL()}/verify-email?token=${token}`;
+  const html = emailService.getEmailVerificationTemplate({
+    userName: user.firstName,
+    userEmail: user.email,
+    verifyUrl: link,
+    code
+  });
   return emailService.sendEmail({
     from: 'support@nyumbasync.co.ke',
     to: user.email,
     subject: 'Confirm your NyumbaSync account',
-    text: `Welcome to NyumbaSync, ${user.firstName || ''}!\n\nConfirm your email by opening this link: ${link}\n\nOr enter this code in the app: ${code}\n\nThe link and code expire in 24 hours.`,
-    html: `
-      <h2>Welcome to NyumbaSync${user.firstName ? `, ${user.firstName}` : ''}!</h2>
-      <p>Confirm your email address to secure your account:</p>
-      <p><a href="${link}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none">Confirm my email</a></p>
-      <p>Or enter this code in the app:</p>
-      <p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p>
-      <p>The link and code expire in 24 hours. If you didn't create a NyumbaSync account, you can ignore this email.</p>`
+    text: `Welcome to NyumbaSync, ${user.firstName || ''}!\n\nConfirm your email by opening this link: ${link}\n\nOr enter this code in the app: ${code}\n\nThe link and code expire in 24 hours. If you didn't create a NyumbaSync account, you can ignore this email.\n\nFrom the NyumbaSync team`,
+    html
   });
 };
 
