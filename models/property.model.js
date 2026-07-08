@@ -141,9 +141,9 @@ const propertySchema = new Schema({
     validate: {
       validator: async function(id) {
         const user = await mongoose.model('User').findById(id);
-        return user && user.role === 'landlord';
+        return user && ['landlord', 'agent', 'manager'].includes(user.role);
       },
-      message: 'Referenced user must be a landlord'
+      message: 'Referenced user must be a landlord, agent, or property manager'
     },
     index: true
   },

@@ -158,6 +158,14 @@ const UserSchema = new mongoose.Schema({
     select: false
   },
 
+  // Notification preferences
+  notificationPreferences: {
+    newListings: { type: Boolean, default: true },
+    rentReminders: { type: Boolean, default: true },
+    maintenanceUpdates: { type: Boolean, default: true },
+    marketingEmails: { type: Boolean, default: false }
+  },
+
   // Multi-Factor Authentication (MFA)
   mfaEnabled: {
     type: Boolean,

@@ -191,6 +191,13 @@ exports.createProperty = async (req, res) => {
 
     const property = await Property.create(payload);
 
+    // Notify subscribed tenants about the new public listing (best-effort)
+    try {
+      await propertyNotificationService.notifyNewListing(property);
+    } catch (notifyErr) {
+      logger.error(`Post-create listing notification failed: ${notifyErr.message}`);
+    }
+
     res.status(201).json({
       success: true,
       message: 'Property created successfully',

@@ -87,6 +87,66 @@ class PropertyNotificationService {
     }
   }
 
+  /**
+   * Notify subscribed tenants when a new property is listed publicly.
+   * @param {Property} property - created property document
+   */
+  async notifyNewListing(property) {
+    try {
+      const isPublic = property.listing?.isListed !== false && property.isAvailable !== false;
+      if (!isPublic) return;
+
+      const tenants = await User.find({
+        role: 'tenant',
+        status: 'active',
+        'notificationPreferences.newListings': { $ne: false }
+      }).select('firstName lastName email phone').lean();
+
+      if (!tenants.length) return;
+
+      const propertyUrl = `${APP_URL}/properties/${property._id}`;
+      const commonData = {
+        subject: 'New Property Listing - NyumbaSync',
+        emailSubject: 'New Property Listing - NyumbaSync',
+        propertyTitle: property.title,
+        propertyAddress: this._formatAddress(property.address),
+        propertyRent: property.rent?.amount,
+        propertyType: property.type,
+        propertyUrl,
+        appUrl: APP_URL,
+        year: new Date().getFullYear()
+      };
+
+      for (const tenant of tenants) {
+        try {
+          await emailService.sendEmail(
+            tenant.email,
+            'New Property Listing - NyumbaSync',
+            'new-listing-tenant',
+            {
+              ...commonData,
+              recipientName: tenant.firstName || 'Tenant'
+            }
+          );
+        } catch (err) {
+          logger.error(`Failed to email tenant ${tenant.email}: ${err.message}`);
+        }
+      }
+
+      // Best-effort in-app notifications
+      for (const tenant of tenants) {
+        await this._createInAppNotification(tenant, 'tenant', {
+          ...commonData,
+          tenantName: `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim() || tenant.email
+        }, property);
+      }
+
+      logger.info(`Notified ${tenants.length} tenants about new listing ${property._id}`);
+    } catch (err) {
+      logger.error(`New listing notification failed: ${err.message}`);
+    }
+  }
+
   _formatAddress(address) {
     if (!address) return 'Not provided';
     const parts = [

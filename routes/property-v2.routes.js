@@ -22,19 +22,19 @@ router.get('/:id', propertyController.getPropertyById);
 router.post(
   '/',
   authMiddleware,
-  roleMiddleware(['landlord', 'manager', 'admin', 'super_admin']),
+  roleMiddleware(['landlord', 'agent', 'manager', 'admin', 'super_admin']),
   propertyController.createProperty
 );
 router.put(
   '/:id',
   authMiddleware,
-  roleMiddleware(['landlord', 'manager', 'admin', 'super_admin']),
+  roleMiddleware(['landlord', 'agent', 'manager', 'admin', 'super_admin']),
   propertyController.updateProperty
 );
 router.delete(
   '/:id',
   authMiddleware,
-  roleMiddleware(['landlord', 'manager', 'admin', 'super_admin']),
+  roleMiddleware(['landlord', 'agent', 'manager', 'admin', 'super_admin']),
   propertyController.deleteProperty
 );
 
