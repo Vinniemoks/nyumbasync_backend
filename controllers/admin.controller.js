@@ -638,8 +638,15 @@ exports.systemMaintenance = async (req, res) => {
 const LoginAudit = require('../models/login-audit.model');
 const { formatKenyanPhone } = require('../utils/formatters');
 
-const ADMIN_LEVEL_ROLES = ['admin', 'super_admin'];
-const ASSIGNABLE_ROLES = ['tenant', 'landlord', 'agent', 'manager', 'vendor', 'admin', 'super_admin'];
+const ADMIN_LEVEL_ROLES = [
+  'admin', 'super_admin', 'support_admin', 'finance_admin',
+  'operations_admin', 'sales_customer_service_admin', 'viewer'
+];
+const ASSIGNABLE_ROLES = [
+  'tenant', 'landlord', 'agent', 'manager', 'vendor',
+  'admin', 'super_admin', 'support_admin', 'finance_admin',
+  'operations_admin', 'sales_customer_service_admin', 'viewer'
+];
 
 const isSuper = (reqUser) => {
   const roles = Array.isArray(reqUser.roles) ? reqUser.roles : [reqUser.role];
@@ -652,7 +659,17 @@ exports.listUsers = async (req, res) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
     const filter = {};
-    if (req.query.role) filter.$or = [{ role: req.query.role }, { roles: req.query.role }];
+    if (req.query.role) {
+      const roleList = String(req.query.role).split(',').map((r) => r.trim()).filter(Boolean);
+      if (roleList.length === 1) {
+        filter.$or = [{ role: roleList[0] }, { roles: roleList[0] }];
+      } else if (roleList.length > 1) {
+        filter.$or = [
+          { role: { $in: roleList } },
+          { roles: { $in: roleList } }
+        ];
+      }
+    }
     if (req.query.search) {
       const rx = new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$and = [{ $or: [{ email: rx }, { firstName: rx }, { lastName: rx }, { phone: rx }] }];
@@ -660,7 +677,7 @@ exports.listUsers = async (req, res) => {
 
     const [users, total] = await Promise.all([
       User.find(filter)
-        .select('email phone firstName lastName role roles status isEmailVerified mfaEnabled lastLogin createdAt')
+        .select('email phone accountNumber firstName lastName role roles status isEmailVerified mfaEnabled lastLogin createdAt')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -828,6 +845,33 @@ exports.updateUserAdmin = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update user', details: error.message });
+  }
+};
+
+// DELETE /admin/users/:userId — hard-delete an account (super-admin only).
+exports.deleteUserAdmin = async (req, res) => {
+  try {
+    if (!isSuper(req.user)) {
+      return res.status(403).json({ error: 'Only a super admin can delete accounts' });
+    }
+
+    const target = await User.findById(req.params.userId);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    const targetRoles = Array.isArray(target.roles) && target.roles.length ? target.roles : [target.role];
+    if (targetRoles.includes('super_admin')) {
+      return res.status(403).json({ error: 'Super admin accounts cannot be deleted' });
+    }
+    if (String(target._id) === String(req.user._id || req.user.id)) {
+      return res.status(403).json({ error: 'You cannot delete your own account' });
+    }
+
+    await User.findByIdAndDelete(target._id);
+    logAdminActivity(req.user._id, 'USER_DELETED', { targetUser: target._id });
+
+    res.json({ success: true, message: 'User deleted permanently' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete user', details: error.message });
   }
 };
 

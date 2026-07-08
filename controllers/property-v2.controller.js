@@ -322,9 +322,11 @@ exports.getAvailableProperties = async (req, res) => {
 exports.getPublicProperties = async (req, res) => {
   try {
     const filters = buildAvailabilityFilters(req.query);
+    // Treat only an explicit opt-out as unlisted so legacy documents created
+    // before the listing flag existed still appear publicly.
     const properties = await Property.findAvailable(filters)
       .where('listing.isListed')
-      .equals(true);
+      .ne(false);
 
     res.json({
       success: true,

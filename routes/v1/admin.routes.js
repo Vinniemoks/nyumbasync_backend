@@ -96,6 +96,15 @@ module.exports = [
     config: { source: 'admin.routes', description: 'Edit a user (profile, roles, status, password reset)' }
   },
   {
+    method: 'DELETE',
+    path: '/users/:userId',
+    handler: [
+      authenticate(adminRoles),
+      asyncHandler(adminController.deleteUserAdmin)
+    ],
+    config: { source: 'admin.routes', description: 'Hard-delete a user account (super-admin only)' }
+  },
+  {
     method: 'GET',
     path: '/audit/logins',
     handler: [

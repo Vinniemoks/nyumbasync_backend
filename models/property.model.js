@@ -8,7 +8,7 @@ const propertySchema = new Schema({
     required: [true, 'Property title is required'],
     trim: true,
     maxlength: [100, 'Title cannot exceed 100 characters'],
-    match: [/^[\w\s-]+$/, 'Title can only contain letters, numbers, spaces and hyphens']
+    match: [/^[\w\s\-.,'()&/#]+$/, 'Title can only contain letters, numbers, spaces and common punctuation']
   },
   description: {
     type: String,
@@ -52,7 +52,8 @@ const propertySchema = new Schema({
 
   // Location details
   address: {
-    street: { type: String, required: true, trim: true },
+    // Street is optional: many Kenyan properties have no formal street address.
+    street: { type: String, trim: true, default: '' },
     area: { type: String, required: true, trim: true, index: true },
     city: { type: String, required: true, trim: true, index: true },
     county: { type: String, required: true, trim: true, default: 'Nairobi' },
@@ -205,7 +206,9 @@ const propertySchema = new Schema({
 
   // Listing Data (for properties on market)
   listing: {
-    isListed: { type: Boolean, default: false },
+    // Public by default: an available rental should be discoverable unless the
+    // landlord explicitly unlists it (matches the create-form default).
+    isListed: { type: Boolean, default: true },
     listPrice: Number,
     listDate: Date,
     daysOnMarket: Number,

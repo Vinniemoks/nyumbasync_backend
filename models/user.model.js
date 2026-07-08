@@ -10,6 +10,16 @@ const { formatKenyanPhone } = require('../utils/formatters');
 
 
 const UserSchema = new mongoose.Schema({
+  // Account number — an additional login handle generated on first save.
+  accountNumber: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    index: true
+  },
+
   // Kenyan phone as primary ID
   phone: {
     type: String,
@@ -279,6 +289,7 @@ UserSchema.index({ subcounty: 1 });
 UserSchema.index({ activationToken: 1 }, { sparse: true });
 UserSchema.index({ googleId: 1 }, { unique: true, sparse: true });
 UserSchema.index({ appleId: 1 }, { unique: true, sparse: true });
+UserSchema.index({ accountNumber: 1 }, { unique: true, sparse: true });
 UserSchema.index({ createdBy: 1 });
 UserSchema.index({ isAdminProvisioned: 1 });
 
@@ -306,6 +317,26 @@ UserSchema.pre('save', async function (next) {
     const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
     this.passwordChangedAt = Date.now() - 1000;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Generate a unique account number before the first save.
+UserSchema.pre('save', async function (next) {
+  if (this.accountNumber) return next();
+
+  const generate = () => `NYM${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+  try {
+    let candidate = generate();
+    let existing = await this.constructor.findOne({ accountNumber: candidate });
+    while (existing) {
+      candidate = generate();
+      existing = await this.constructor.findOne({ accountNumber: candidate });
+    }
+    this.accountNumber = candidate;
     next();
   } catch (err) {
     next(err);
@@ -360,11 +391,15 @@ UserSchema.methods = {
 UserSchema.statics = {
   findByIdentifier: function (identifier) {
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-    return this.findOne(
-      isEmail
-        ? { email: identifier.toLowerCase() }
-        : { phone: formatKenyanPhone(identifier) || identifier }
-    );
+    if (isEmail) {
+      return this.findOne({ email: identifier.toLowerCase() });
+    }
+    const normalizedPhone = formatKenyanPhone(identifier);
+    if (normalizedPhone) {
+      return this.findOne({ phone: normalizedPhone });
+    }
+    // Anything else is treated as an account number.
+    return this.findOne({ accountNumber: String(identifier).toUpperCase() });
   }
 };
 

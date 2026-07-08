@@ -374,13 +374,14 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find user by email or phone and include password field.
+    // Find user by email, phone, or account number and include password field.
     // Phones are stored in canonical 254XXXXXXXXX form, so normalize the
     // identifier before matching (accepts +254..., 07..., 254...).
     const user = await User.findOne({
       $or: [
         { email: identifier },
-        { phone: formatKenyanPhone(identifier) || identifier }
+        { phone: formatKenyanPhone(identifier) || identifier },
+        { accountNumber: String(identifier).toUpperCase() }
       ]
     }).select('+password +mfaEnabled +mfaSecret');
 
@@ -634,6 +635,7 @@ exports.login = async (req, res) => {
         role: user.role,
         roles: user.roles,
         phone: user.phone,
+        accountNumber: user.accountNumber,
         mfaEnabled: user.mfaEnabled || false,
         emailVerified: user.emailVerified || false
       }
@@ -740,6 +742,7 @@ exports.verifyIp = async (req, res) => {
         role: user.role,
         roles: user.roles,
         phone: user.phone,
+        accountNumber: user.accountNumber,
         mfaEnabled: user.mfaEnabled || false,
         emailVerified: user.emailVerified || false
       }
@@ -867,6 +870,7 @@ exports.signup = async (req, res) => {
         role: user.role,
         roles: user.roles,
         phone: user.phone,
+        accountNumber: user.accountNumber,
         emailVerified: false
       }
     });
@@ -1031,6 +1035,7 @@ exports.getCurrentUser = async (req, res) => {
       role: user.role,
       roles: user.roles,
       phone: user.phone,
+      accountNumber: user.accountNumber,
       mfaEnabled: user.mfaEnabled || false,
       emailVerified: user.emailVerified || false
     });
