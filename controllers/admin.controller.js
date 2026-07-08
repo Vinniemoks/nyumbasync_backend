@@ -875,6 +875,31 @@ exports.deleteUserAdmin = async (req, res) => {
   }
 };
 
+// POST /admin/users/:userId/reset-mfa — clear MFA for an account (super-admin only).
+exports.resetUserMFA = async (req, res) => {
+  try {
+    if (!isSuper(req.user)) {
+      return res.status(403).json({ error: 'Only a super admin can reset MFA' });
+    }
+
+    const target = await User.findById(req.params.userId);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    target.mfaEnabled = false;
+    target.mfaSecret = undefined;
+    target.mfaBackupCodes = undefined;
+    target.mfaVerified = false;
+    target.mfaEmailEnabled = false;
+    await target.save({ validateBeforeSave: false });
+
+    logAdminActivity(req.user._id, 'MFA_RESET', { targetUser: target._id });
+
+    res.json({ success: true, message: 'MFA reset successfully. The user must set it up again on next login.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to reset MFA', details: error.message });
+  }
+};
+
 // GET /admin/audit/logins?page=&limit=&success=&identifier=
 exports.getLoginAudit = async (req, res) => {
   try {

@@ -105,6 +105,15 @@ module.exports = [
     config: { source: 'admin.routes', description: 'Hard-delete a user account (super-admin only)' }
   },
   {
+    method: 'POST',
+    path: '/users/:userId/reset-mfa',
+    handler: [
+      authenticate(adminRoles),
+      asyncHandler(adminController.resetUserMFA)
+    ],
+    config: { source: 'admin.routes', description: 'Reset MFA for a user account (super-admin only)' }
+  },
+  {
     method: 'GET',
     path: '/audit/logins',
     handler: [
