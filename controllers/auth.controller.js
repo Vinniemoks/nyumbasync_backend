@@ -1,5 +1,6 @@
 const User = require('../models/user.model');
 const crypto = require('crypto');
+const { secureNumericCode } = require('../utils/secure-random');
 const { initiateSTKPush } = require('../services/mpesa.service');
 const { generateToken } = require('../utils/auth'); // Corrected import name
 const { validatePhone } = require('../utils/kenyanValidators');
@@ -37,7 +38,7 @@ exports.registerWithPhone = async (req, res) => {
     }
 
     // Generate 4-digit verification code
-    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    const verificationCode = secureNumericCode(6);
     const amount = 1; // KES 1 for verification
 
     // Send STK push via M-Pesa (mock or actual based on environment)
@@ -558,7 +559,7 @@ exports.login = async (req, res) => {
 
     if (isAdminRole && !isKnownIp) {
       // Generate 6-digit verification code
-      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationCode = secureNumericCode(6);
       const hashedCode = crypto
         .createHash('sha256')
         .update(verificationCode)
@@ -987,7 +988,7 @@ exports.refreshToken = async (req, res) => {
     const jwt = require('jsonwebtoken');
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(refreshToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch (err) {
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }

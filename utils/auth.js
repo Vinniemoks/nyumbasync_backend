@@ -61,10 +61,9 @@ const formatToStrictKenyan = (phone) => {
   return null; // Invalid format
 };
 
-// M-Pesa Verification Code
-const generateVerificationCode = () => {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-};
+// M-Pesa Verification Code — cryptographically secure (see utils/secure-random)
+const { secureNumericCode } = require('./secure-random');
+const generateVerificationCode = () => secureNumericCode(6);
 
 module.exports = {
   generateToken,

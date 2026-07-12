@@ -37,8 +37,8 @@ exports.createLandlordAccount = async (req, res) => {
       return res.status(400).json({ error: 'User with this email or phone already exists' });
     }
     
-    // Generate temporary password
-    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
+    // Generate temporary password (cryptographically secure; user resets on first login)
+    const tempPassword = require('../utils/secure-random').secureTempPassword();
     
     // Create user
     const user = new User({
@@ -349,7 +349,7 @@ exports.createSubAccount = async (req, res) => {
     }
     
     // Create user
-    const tempPassword = Math.random().toString(36).slice(-8);
+    const tempPassword = require('../utils/secure-random').secureTempPassword();
     const user = new User({
       email,
       phone,

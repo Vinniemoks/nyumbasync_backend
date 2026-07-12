@@ -1,5 +1,9 @@
 node_modules
+# Never commit environment files (they carry live secrets). Keep only .env.example.
 .env
+.env.*
+!.env.example
+**/.env
 logs/
 leases/
 uploads/

@@ -55,7 +55,7 @@ exports.updateProfile = asyncHandler(async (req, res) => {
 exports.initiatePhoneVerification = asyncHandler(async (req, res) => {
   const { phone } = req.body;
   const formattedPhone = formatPhoneForMPesa(phone);
-  const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const verificationCode = require('../utils/secure-random').secureNumericCode(6);
   const user = await User.findByIdAndUpdate(req.user._id, {
     phone: formattedPhone,
     verificationCode,
