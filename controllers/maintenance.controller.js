@@ -68,16 +68,20 @@ exports.manageMaintenanceRequest = async (req, res) => {
     }
     await request.save();
 
-    // Real-time WebSocket broadcast to tenant
+    // Real-time WebSocket broadcast to tenant and landlord
     try {
-      sendToUser(req.user.id, 'maintenance:updated', {
+      const tenantId = request.reportedBy?.toString();
+      const landlordId = request.property?.landlord?.toString();
+      const payload = {
         requestId: request._id,
         status: request.status,
         priority: request.priority,
         assignedVendor: request.assignedVendor,
         note,
         timestamp: new Date()
-      });
+      };
+      if (tenantId) sendToUser(tenantId, 'maintenance:updated', payload);
+      if (landlordId) sendToUser(landlordId, 'maintenance:updated', payload);
     } catch (wsErr) {
       console.error('WS_MAINTENANCE_BROADCAST_FAILURE:', wsErr.message);
     }
@@ -313,6 +317,25 @@ exports.createMaintenanceRequest = async (req, res) => {
       // Don't fail the request if email fails
     }
 
+    // Real-time WebSocket broadcast to tenant and landlord
+    try {
+      const tenantId = request.reportedBy?._id?.toString();
+      const landlordId = request.property?.landlord?.toString();
+      const payload = {
+        requestId: request._id,
+        status: request.status,
+        issueType: request.issueType,
+        description: request.description,
+        propertyId: request.property?._id || propertyId,
+        tenantId,
+        timestamp: new Date()
+      };
+      if (tenantId) sendToUser(tenantId, 'maintenance:updated', payload);
+      if (landlordId) sendToUser(landlordId, 'maintenance:updated', payload);
+    } catch (wsErr) {
+      console.error('WS_MAINTENANCE_CREATE_FAILURE:', wsErr.message);
+    }
+
     res.status(201).json({
       id: request._id,
       // The model doesn't persist ticketNumber; derive it like the GET endpoints.
@@ -362,6 +385,22 @@ exports.updateMaintenanceRequest = async (req, res) => {
       await emailService.sendMaintenanceUpdate(request, request.reportedBy, status === 'completed' ? 'completed' : 'updated');
     } catch (emailError) {
       console.error('Failed to send maintenance update email:', emailError);
+    }
+
+    // Real-time WebSocket broadcast to tenant and landlord
+    try {
+      const tenantId = request.reportedBy?._id?.toString();
+      const landlordId = request.property?.landlord?.toString();
+      const payload = {
+        requestId: request._id,
+        status: request.status,
+        note,
+        timestamp: new Date()
+      };
+      if (tenantId) sendToUser(tenantId, 'maintenance:updated', payload);
+      if (landlordId) sendToUser(landlordId, 'maintenance:updated', payload);
+    } catch (wsErr) {
+      console.error('WS_MAINTENANCE_UPDATE_FAILURE:', wsErr.message);
     }
 
     res.json(request);

@@ -377,13 +377,32 @@ exports.login = async (req, res) => {
     // Find user by email, phone, or account number and include password field.
     // Phones are stored in canonical 254XXXXXXXXX form, so normalize the
     // identifier before matching (accepts +254..., 07..., 254...).
-    const user = await User.findOne({
-      $or: [
-        { email: identifier },
-        { phone: formatKenyanPhone(identifier) || identifier },
-        { accountNumber: String(identifier).toUpperCase() }
-      ]
-    }).select('+password +mfaEnabled +mfaSecret');
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      audit({ success: false, reason: 'db_unavailable' });
+      return res.status(503).json({
+        error: 'Service temporarily unavailable',
+        message: 'Database connection is not ready. Please try again in a moment.'
+      });
+    }
+
+    let user;
+    try {
+      user = await User.findOne({
+        $or: [
+          { email: identifier },
+          { phone: formatKenyanPhone(identifier) || identifier },
+          { accountNumber: String(identifier).toUpperCase() }
+        ]
+      }).select('+password +mfaEnabled +mfaSecret');
+    } catch (dbError) {
+      logger.error('Login database error:', dbError);
+      audit({ success: false, reason: 'db_error', details: dbError.message });
+      return res.status(503).json({
+        error: 'Service temporarily unavailable',
+        message: 'Unable to verify credentials right now. Please try again in a moment.'
+      });
+    }
 
     if (!user) {
       // Record failed attempt even if user not found (prevent user enumeration)

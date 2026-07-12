@@ -28,4 +28,15 @@ router.get('/',
   withdrawalController.listWithdrawals
 );
 
+// Vendor earnings withdrawal
+router.get('/vendor/balance',
+  authenticate('vendor'),
+  withdrawalController.getVendorBalance
+);
+
+router.post('/vendor',
+  authenticate('vendor'),
+  withdrawalController.createVendorWithdrawal
+);
+
 module.exports = router;

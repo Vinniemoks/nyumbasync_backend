@@ -4,6 +4,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../server').app;
 const User = require('../models/user.model');
 const Vendor = require('../models/vendor.model');
+const Property = require('../models/property.model');
 const { generateToken } = require('../utils/auth');
 
 // Tests written against the actual implementation (models-as-truth):
@@ -15,6 +16,7 @@ const { generateToken } = require('../utils/auth');
 
 let mongoServer;
 let landlordToken, tenantToken, adminToken;
+let landlordUser;
 
 const makeUser = async (role, n) => {
   const u = await User.create({
@@ -51,7 +53,8 @@ describe('Vendor Controller Tests', () => {
   beforeEach(async () => {
     await User.deleteMany({});
     await Vendor.deleteMany({});
-    ({ token: landlordToken } = await makeUser('landlord', 1));
+    await Property.deleteMany({});
+    ({ user: landlordUser, token: landlordToken } = await makeUser('landlord', 1));
     ({ token: tenantToken } = await makeUser('tenant', 2));
     ({ token: adminToken } = await makeUser('admin', 3));
   });
@@ -281,17 +284,34 @@ describe('Vendor Controller Tests', () => {
 
   describe('POST /api/v1/tenant/vendors/:vendorId/request', () => {
     let vendorId;
+    let propertyId;
     beforeEach(async () => {
       const vendor = await Vendor.create(sampleVendor({ company: 'Request Vendor' }));
       vendorId = vendor._id;
+
+      const property = await Property.create({
+        title: 'Test Rental Property',
+        description: 'A spacious test rental property used for vendor request integration tests.',
+        type: 'apartment',
+        bedrooms: 2,
+        bathrooms: 1,
+        address: { area: 'Westlands', city: 'Nairobi', county: 'Nairobi' },
+        subcounty: 'Westlands',
+        rent: { amount: 25000, currency: 'KES', paymentFrequency: 'monthly' },
+        deposit: 25000,
+        landlord: landlordUser._id,
+        status: 'occupied',
+        isAvailable: false
+      });
+      propertyId = property._id;
     });
 
     it('should request service from vendor', async () => {
       const response = await request(app)
         .post(`/api/v1/tenant/vendors/${vendorId}/request`)
         .set('Authorization', `Bearer ${tenantToken}`)
-        .send({ serviceType: 'plumbing', description: 'Leaking faucet repair', preferredDate: '2024-12-25', urgency: 'normal' })
-        .expect(200);
+        .send({ serviceType: 'plumbing', description: 'Leaking faucet repair', preferredDate: '2024-12-25', urgency: 'normal', propertyId })
+        .expect(201);
 
       expect(response.body).toHaveProperty('success', true);
       expect(response.body).toHaveProperty('requestId');

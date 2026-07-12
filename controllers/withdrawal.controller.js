@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Payment = require('../models/payment.model');
 const Withdrawal = require('../models/withdrawal.model');
 const User = require('../models/user.model');
+const VendorWallet = require('../models/vendor-wallet.model');
 const mfaService = require('../services/mfa.service');
 const emailService = require('../services/emailService');
 
@@ -11,19 +12,32 @@ const OTP_PURPOSE = 'withdrawal';
 
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 
-// Money the user has actually collected on the platform.
+// Money the user has actually collected on the platform (net of platform fee).
 const collectedFor = async (userId) => {
   const rows = await Payment.aggregate([
     { $match: { landlord: new mongoose.Types.ObjectId(String(userId)), status: { $in: ['completed', 'verified'] } } },
-    { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+    {
+      $group: {
+        _id: null,
+        total: { $sum: { $ifNull: ['$landlordShare', '$amount'] } },
+        fees: { $sum: { $ifNull: ['$platformFee', 0] } },
+        gross: { $sum: '$amount' },
+        count: { $sum: 1 }
+      }
+    }
   ]);
-  return { collected: rows[0]?.total || 0, paymentCount: rows[0]?.count || 0 };
+  return {
+    collected: rows[0]?.total || 0,
+    paymentCount: rows[0]?.count || 0,
+    platformFees: rows[0]?.fees || 0,
+    grossCollected: rows[0]?.gross || 0
+  };
 };
 
 // GET /withdrawals/balance — collected vs withdrawn vs available.
 exports.getBalance = async (req, res) => {
   try {
-    const [{ collected, paymentCount }, withdrawn] = await Promise.all([
+    const [{ collected, paymentCount, platformFees }, withdrawn] = await Promise.all([
       collectedFor(req.user.id),
       Withdrawal.totalWithdrawn(req.user.id)
     ]);
@@ -31,6 +45,7 @@ exports.getBalance = async (req, res) => {
       currency: 'KES',
       collected,
       paymentCount,
+      platformFees,
       withdrawn,
       available: Math.max(0, collected - withdrawn)
     });
@@ -193,5 +208,89 @@ exports.listWithdrawals = async (req, res) => {
   } catch (err) {
     console.error('WITHDRAWAL_LIST_FAILURE:', err);
     return res.status(500).json({ error: 'Could not load withdrawals' });
+  }
+};
+
+// GET /withdrawals/vendor/balance — vendor wallet balance.
+exports.getVendorBalance = async (req, res) => {
+  try {
+    let wallet = await VendorWallet.findOne({ vendorUser: req.user.id });
+    if (!wallet) {
+      wallet = { availableBalance: 0, pendingBalance: 0, totalEarned: 0 };
+    }
+    return res.json({
+      currency: 'KES',
+      availableBalance: wallet.availableBalance,
+      pendingBalance: wallet.pendingBalance,
+      totalEarned: wallet.totalEarned
+    });
+  } catch (err) {
+    console.error('VENDOR_BALANCE_FAILURE:', err);
+    return res.status(500).json({ error: 'Could not load vendor balance' });
+  }
+};
+
+// POST /withdrawals/vendor — vendor withdraws available wallet balance.
+exports.createVendorWithdrawal = async (req, res) => {
+  try {
+    const { amount, destination = {}, totpToken, backupCode, otp } = req.body;
+    const amt = Math.round(Number(amount));
+    if (!Number.isInteger(amt) || amt < 100) {
+      return res.status(400).json({ error: 'Amount must be a whole number of at least KES 100' });
+    }
+
+    const phone = String(destination.phone || '').replace(/\D/g, '').replace(/^0/, '254');
+    if (!/^254(7|1)\d{8}$/.test(phone)) {
+      return res.status(400).json({ error: 'A valid M-Pesa phone number is required' });
+    }
+
+    // MFA step-up
+    const mfaMethod = await verifySecondFactor(req.user.id, { totpToken, backupCode, otp });
+    if (!mfaMethod) {
+      const user = await User.findById(req.user.id).select('mfaEnabled');
+      return res.status(401).json({
+        error: 'Verification required. Enter the code from your authenticator app or request an email code.',
+        mfaRequired: true,
+        methods: user.mfaEnabled ? ['totp', 'backup_code', 'email_otp'] : ['email_otp']
+      });
+    }
+
+    let wallet = await VendorWallet.findOne({ vendorUser: req.user.id });
+    if (!wallet) {
+      return res.status(400).json({ error: 'You have no earnings available to withdraw' });
+    }
+
+    if (amt > wallet.availableBalance) {
+      return res.status(400).json({ error: `Amount exceeds your available balance of KES ${wallet.availableBalance.toLocaleString()}` });
+    }
+
+    wallet.availableBalance -= amt;
+    await wallet.save();
+
+    const withdrawal = await Withdrawal.create({
+      user: req.user.id,
+      amount: amt,
+      method: 'mpesa',
+      destination: { phone },
+      mfaMethod,
+      status: 'queued'
+    });
+
+    return res.status(201).json({
+      success: true,
+      withdrawal: {
+        id: withdrawal._id,
+        reference: withdrawal.reference,
+        amount: withdrawal.amount,
+        method: withdrawal.method,
+        status: withdrawal.status,
+        remainingBalance: wallet.availableBalance,
+        createdAt: withdrawal.createdAt
+      },
+      message: `Withdrawal ${withdrawal.reference} queued. It will be sent to your M-Pesa shortly.`
+    });
+  } catch (err) {
+    console.error('VENDOR_WITHDRAWAL_CREATE_FAILURE:', err);
+    return res.status(500).json({ error: 'Could not create the withdrawal' });
   }
 };

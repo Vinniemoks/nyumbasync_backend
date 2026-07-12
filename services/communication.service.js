@@ -34,10 +34,28 @@ class CommunicationService {
         throw new Error('Sender not found');
       }
 
-      // Prepare participants
+      // Map Contact.primaryRole values to the Communication participant role enum.
+      const roleMapping = {
+        tenant: 'tenant',
+        landlord: 'landlord',
+        contractor: 'vendor',
+        vendor: 'vendor',
+        agent: 'agent',
+        property_manager: 'property_manager'
+      };
+
+      // Resolve recipient roles from their Contact records so the Communication
+      // schema validation never receives a null role.
+      const recipientContacts = await Contact.find({
+        _id: { $in: recipientIds }
+      }).select('primaryRole');
+      const roleByContactId = new Map(
+        recipientContacts.map(c => [c._id.toString(), c.primaryRole])
+      );
+
       const participants = recipientIds.map(id => ({
         contact: id,
-        role: null // Will be populated from Contact
+        role: roleMapping[roleByContactId.get(id.toString())] || 'vendor'
       }));
 
       // Add sender as participant

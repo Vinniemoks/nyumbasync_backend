@@ -41,5 +41,45 @@ module.exports = [
     path: '/:id',
     handler: [authenticate(['admin', 'manager', 'landlord']), asyncHandler(vendorController.deleteVendor)],
     config: { source: 'vendor.routes' }
+  },
+
+  // Vendor-facing: list requests assigned to the logged-in vendor
+  {
+    method: 'GET',
+    path: '/requests/my',
+    handler: [authenticate('vendor'), asyncHandler(vendorController.getVendorRequests)],
+    config: { source: 'vendor.routes' }
+  },
+
+  // Vendor-facing: accept request
+  {
+    method: 'POST',
+    path: '/requests/:requestId/accept',
+    handler: [authenticate('vendor'), asyncHandler(vendorController.acceptVendorRequest)],
+    config: { source: 'vendor.routes' }
+  },
+
+  // Vendor-facing: start work
+  {
+    method: 'POST',
+    path: '/requests/:requestId/start',
+    handler: [authenticate('vendor'), asyncHandler(vendorController.startVendorRequest)],
+    config: { source: 'vendor.routes' }
+  },
+
+  // Vendor-facing: complete work
+  {
+    method: 'POST',
+    path: '/requests/:requestId/complete',
+    handler: [authenticate('vendor'), asyncHandler(vendorController.completeVendorRequest)],
+    config: { source: 'vendor.routes' }
+  },
+
+  // Vendor-facing: close request
+  {
+    method: 'POST',
+    path: '/requests/:requestId/close',
+    handler: [authenticate('vendor'), asyncHandler(vendorController.closeVendorRequest)],
+    config: { source: 'vendor.routes' }
   }
 ];

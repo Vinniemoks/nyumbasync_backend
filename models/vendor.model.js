@@ -13,6 +13,32 @@ const VendorSchema = new mongoose.Schema({
     }
   },
 
+  // Link to a registered platform user (role: vendor)
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true,
+    sparse: true
+  },
+
+  email: {
+    type: String,
+    lowercase: true,
+    trim: true,
+    validate: {
+      validator: v => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+      message: 'Invalid email address'
+    }
+  },
+
+  // Commission the platform keeps on vendor payouts (default 5%)
+  commissionRate: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: 5
+  },
+
   // Nairobi service areas
   subcounties: [{
     type: String,
@@ -26,7 +52,7 @@ const VendorSchema = new mongoose.Schema({
   services: [{
     type: String,
     enum: [
-      'plumbing', 'electrical', 
+      'plumbing', 'electrical',
       'carpentry', 'cleaning',
       'security'
     ]

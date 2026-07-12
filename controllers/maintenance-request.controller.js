@@ -5,8 +5,34 @@
 
 const MaintenanceRequest = require('../models/maintenance-request.model');
 const { Contact, Property } = require('../models');
+const Vendor = require('../models/vendor.model');
+const VendorWallet = require('../models/vendor-wallet.model');
 const logger = require('../utils/logger');
 const { checkUsageLimitForUserId } = require('../services/subscription.service');
+const configService = require('../services/config.service');
+const { sendToUser } = require('../websocket/server');
+
+// Broadcast a maintenance request update to all relevant stakeholders.
+const broadcastMaintenanceUpdate = (request, extra = {}) => {
+  try {
+    const tenantId = request.tenant?._id?.toString() || request.tenant?.toString();
+    const landlordId = request.property?.landlord?._id?.toString() || request.property?.landlord?.toString();
+    const vendorId = request.vendorUser?._id?.toString() || request.vendorUser?.toString();
+    const payload = {
+      requestId: request._id,
+      requestNumber: request.requestNumber,
+      status: request.status,
+      category: request.category,
+      timestamp: new Date(),
+      ...extra
+    };
+    if (tenantId) sendToUser(tenantId, 'maintenance:updated', payload);
+    if (landlordId) sendToUser(landlordId, 'maintenance:updated', payload);
+    if (vendorId) sendToUser(vendorId, 'maintenance:updated', payload);
+  } catch (wsErr) {
+    logger.error(`WS_MAINTENANCE_REQUEST_BROADCAST_FAILURE: ${wsErr.message}`);
+  }
+};
 
 /**
  * Create maintenance request
@@ -29,7 +55,8 @@ exports.createRequest = async (req, res) => {
     ]);
     
     logger.info(`Maintenance request created: ${request.requestNumber}`);
-    
+    broadcastMaintenanceUpdate(request, { event: 'created' });
+
     res.status(201).json({
       success: true,
       message: 'Maintenance request submitted successfully',
@@ -153,6 +180,8 @@ exports.updateRequest = async (req, res) => {
       });
     }
     
+    broadcastMaintenanceUpdate(request, { event: 'updated' });
+
     res.json({
       success: true,
       message: 'Maintenance request updated successfully',
@@ -183,7 +212,8 @@ exports.acknowledgeRequest = async (req, res) => {
     }
     
     await request.acknowledge(req.user?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'acknowledged' });
+
     res.json({
       success: true,
       message: 'Request acknowledged',
@@ -216,7 +246,8 @@ exports.scheduleRequest = async (req, res) => {
     }
     
     await request.schedule(new Date(scheduledDate), timeSlot, req.user?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'scheduled', scheduledDate, timeSlot });
+
     res.json({
       success: true,
       message: 'Request scheduled',
@@ -268,6 +299,7 @@ exports.assignVendor = async (req, res) => {
     }
 
     await request.assignVendor(vendorId, req.user?._id);
+    broadcastMaintenanceUpdate(request, { event: 'vendor_assigned', vendorId, vendorUserId });
 
     res.json({
       success: true,
@@ -299,7 +331,8 @@ exports.startWork = async (req, res) => {
     }
     
     await request.startWork(req.user?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'started' });
+
     res.json({
       success: true,
       message: 'Work started',
@@ -332,14 +365,45 @@ exports.completeWork = async (req, res) => {
     }
     
     await request.completeWork(workDetails, req.user?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'completed', actualCost: request.actualCost });
+
+    // Credit vendor wallet on completion (instant access minus commission)
+    try {
+      if (request.vendorUser && request.actualCost > 0) {
+        const vendor = await Vendor.findOne({ user: request.vendorUser });
+        const vendorFeePercent = vendor?.commissionRate ?? await configService.getNumber('PLATFORM_VENDOR_FEE_PERCENT', 5);
+        const platformFee = Math.round(request.actualCost * vendorFeePercent / 100);
+        const netToVendor = Math.max(0, request.actualCost - platformFee);
+
+        if (netToVendor > 0) {
+          let wallet = await VendorWallet.findOne({ vendorUser: request.vendorUser });
+          if (!wallet) {
+            wallet = await VendorWallet.create({ vendorUser: request.vendorUser });
+          }
+          await wallet.credit(netToVendor);
+
+          sendToUser(request.vendorUser.toString(), 'payment:status', {
+            transactionId: request._id,
+            status: 'completed',
+            amount: request.actualCost,
+            netToVendor,
+            platformFee,
+            type: 'vendor_earnings',
+            timestamp: new Date()
+          });
+        }
+      }
+    } catch (walletErr) {
+      logger.error(`VENDOR_WALLET_CREDIT_FAILURE: ${walletErr.message}`);
+    }
+
     // Update tenant maintenance stats
     const contact = await Contact.findById(request.tenant);
     if (contact) {
       const responseTime = request.responseTime || 0;
       await contact.closeMaintenanceRequest(responseTime);
     }
-    
+
     res.json({
       success: true,
       message: 'Work completed',
@@ -370,7 +434,8 @@ exports.closeRequest = async (req, res) => {
     }
     
     await request.close(req.user?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'closed' });
+
     res.json({
       success: true,
       message: 'Request closed',
@@ -403,7 +468,8 @@ exports.cancelRequest = async (req, res) => {
     }
     
     await request.cancel(reason, req.user?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'cancelled', reason });
+
     res.json({
       success: true,
       message: 'Request cancelled',
@@ -436,7 +502,8 @@ exports.addUpdate = async (req, res) => {
     }
     
     await request.addUpdate(message, req.user?._id || req.tenantContact?._id);
-    
+    broadcastMaintenanceUpdate(request, { event: 'update_added', message });
+
     res.json({
       success: true,
       message: 'Update added',

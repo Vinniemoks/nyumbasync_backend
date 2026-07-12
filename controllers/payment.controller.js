@@ -4,11 +4,13 @@ const Property = require('../models/property.model');
 const Lease = require('../models/lease.model');
 const User = require('../models/user.model');
 const LandlordProfile = require('../models/landlord-profile.model');
+const VendorWallet = require('../models/vendor-wallet.model');
 const invoiceService = require('../services/invoice.service');
 const mpesaService = require('../services/mpesa.service');
 const cardGateway = require('../services/gateways');
 const emailService = require('../services/emailService');
 const smsService = require('../services/sms.service');
+const configService = require('../services/config.service');
 const { generateUniqueAccountRef } = require('../utils/payment-ref');
 const { sendToUser } = require('../websocket/server');
 const logger = require('../utils/logger');
@@ -45,6 +47,42 @@ const parseMpesaDate = (v) => {
 
 // Pull a value out of the STK callback metadata array by name.
 const metaValue = (items, name) => items?.find(i => i.Name === name)?.Value;
+
+// Apply the platform commission split to a settled payment.
+const applyCommissionSplit = async (payment) => {
+  try {
+    const feePercent = await configService.getNumber('PLATFORM_RENT_FEE_PERCENT', 5);
+    payment.commissionRate = feePercent;
+    payment.platformFee = Math.round(payment.amount * feePercent / 100);
+    payment.landlordShare = Math.max(0, payment.amount - payment.platformFee);
+    payment.netToVendor = 0; // rent payments do not credit vendors directly
+    return payment.save();
+  } catch (err) {
+    logger.error(`COMMISSION_SPLIT_FAILURE: ${err.message}`);
+    // Don't block settlement if commission math fails.
+    return payment;
+  }
+};
+
+// Best-effort broadcast of payment status to tenant and landlord.
+const broadcastPaymentStatus = (payment, extra = {}) => {
+  try {
+    const tenantId = payment.tenant?._id?.toString() || payment.tenant?.toString();
+    const landlordId = payment.landlord?._id?.toString() || payment.landlord?.toString();
+    const payload = {
+      transactionId: payment._id,
+      status: payment.status,
+      amount: payment.amount,
+      channel: payment.channel,
+      timestamp: new Date(),
+      ...extra
+    };
+    if (tenantId) sendToUser(tenantId, 'payment:status', payload);
+    if (landlordId) sendToUser(landlordId, 'payment:status', payload);
+  } catch (wsErr) {
+    logger.error(`WS_PAYMENT_BROADCAST_FAILURE: ${wsErr.message}`);
+  }
+};
 
 // Best-effort invoice settlement — prefers the bound invoice, else oldest open.
 // Never throws into the payment flow.
@@ -191,6 +229,8 @@ exports.initiateStkPush = async (req, res) => {
       payment.mpesaRequestId = stk.CheckoutRequestID;
       await payment.save();
 
+      broadcastPaymentStatus(payment, { checkoutRequestId: stk.CheckoutRequestID, event: 'stk_pending' });
+
       return res.status(202).json({
         success: true,
         status: 'pending',
@@ -204,6 +244,7 @@ exports.initiateStkPush = async (req, res) => {
       payment.status = 'failed';
       payment.failureReason = stkErr.message || 'STK push failed';
       await payment.save();
+      broadcastPaymentStatus(payment, { event: 'stk_failed', failureReason: payment.failureReason });
       console.error('MPESA_STK_FAILURE:', stkErr.message);
       return res.status(502).json({
         success: false,
@@ -362,37 +403,21 @@ exports.mpesaCallback = async (req, res) => {
       if (cbPhone) payment.phoneUsed = normalizePhone(cbPhone);
       payment.mpesaTransactionDate = parseMpesaDate(metaValue(items, 'TransactionDate'));
       payment.status = 'completed';
-      await payment.save();
+      await applyCommissionSplit(payment);
 
       logger.info('MPESA_CALLBACK_SETTLED', {
         paymentId: payment._id,
         receipt,
-        amount: payment.amount
+        amount: payment.amount,
+        landlordShare: payment.landlordShare,
+        platformFee: payment.platformFee
       });
 
       // Settle the bound/open invoice, then email a receipt — both best-effort.
       await settleInvoiceForPayment(payment);
 
       // Real-time WebSocket broadcast to tenant and landlord
-      try {
-        await payment.populate('tenant landlord');
-        sendToUser(payment.tenant._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          mpesaReceipt: payment.mpesaReceipt,
-          timestamp: new Date()
-        });
-        sendToUser(payment.landlord._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          tenantName: payment.tenant.firstName,
-          timestamp: new Date()
-        });
-      } catch (wsErr) {
-        console.error('WS_PAYMENT_BROADCAST_FAILURE:', wsErr.message);
-      }
+      broadcastPaymentStatus(payment, { mpesaReceipt: payment.mpesaReceipt, tenantName: payment.tenant?.firstName });
 
       try {
         await payment.populate('tenant property');
@@ -404,6 +429,7 @@ exports.mpesaCallback = async (req, res) => {
       payment.status = 'failed';
       payment.failureReason = stk.ResultDesc;
       await payment.save();
+      broadcastPaymentStatus(payment, { event: 'callback_failed', failureReason: payment.failureReason });
     }
 
     return res.status(200).end();
@@ -498,6 +524,7 @@ exports.requestPaybillFallback = async (req, res) => {
     payment.accountRef = await generateUniqueAccountRef(Payment);
     payment.expiresAt = new Date(Date.now() + C2B_TTL_MS);
     await payment.save();
+    broadcastPaymentStatus(payment, { event: 'paybill_pending', accountRef: payment.accountRef, expiresAt: payment.expiresAt });
 
     const paybill = process.env.MPESA_C2B_SHORTCODE || process.env.MPESA_SHORTCODE;
     const minutes = Math.round(C2B_TTL_MS / 60000);
@@ -596,36 +623,20 @@ exports.c2bConfirmation = async (req, res) => {
       if (req.body.MSISDN) payment.phoneUsed = normalizePhone(String(req.body.MSISDN));
       payment.mpesaTransactionDate = parseMpesaDate(req.body.TransTime);
       payment.status = 'completed';
-      await payment.save();
+      await applyCommissionSplit(payment);
 
       logger.info('MPESA_C2B_SETTLED', {
         paymentId: payment._id,
         receipt,
-        amount: payment.amount
+        amount: payment.amount,
+        landlordShare: payment.landlordShare,
+        platformFee: payment.platformFee
       });
 
       await settleInvoiceForPayment(payment);
 
       // Real-time WebSocket broadcast to tenant and landlord
-      try {
-        await payment.populate('tenant landlord');
-        sendToUser(payment.tenant._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          mpesaReceipt: payment.mpesaReceipt,
-          timestamp: new Date()
-        });
-        sendToUser(payment.landlord._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          tenantName: payment.tenant.firstName,
-          timestamp: new Date()
-        });
-      } catch (wsErr) {
-        console.error('WS_C2B_BROADCAST_FAILURE:', wsErr.message);
-      }
+      broadcastPaymentStatus(payment, { mpesaReceipt: payment.mpesaReceipt, tenantName: payment.tenant?.firstName });
 
       try {
         await payment.populate('tenant property');
@@ -635,6 +646,12 @@ exports.c2bConfirmation = async (req, res) => {
       }
     } else {
       // Paid after the account number expired (or to an unknown ref) → reverse.
+      if (payment) {
+        payment.status = 'failed';
+        payment.failureReason = 'Payment arrived after the account reference expired';
+        await payment.save();
+        broadcastPaymentStatus(payment, { event: 'c2b_expired', failureReason: payment.failureReason });
+      }
       await autoReverseLatePayment({ receipt, amount, ref, payment });
     }
 
@@ -725,6 +742,7 @@ exports.initiateBankPayment = async (req, res) => {
       expiresAt: new Date(Date.now() + BANK_TTL_MS),
       ...(invoiceId && { invoice: invoiceId })
     });
+    broadcastPaymentStatus(payment, { event: 'bank_pending', accountRef: payment.accountRef, expiresAt: payment.expiresAt });
 
     return res.status(201).json({
       success: true,
@@ -761,6 +779,7 @@ exports.submitBankReference = async (req, res) => {
     payment.submittedReference = String(reference).trim();
     payment.status = 'pending_verification';
     await payment.save();
+    broadcastPaymentStatus(payment, { event: 'bank_reference_submitted', submittedReference: payment.submittedReference });
 
     // Best-effort notify the landlord to verify against their statement.
     try {
@@ -813,21 +832,11 @@ exports.verifyPayment = async (req, res) => {
     if (action === 'approve') {
       payment.status = 'completed';
       payment.mpesaTransactionDate = payment.mpesaTransactionDate || new Date();
-      await payment.save();
+      await applyCommissionSplit(payment);
       await settleInvoiceForPayment(payment);
 
-      // Real-time WebSocket broadcast to tenant
-      try {
-        await payment.populate('tenant');
-        sendToUser(payment.tenant._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          timestamp: new Date()
-        });
-      } catch (wsErr) {
-        console.error('WS_VERIFY_BROADCAST_FAILURE:', wsErr.message);
-      }
+      // Real-time WebSocket broadcast to tenant and landlord
+      broadcastPaymentStatus(payment);
 
       try {
         await payment.populate('tenant property');
@@ -840,6 +849,7 @@ exports.verifyPayment = async (req, res) => {
       payment.status = 'failed';
       payment.failureReason = req.body.reason || 'Bank reference could not be verified';
       await payment.save();
+      broadcastPaymentStatus(payment, { event: 'bank_rejected', failureReason: payment.failureReason });
       return res.status(200).json({ success: true, status: 'failed' });
     }
 
@@ -895,6 +905,7 @@ exports.initiateCardPayment = async (req, res) => {
 
     payment.mpesaRequestId = init.reference; // reuse as the gateway reference
     await payment.save();
+    broadcastPaymentStatus(payment, { event: 'card_pending', authorizationUrl: init.authorizationUrl });
 
     return res.status(201).json({
       success: true,
@@ -926,28 +937,11 @@ exports.cardWebhook = async (req, res) => {
       payment.status = 'completed';
       payment.mpesaReceipt = undefined; // not an M-Pesa payment
       payment.mpesaTransactionDate = new Date();
-      await payment.save();
+      await applyCommissionSplit(payment);
       await settleInvoiceForPayment(payment);
 
       // Real-time WebSocket broadcast to tenant and landlord
-      try {
-        await payment.populate('tenant landlord');
-        sendToUser(payment.tenant._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          timestamp: new Date()
-        });
-        sendToUser(payment.landlord._id.toString(), 'payment:status', {
-          transactionId: payment._id,
-          status: 'completed',
-          amount: payment.amount,
-          tenantName: payment.tenant.firstName,
-          timestamp: new Date()
-        });
-      } catch (wsErr) {
-        console.error('WS_CARD_BROADCAST_FAILURE:', wsErr.message);
-      }
+      broadcastPaymentStatus(payment, { tenantName: payment.tenant?.firstName });
 
       try {
         await payment.populate('tenant property');

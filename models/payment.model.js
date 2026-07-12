@@ -51,6 +51,29 @@ const PaymentSchema = new Schema({
     get: v => Math.round(v), // Store whole shillings only
     set: v => Math.round(v)
   },
+
+  // Platform commission split
+  platformFee: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  landlordShare: {
+    type: Number,
+    min: 0
+  },
+  // Net amount credited to a vendor when the payment is for a vendor job.
+  netToVendor: {
+    type: Number,
+    min: 0
+  },
+  commissionRate: {
+    type: Number,
+    default: 5,
+    min: 0,
+    max: 100
+  },
+
   currency: {
     type: String,
     default: 'KES',
