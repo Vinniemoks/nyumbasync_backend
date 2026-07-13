@@ -42,15 +42,26 @@ exports.initiateB2CPayment = async (req, res) => {
   const { phone, amount, remarks } = req.body;
 
   try {
+    // Validate inputs before moving money (assessment C11).
+    const { formatToStrictKenyan } = require('../utils/auth');
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0 || amt > 150000) {
+      return res.status(400).json({ error: 'Invalid amount. Must be between 1 and 150000 KES.' });
+    }
+    const normalizedPhone = formatToStrictKenyan(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ error: 'Invalid Kenyan phone number.' });
+    }
+
     const response = await axios.post(
       `${process.env.MPESA_API_URL}/b2c/v1/paymentrequest`,
       {
         InitiatorName: process.env.B2C_INITIATOR,
         SecurityCredential: process.env.B2C_SECURITY_CREDENTIAL,
         CommandID: 'BusinessPayment',
-        Amount: amount,
+        Amount: amt,
         PartyA: process.env.B2C_SHORTCODE,
-        PartyB: `254${phone.slice(-9)}`,
+        PartyB: normalizedPhone,
         Remarks: remarks || 'Rent payout',
         QueueTimeOutURL: `${process.env.API_BASE_URL}/v1/mpesa/b2c/timeout`,
         ResultURL: `${process.env.API_BASE_URL}/v1/mpesa/b2c/result`,

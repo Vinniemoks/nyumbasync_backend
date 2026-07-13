@@ -65,8 +65,9 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  verificationCode: String,
+  verificationCode: String, // stored as a sha256 hash (assessment C8)
   verificationCodeExpiry: Date,
+  verificationAttempts: { type: Number, default: 0 }, // brute-force guard (C8)
   // One-time codes for step-up actions (withdrawals, login MFA) delivered by
   // email/WhatsApp. Stored as a sha256 hash; purpose prevents cross-use.
   actionOtp: { type: String, select: false },

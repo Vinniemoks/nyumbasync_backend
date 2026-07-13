@@ -35,6 +35,7 @@ router.post('/query', authenticate(), mpesaController.queryTransactionStatus);
  *     security:
  *       - bearerAuth: []
  */
-router.post('/b2c', authenticate(), mpesaController.initiateB2CPayment);
+// B2C payouts move money OUT — restrict to admins (assessment C11).
+router.post('/b2c', authenticate(['admin', 'super_admin']), mpesaController.initiateB2CPayment);
 
 module.exports = router;

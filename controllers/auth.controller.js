@@ -37,8 +37,11 @@ exports.registerWithPhone = async (req, res) => {
       });
     }
 
-    // Generate 4-digit verification code
+    // Generate a 6-digit verification code. Store only its hash so a database
+    // read cannot reveal live codes (assessment C8); the plaintext is sent to
+    // the user via M-Pesa/SMS.
     const verificationCode = secureNumericCode(6);
+    const hashedCode = crypto.createHash('sha256').update(verificationCode).digest('hex');
     const amount = 1; // KES 1 for verification
 
     // Send STK push via M-Pesa (mock or actual based on environment)
@@ -55,7 +58,8 @@ exports.registerWithPhone = async (req, res) => {
       {
         phone: normalizedPhone,
         role,
-        verificationCode,
+        verificationCode: hashedCode,
+        verificationAttempts: 0,
         codeExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
         mpesaVerified: false,
         // Add temporary values for required fields
@@ -113,13 +117,29 @@ exports.verifyCode = async (req, res) => {
       codeExpires: { $gt: new Date() }
     });
 
-    if (!user || user.verificationCode !== code) {
+    if (!user) {
       return res.status(400).json({
         error: 'Namba ya uthibitisho si sahihi au imeisha',
-        solutions: [
-          'Hakikisha umeingiza namba kwa usahihi',
-          'Omba namba mpya kupitia M-Pesa'
-        ]
+        solutions: ['Hakikisha umeingiza namba kwa usahihi', 'Omba namba mpya kupitia M-Pesa']
+      });
+    }
+
+    // Per-phone brute-force guard: after 5 wrong tries invalidate the code and
+    // force the user to request a new one (assessment C8).
+    if ((user.verificationAttempts || 0) >= 5) {
+      user.verificationCode = undefined;
+      user.codeExpires = undefined;
+      await user.save();
+      return res.status(429).json({ error: 'Too many attempts. Please request a new verification code.' });
+    }
+
+    const hashedInput = crypto.createHash('sha256').update(String(code || '')).digest('hex');
+    if (user.verificationCode !== hashedInput) {
+      user.verificationAttempts = (user.verificationAttempts || 0) + 1;
+      await user.save();
+      return res.status(400).json({
+        error: 'Namba ya uthibitisho si sahihi au imeisha',
+        solutions: ['Hakikisha umeingiza namba kwa usahihi', 'Omba namba mpya kupitia M-Pesa']
       });
     }
 
@@ -127,6 +147,7 @@ exports.verifyCode = async (req, res) => {
     user.mpesaVerified = true;
     user.verificationCode = undefined;
     user.codeExpires = undefined;
+    user.verificationAttempts = 0;
     await user.save();
 
     // Generate JWT token

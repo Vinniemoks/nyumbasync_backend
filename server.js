@@ -683,7 +683,13 @@ app.use(requestSizeLimiter);
 app.use(preventParameterPollution);
 
 // Basic middleware with security limits
-app.use(express.json(securityConfig.bodyParser.json));
+// Capture the raw request bytes during JSON parsing so webhook handlers can
+// verify provider HMAC signatures against the exact payload (assessment C13 —
+// re-stringifying a parsed body does not reproduce the original bytes).
+app.use(express.json({
+  ...securityConfig.bodyParser.json,
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded(securityConfig.bodyParser.urlencoded));
 app.use(compression());
 

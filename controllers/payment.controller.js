@@ -925,7 +925,11 @@ exports.initiateCardPayment = async (req, res) => {
 exports.cardWebhook = async (req, res) => {
   try {
     const signature = req.headers['x-paystack-signature'];
-    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
+    // Prefer the exact bytes captured at parse time (C13). Fall back to a raw
+    // body (when the route's express.raw ran) or a re-stringify as last resort.
+    const raw = Buffer.isBuffer(req.rawBody)
+      ? req.rawBody
+      : (Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body)));
     if (!cardGateway.verifyWebhookSignature(raw, signature)) {
       return res.status(401).end();
     }
