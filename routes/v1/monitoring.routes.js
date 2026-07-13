@@ -11,14 +11,14 @@ router.get('/health', monitoringController.getHealthStatus);
 // System metrics (admin only)
 router.get(
   '/metrics',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   monitoringController.getSystemMetrics
 );
 
 // System alerts
 router.get(
   '/alerts',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     query('type').optional().isString(),
     query('level').optional().isIn(['warning', 'critical']),
@@ -31,7 +31,7 @@ router.get(
 // Detailed system status
 router.get(
   '/status',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   monitoringController.getDetailedStatus
 );
 

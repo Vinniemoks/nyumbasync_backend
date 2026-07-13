@@ -4,6 +4,7 @@
  */
 
 const { Contact, Property, Transaction } = require('../models');
+const escapeRegex = require('../utils/escape-regex');
 const logger = require('../utils/logger');
 
 /**
@@ -35,10 +36,10 @@ exports.getAllContacts = async (req, res) => {
     // Search
     if (search) {
       query.$or = [
-        { firstName: new RegExp(search, 'i') },
-        { lastName: new RegExp(search, 'i') },
-        { email: new RegExp(search, 'i') },
-        { phone: new RegExp(search, 'i') }
+        { firstName: new RegExp(escapeRegex(search), 'i') },
+        { lastName: new RegExp(escapeRegex(search), 'i') },
+        { email: new RegExp(escapeRegex(search), 'i') },
+        { phone: new RegExp(escapeRegex(search), 'i') }
       ];
     }
 

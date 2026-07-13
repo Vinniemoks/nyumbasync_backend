@@ -1,4 +1,5 @@
 const AuditLog = require('../models/audit-log.model');
+const escapeRegex = require('../utils/escape-regex');
 const { logAdminActivity } = require('../utils/logger');
 
 // Helper function to categorize actions
@@ -64,7 +65,7 @@ const auditController = {
       const query = {};
 
       if (userId) query.userId = userId;
-      if (action) query.action = new RegExp(action, 'i');
+      if (action) query.action = new RegExp(escapeRegex(action), 'i');
       if (category) query.category = category;
       if (status) query.status = status;
 
@@ -188,7 +189,7 @@ const auditController = {
       // Build query from filters
       const query = {};
       if (filters.userId) query.userId = filters.userId;
-      if (filters.action) query.action = new RegExp(filters.action, 'i');
+      if (filters.action) query.action = new RegExp(escapeRegex(filters.action), 'i');
       if (filters.category) query.category = filters.category;
       if (filters.status) query.status = filters.status;
       if (filters.startDate || filters.endDate) {

@@ -472,6 +472,10 @@ const authorize = (...roles) => {
       });
     }
 
+    // super_admin sits at the top of the hierarchy and satisfies every role
+    // requirement (assessment H9 — authorize('admin') previously blocked it).
+    if (req.user.role === 'super_admin') return next();
+
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         error: 'Insufficient permissions',

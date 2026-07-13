@@ -17,7 +17,7 @@ const validatePeriod = [
 // Dashboard Overview
 router.get(
   '/dashboard',
-  authenticate(['admin', 'superadmin', 'landlord']),
+  authenticate(['admin', 'super_admin', 'landlord']),
   validatePeriod,
   analyticsController.getDashboardStats
 );
@@ -25,7 +25,7 @@ router.get(
 // Property Analytics
 router.get(
   '/properties',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   validatePeriod,
   analyticsController.getPropertyAnalytics
 );
@@ -33,7 +33,7 @@ router.get(
 // Financial Analytics
 router.get(
   '/financial',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     ...validatePeriod,
     query('groupBy')
@@ -48,7 +48,7 @@ router.get(
 // User Analytics
 router.get(
   '/users',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   validatePeriod,
   analyticsController.getUserAnalytics
 );

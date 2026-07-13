@@ -16,19 +16,19 @@ router.post('/submit',
 
 // Review and update property approval
 router.put('/:approvalId/review',
-  roleMiddleware(['admin', 'propertyManager']),
+  roleMiddleware(['admin', 'manager']),
   propertyApprovalController.reviewApproval
 );
 
 // Schedule property inspection
 router.post('/:approvalId/inspections',
-  roleMiddleware(['admin', 'propertyManager', 'inspector']),
+  roleMiddleware(['admin', 'manager', 'agent']),
   propertyApprovalController.scheduleInspection
 );
 
 // Complete inspection
 router.put('/:approvalId/inspections/:inspectionId',
-  roleMiddleware(['admin', 'propertyManager', 'inspector']),
+  roleMiddleware(['admin', 'manager', 'agent']),
   propertyApprovalController.completeInspection
 );
 
@@ -39,7 +39,7 @@ router.get('/property/:propertyId',
 
 // List properties pending approval (admin only)
 router.get('/pending',
-  roleMiddleware(['admin', 'propertyManager']),
+  roleMiddleware(['admin', 'manager']),
   propertyApprovalController.listPendingApprovals
 );
 

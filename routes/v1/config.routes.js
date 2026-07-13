@@ -28,7 +28,7 @@ const validateConfig = [
 // Create or update configuration (admin only)
 router.put(
   '/',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   validateConfig,
   configController.upsertConfig
 );
@@ -58,7 +58,7 @@ router.get(
 // Delete configuration (superadmin only)
 router.delete(
   '/:key',
-  authenticate(['superadmin']),
+  authenticate(['super_admin']),
   [
     param('key').isString().trim().notEmpty(),
     validate
@@ -69,7 +69,7 @@ router.delete(
 // Get configuration history (admin only)
 router.get(
   '/:key/history',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     param('key').isString().trim().notEmpty(),
     query('limit').optional().isInt({ min: 1, max: 100 }),
@@ -81,7 +81,7 @@ router.get(
 // Restore configuration to previous version (superadmin only)
 router.post(
   '/:key/restore',
-  authenticate(['superadmin']),
+  authenticate(['super_admin']),
   [
     param('key').isString().trim().notEmpty(),
     body('version').isInt({ min: 1 }),

@@ -1,4 +1,5 @@
 const User = require('../models/user.model');
+const escapeRegex = require('../utils/escape-regex');
 const LandlordProfile = require('../models/landlord-profile.model');
 const Property = require('../models/property.model');
 const Lease = require('../models/lease.model');
@@ -441,10 +442,10 @@ exports.getContacts = async (req, res) => {
     
     if (search) {
       query.$or = [
-        { firstName: new RegExp(search, 'i') },
-        { lastName: new RegExp(search, 'i') },
-        { email: new RegExp(search, 'i') },
-        { phone: new RegExp(search, 'i') }
+        { firstName: new RegExp(escapeRegex(search), 'i') },
+        { lastName: new RegExp(escapeRegex(search), 'i') },
+        { email: new RegExp(escapeRegex(search), 'i') },
+        { phone: new RegExp(escapeRegex(search), 'i') }
       ];
     }
     

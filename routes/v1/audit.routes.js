@@ -15,7 +15,7 @@ const validateDateRange = [
 // Get audit logs with filtering and pagination
 router.get(
   '/logs',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     ...validateDateRange,
     query('userId').optional().isMongoId(),
@@ -34,7 +34,7 @@ router.get(
 // Get audit statistics
 router.get(
   '/stats',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   validateDateRange,
   auditController.getAuditStats
 );
@@ -42,7 +42,7 @@ router.get(
 // Export audit logs
 router.get(
   '/export',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     ...validateDateRange,
     query('format').optional().isIn(['csv', 'json']),

@@ -4,6 +4,7 @@
  */
 
 const { Property, Contact, User, PropertyInterest } = require('../models');
+const escapeRegex = require('../utils/escape-regex');
 const logger = require('../utils/logger');
 const propertyNotificationService = require('../services/property-notification.service');
 
@@ -75,8 +76,8 @@ exports.getAllProperties = async (req, res) => {
     // Apply filters
     if (status) query.status = status;
     if (type) query.type = type;
-    if (area) query['address.area'] = new RegExp(area, 'i');
-    if (city) query['address.city'] = new RegExp(city, 'i');
+    if (area) query['address.area'] = new RegExp(escapeRegex(area), 'i');
+    if (city) query['address.city'] = new RegExp(escapeRegex(city), 'i');
     if (landlord) query.landlord = landlord;
 
     // Rent range
@@ -99,9 +100,9 @@ exports.getAllProperties = async (req, res) => {
     // Search
     if (search) {
       query.$or = [
-        { title: new RegExp(search, 'i') },
-        { description: new RegExp(search, 'i') },
-        { 'address.area': new RegExp(search, 'i') }
+        { title: new RegExp(escapeRegex(search), 'i') },
+        { description: new RegExp(escapeRegex(search), 'i') },
+        { 'address.area': new RegExp(escapeRegex(search), 'i') }
       ];
     }
 

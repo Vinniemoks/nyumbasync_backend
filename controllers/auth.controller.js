@@ -1334,12 +1334,27 @@ exports.googleAuth = async (req, res) => {
       email_verified,
     } = payload;
 
-    // Find existing user by email or googleId
-    const orConditions = [{ googleId }];
-    if (email) {
-      orConditions.push({ email: email.toLowerCase() });
+    // Returning Google user (already linked) — match on googleId first.
+    let user = await User.findOne({ googleId });
+
+    // If not linked yet but an account exists with this email, only link when
+    // Google asserts the email is verified. Otherwise an attacker controlling an
+    // unverified-email Google account could take over the password account
+    // (assessment H1).
+    if (!user && email) {
+      const byEmail = await User.findOne({ email: email.toLowerCase() });
+      if (byEmail) {
+        if (email_verified !== true) {
+          return res.status(403).json({
+            error: 'This email is already registered. Google did not confirm the email is verified, so it cannot be linked automatically. Please sign in with your password.',
+          });
+        }
+        byEmail.googleId = googleId;
+        if (!byEmail.emailVerified) byEmail.emailVerified = true;
+        await byEmail.save();
+        user = byEmail;
+      }
     }
-    let user = await User.findOne({ $or: orConditions });
 
     if (!user) {
       // Create new OAuth user with a random password placeholder
@@ -1360,12 +1375,6 @@ exports.googleAuth = async (req, res) => {
       });
 
       await user.save();
-    } else {
-      // Link Google ID if not already set
-      if (!user.googleId) {
-        user.googleId = googleId;
-        await user.save();
-      }
     }
 
     // Generate JWT and refresh token (same response as normal login)
@@ -1457,12 +1466,25 @@ exports.appleAuth = async (req, res) => {
     const emailVerified =
       payload.email_verified === true || payload.email_verified === 'true';
 
-    // Find existing user by email or appleId
-    const orConditions = [{ appleId }];
-    if (email) {
-      orConditions.push({ email: email.toLowerCase() });
+    // Returning Apple user (already linked) — match on appleId first.
+    let existingUser = await User.findOne({ appleId });
+
+    // Only link Apple to a pre-existing email account when Apple asserts the
+    // email is verified (assessment H1).
+    if (!existingUser && email) {
+      const byEmail = await User.findOne({ email: email.toLowerCase() });
+      if (byEmail) {
+        if (!emailVerified) {
+          return res.status(403).json({
+            error: 'This email is already registered. Apple did not confirm the email is verified, so it cannot be linked automatically. Please sign in with your password.',
+          });
+        }
+        byEmail.appleId = appleId;
+        if (!byEmail.emailVerified) byEmail.emailVerified = true;
+        await byEmail.save();
+        existingUser = byEmail;
+      }
     }
-    let existingUser = await User.findOne({ $or: orConditions });
 
     if (!existingUser) {
       // Create new OAuth user with a random password placeholder
@@ -1483,12 +1505,6 @@ exports.appleAuth = async (req, res) => {
       });
 
       await existingUser.save();
-    } else {
-      // Link Apple ID if not already set
-      if (!existingUser.appleId) {
-        existingUser.appleId = appleId;
-        await existingUser.save();
-      }
     }
 
     // Generate JWT and refresh token (same response as normal login)

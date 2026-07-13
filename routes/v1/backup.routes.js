@@ -4,7 +4,7 @@ const backupController = require('../../controllers/backup.controller');
 const { authenticate } = require('../../middlewares/auth.middleware');
 
 // All backup routes require superadmin access
-router.use(authenticate(['superadmin']));
+router.use(authenticate(['super_admin']));
 
 // Create backup
 router.post(

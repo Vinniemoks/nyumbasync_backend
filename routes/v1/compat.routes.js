@@ -222,7 +222,7 @@ router.post('/rent-payments', authenticate('tenant'), asyncHandler(paymentContro
 /* Tenants collection (landlord/manager/admin)                          */
 /* ------------------------------------------------------------------ */
 
-const staffOnly = authenticate(['landlord', 'manager', 'agent', 'admin', 'superadmin']);
+const staffOnly = authenticate(['landlord', 'manager', 'agent', 'admin', 'super_admin']);
 
 router.get('/tenants', staffOnly, asyncHandler(async (req, res) => {
   const { propertyId, status, page = 1, limit = 50 } = req.query;
@@ -264,7 +264,7 @@ router.delete('/tenants/:id', staffOnly, asyncHandler(async (req, res) => {
 /* Reports aliases                                                      */
 /* ------------------------------------------------------------------ */
 
-router.get('/reports/financial', authenticate(['landlord', 'manager', 'admin', 'superadmin']), asyncHandler(async (req, res) => {
+router.get('/reports/financial', authenticate(['landlord', 'manager', 'admin', 'super_admin']), asyncHandler(async (req, res) => {
   const reportsService = require('../../services/reportsService');
   const data = await reportsService.generateIncomeStatement({
     landlordId: req.user._id,
@@ -274,7 +274,7 @@ router.get('/reports/financial', authenticate(['landlord', 'manager', 'admin', '
   res.json({ success: true, report: data });
 }));
 
-router.get('/reports/occupancy', authenticate(['landlord', 'manager', 'admin', 'superadmin']), asyncHandler(async (req, res) => {
+router.get('/reports/occupancy', authenticate(['landlord', 'manager', 'admin', 'super_admin']), asyncHandler(async (req, res) => {
   const reportsService = require('../../services/reportsService');
   const data = await reportsService.generatePropertyPerformance({
     landlordId: req.user._id,
@@ -288,7 +288,7 @@ router.get('/reports/occupancy', authenticate(['landlord', 'manager', 'admin', '
 /* Admin emergency broadcast                                            */
 /* ------------------------------------------------------------------ */
 
-router.post('/admin/emergency/alert', authenticate(['admin', 'superadmin', 'landlord', 'manager']), asyncHandler(async (req, res) => {
+router.post('/admin/emergency/alert', authenticate(['admin', 'super_admin', 'landlord', 'manager']), asyncHandler(async (req, res) => {
   const { title, message, severity = 'urgent' } = req.body;
   if (!title || !message) {
     return res.status(400).json({ success: false, message: 'title and message are required' });

@@ -1,5 +1,6 @@
 // C:\Users\USER\NyumbaSync\nyumbasync_backend\controllers\user.controller.js
 const User = require('../models/user.model');
+const escapeRegex = require('../utils/escape-regex');
 const Property = require('../models/property.model');
 const smsService = require('../services/sms.service');
 const { generateAuthToken } = require('../services/auth.service');
@@ -110,8 +111,8 @@ exports.listUsers = asyncHandler(async (req, res) => {
   if (verified) query.mpesaVerified = verified === 'true';
   if (search) {
     query.$or = [
-      { phone: { $regex: search, $options: 'i' } },
-      { name: { $regex: search, $options: 'i' } }
+      { phone: { $regex: escapeRegex(search), $options: 'i' } },
+      { name: { $regex: escapeRegex(search), $options: 'i' } }
     ];
   }
   const users = await User.find(query)

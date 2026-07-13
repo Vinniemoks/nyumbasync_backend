@@ -19,7 +19,7 @@ router.use(adminLimiter);
 // Admin User Management Routes
 router.post(
   '/users',
-  authenticate(['superadmin']),
+  authenticate(['super_admin']),
   [
     body('email').isEmail(),
     body('password').isLength({ min: 8 }),
@@ -33,13 +33,13 @@ router.post(
 // 2FA Routes
 router.post(
   '/2fa/enable',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   enhancedAdminController.enable2FA
 );
 
 router.post(
   '/2fa/verify',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     body('token').isString().isLength({ min: 6, max: 6 }),
     validate
@@ -61,7 +61,7 @@ router.post(
 // Admin Status Management
 router.patch(
   '/users/:adminId/status',
-  authenticate(['superadmin']),
+  authenticate(['super_admin']),
   [
     param('adminId').isMongoId(),
     body('status').isIn(['active', 'inactive', 'suspended']),
@@ -73,7 +73,7 @@ router.patch(
 // Audit Logs
 router.get(
   '/audit-logs/:adminId',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   [
     param('adminId').isMongoId(),
     validate
@@ -84,7 +84,7 @@ router.get(
 // Role Management
 router.post(
   '/roles',
-  authenticate(['superadmin']),
+  authenticate(['super_admin']),
   [
     body('name').isString().notEmpty(),
     body('permissions').isArray(),
@@ -96,13 +96,13 @@ router.post(
 
 router.get(
   '/roles',
-  authenticate(['admin', 'superadmin']),
+  authenticate(['admin', 'super_admin']),
   enhancedAdminController.getRoles
 );
 
 router.patch(
   '/roles/:roleId',
-  authenticate(['superadmin']),
+  authenticate(['super_admin']),
   [
     param('roleId').isMongoId(),
     body('permissions').isArray(),

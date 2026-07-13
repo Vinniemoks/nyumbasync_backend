@@ -1,4 +1,5 @@
 const Message = require('../models/message.model');
+const escapeRegex = require('../utils/escape-regex');
 const Conversation = require('../models/conversation.model');
 const logger = require('../utils/logger');
 const { sendToConversation, sendToUser } = require('../websocket/server');
@@ -282,7 +283,7 @@ exports.searchMessages = async (req, res) => {
 
     const messages = await Message.find({
       conversation: conversationId,
-      message: { $regex: q, $options: 'i' },
+      message: { $regex: escapeRegex(q), $options: 'i' },
       isDeleted: false
     })
       .populate('sender', 'firstName lastName email')
