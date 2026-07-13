@@ -5,7 +5,11 @@
 
 const { Contact, Property, Transaction } = require('../models');
 const escapeRegex = require('../utils/escape-regex');
+const { sanitizeBody } = require('../utils/sanitize-body');
 const logger = require('../utils/logger');
+
+// Server-controlled contact fields — not settable by the client (C6).
+const CONTACT_PROTECTED = ['interactions', 'relatedTransactions'];
 
 /**
  * Get all contacts with filtering and pagination
@@ -111,7 +115,7 @@ exports.getContactById = async (req, res) => {
  */
 exports.createContact = async (req, res) => {
   try {
-    const contact = await Contact.create(req.body);
+    const contact = await Contact.create(sanitizeBody(req.body, CONTACT_PROTECTED));
 
     res.status(201).json({
       success: true,

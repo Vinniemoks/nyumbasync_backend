@@ -1,6 +1,10 @@
 const Vendor = require('../models/vendor.model');
 const { Contact, MaintenanceRequest, Property } = require('../models');
 const User = require('../models/user.model');
+const { sanitizeBody } = require('../utils/sanitize-body');
+
+// Vendor fields the server controls — clients must not set these (C6).
+const VENDOR_PROTECTED = ['user', 'rating'];
 const logger = require('../utils/logger');
 const communicationService = require('../services/communication.service');
 const notificationService = require('../services/notification.service');
@@ -136,7 +140,7 @@ exports.getVendorById = async (req, res) => {
 // Create vendor
 exports.createVendor = async (req, res) => {
   try {
-    const vendor = new Vendor(req.body);
+    const vendor = new Vendor(sanitizeBody(req.body, VENDOR_PROTECTED));
     await vendor.save();
     res.status(201).json(vendor);
   } catch (error) {
@@ -149,7 +153,7 @@ exports.createVendor = async (req, res) => {
 exports.updateVendor = async (req, res) => {
   try {
     const { id } = req.params;
-    const vendor = await Vendor.findByIdAndUpdate(id, req.body, { new: true });
+    const vendor = await Vendor.findByIdAndUpdate(id, sanitizeBody(req.body, VENDOR_PROTECTED), { new: true });
     
     if (!vendor) {
       return res.status(404).json({ error: 'Vendor not found' });

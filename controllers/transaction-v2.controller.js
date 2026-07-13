@@ -5,6 +5,11 @@
 
 const { Transaction, Property, Contact } = require('../models');
 const logger = require('../utils/logger');
+const { sanitizeBody } = require('../utils/sanitize-body');
+
+// Server-controlled transaction fields — clients must not set these (C6):
+// identity/ownership, lifecycle status, and payment-receipt data.
+const TXN_PROTECTED = ['transactionId', 'reference', 'user', 'status', 'mpesa', 'completedAt', 'processedAt'];
 
 /**
  * Get all transactions with filtering and pagination
@@ -106,7 +111,7 @@ exports.getTransactionById = async (req, res) => {
  */
 exports.createTransaction = async (req, res) => {
   try {
-    const transaction = await Transaction.create(req.body);
+    const transaction = await Transaction.create(sanitizeBody(req.body, TXN_PROTECTED));
 
     res.status(201).json({
       success: true,
