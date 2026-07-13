@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Payment = require('../models/payment.model');
 const Invoice = require('../models/invoice.model');
 const Property = require('../models/property.model');

@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Fail closed on missing/weak secrets before anything else boots (C15, C18, H3).
+require('./config/validate-secrets').validateSecrets();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');

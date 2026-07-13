@@ -1,7 +1,36 @@
 const socketio = require('socket.io');
 const jwt = require('jsonwebtoken');
+const User = require('../models/user.model');
+const Conversation = require('../models/conversation.model');
 
 let io;
+
+// Build the Socket.IO CORS allowlist the same way the HTTP layer does. Never
+// default to '*' in production (assessment C17).
+function buildAllowedOrigins() {
+  const list = [
+    ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean) : []),
+    ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN.trim()] : []),
+  ];
+  if (process.env.NODE_ENV !== 'production') {
+    list.push('http://localhost:5000', 'http://localhost:5173', 'http://localhost:3000');
+  }
+  return list;
+}
+
+// True if `userId` is a participant of `conversationId`. Invalid ids resolve to
+// false rather than throwing (assessment C14).
+async function isConversationParticipant(userId, conversationId) {
+  if (!userId || !conversationId) return false;
+  try {
+    const convo = await Conversation.findOne({ _id: conversationId, participants: userId })
+      .select('_id')
+      .lean();
+    return !!convo;
+  } catch (_) {
+    return false;
+  }
+}
 
 // User-to-socket mapping for presence
 const userSockets = new Map();
@@ -14,15 +43,23 @@ const rooms = new Map();
  * @param {http.Server} server - HTTP server instance
  */
 function initializeWebSocket(server) {
+    const allowedOrigins = buildAllowedOrigins();
     io = socketio(server, {
         cors: {
-            origin: process.env.CORS_ORIGIN || '*',
+            origin: (origin, callback) => {
+                // Same-origin / native clients send no Origin header.
+                if (!origin) return callback(null, true);
+                if (allowedOrigins.includes(origin)) return callback(null, true);
+                if (process.env.NODE_ENV !== 'production') return callback(null, true);
+                return callback(new Error('Socket CORS: origin not allowed'));
+            },
             credentials: true,
         },
         pingTimeout: 60000,
     });
 
-    // Authentication middleware
+    // Authentication middleware — pin the algorithm, read the correct claim,
+    // and confirm the account is still active (assessment C2).
     io.use(async (socket, next) => {
         try {
             const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
@@ -31,10 +68,22 @@ function initializeWebSocket(server) {
                 return next(new Error('Authentication error: No token provided'));
             }
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.id;
-            socket.userRole = decoded.role;
-            socket.userName = decoded.name;
+            const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+            // Access tokens carry the `userId` claim (utils/auth.js); tolerate `id`
+            // for any legacy tokens still in flight.
+            const userId = decoded.userId || decoded.id;
+            if (!userId) {
+                return next(new Error('Authentication error: Invalid token'));
+            }
+
+            const user = await User.findById(userId).select('firstName lastName role isActive status').lean();
+            if (!user || user.isActive === false || user.status === 'suspended' || user.status === 'inactive') {
+                return next(new Error('Authentication error: Account not active'));
+            }
+
+            socket.userId = String(userId);
+            socket.userRole = user.role || decoded.role;
+            socket.userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || decoded.name || 'User';
 
             next();
         } catch (error) {
@@ -58,10 +107,14 @@ function initializeWebSocket(server) {
         // Join user's personal room
         socket.join(`user:${socket.userId}`);
 
-        // Handle joining conversation rooms
-        socket.on('join:conversation', (conversationId) => {
+        // Handle joining conversation rooms — only if the caller is a participant
+        // (assessment C14: prevents joining arbitrary rooms / message snooping).
+        socket.on('join:conversation', async (conversationId) => {
+            if (!(await isConversationParticipant(socket.userId, conversationId))) {
+                socket.emit('error', { event: 'join:conversation', message: 'Not a participant' });
+                return;
+            }
             socket.join(`conversation:${conversationId}`);
-            console.log(`User ${socket.userId} joined conversation ${conversationId}`);
         });
 
         // Handle leaving conversation rooms
@@ -70,11 +123,17 @@ function initializeWebSocket(server) {
             console.log(`User ${socket.userId} left conversation ${conversationId}`);
         });
 
-        // Handle sending messages
-        socket.on('message:send', (data) => {
-            const { conversationId, message } = data;
-
-            // Broadcast to conversation room
+        // Handle sending messages — only participants may broadcast into a room,
+        // and the sender identity is taken from the authenticated socket, never
+        // from the client payload (assessment C14). Note: authoritative
+        // persistence happens via the REST message controller; this is the
+        // real-time relay only.
+        socket.on('message:send', async (data) => {
+            const { conversationId, message } = data || {};
+            if (!(await isConversationParticipant(socket.userId, conversationId))) {
+                socket.emit('error', { event: 'message:send', message: 'Not a participant' });
+                return;
+            }
             io.to(`conversation:${conversationId}`).emit('message:received', {
                 conversationId,
                 message,
@@ -109,34 +168,11 @@ function initializeWebSocket(server) {
             });
         });
 
-        // Handle maintenance request updates
-        socket.on('maintenance:update', (data) => {
-            const { requestId, update } = data;
-
-            // Notify landlord and tenant
-            io.to(`user:${update.landlordId}`).emit('maintenance:updated', {
-                requestId,
-                update,
-            });
-
-            if (update.tenantId) {
-                io.to(`user:${update.tenantId}`).emit('maintenance:updated', {
-                    requestId,
-                    update,
-                });
-            }
-        });
-
-        // Handle payment notifications
-        socket.on('payment:update', (data) => {
-            const { transactionId, status, userId } = data;
-
-            io.to(`user:${userId}`).emit('payment:status', {
-                transactionId,
-                status,
-                timestamp: new Date(),
-            });
-        });
+        // NOTE: `maintenance:update` and `payment:update` client events were
+        // removed (assessment C14). Any authenticated socket could previously
+        // emit maintenance/payment updates to arbitrary users. These are now
+        // emitted server-side only, from the authorized REST controllers via
+        // sendToUser().
 
         // Handle disconnection
         socket.on('disconnect', () => {

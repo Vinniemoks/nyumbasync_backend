@@ -2,7 +2,11 @@
 module.exports = {
   // JWT Configuration
   jwt: {
-    secret: process.env.JWT_SECRET || '12345678',
+    // No fallback secret — config/validate-secrets.js guarantees JWT_SECRET is
+    // set (fatal in production, ephemeral in dev). A hardcoded fallback here
+    // would let tokens be forged (assessment C15).
+    secret: process.env.JWT_SECRET,
+    refreshSecret: process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   },
 

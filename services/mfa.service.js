@@ -6,6 +6,7 @@
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
 class MFAService {
   /**
@@ -109,9 +110,15 @@ class MFAService {
    * @returns {string} MFA session token
    */
   generateMFASessionToken(userId) {
-    const token = crypto.randomBytes(32).toString('hex');
-    const payload = `${userId}:${token}:${Date.now()}`;
-    return Buffer.from(payload).toString('base64');
+    // Signed, short-lived JWT so the userId cannot be tampered (assessment C1).
+    // Dedicated purpose claim prevents this token being used as a normal access
+    // token. Signed with the MFA secret (falls back to JWT_SECRET).
+    const secret = process.env.JWT_MFA_SECRET || process.env.JWT_SECRET;
+    return jwt.sign(
+      { userId: String(userId), purpose: 'mfa-step-up' },
+      secret,
+      { algorithm: 'HS256', expiresIn: '5m' }
+    );
   }
 
   /**
@@ -120,19 +127,18 @@ class MFAService {
    * @param {number} maxAge - Maximum age in milliseconds (default: 5 minutes)
    * @returns {Object} Verification result with userId
    */
-  verifyMFASessionToken(token, maxAge = 5 * 60 * 1000) {
+  verifyMFASessionToken(token) {
     try {
-      const decoded = Buffer.from(token, 'base64').toString('utf-8');
-      const [userId, , timestamp] = decoded.split(':');
-
-      const age = Date.now() - parseInt(timestamp);
-      if (age > maxAge) {
-        return { valid: false, error: 'MFA session expired' };
+      const secret = process.env.JWT_MFA_SECRET || process.env.JWT_SECRET;
+      const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] });
+      if (decoded.purpose !== 'mfa-step-up' || !decoded.userId) {
+        return { valid: false, error: 'Invalid MFA session token' };
       }
-
-      return { valid: true, userId };
+      // expiry is enforced by jwt.verify (expiresIn: 5m)
+      return { valid: true, userId: decoded.userId };
     } catch (error) {
-      return { valid: false, error: 'Invalid MFA session token' };
+      const expired = error && error.name === 'TokenExpiredError';
+      return { valid: false, error: expired ? 'MFA session expired' : 'Invalid MFA session token' };
     }
   }
 }
