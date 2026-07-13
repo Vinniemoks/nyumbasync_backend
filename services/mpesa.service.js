@@ -71,9 +71,12 @@ class MpesaService {
 
       return response.data;
     } catch (error) {
+      // Never log credential-derived or PII fields (assessment C12).
       logTransaction('MPESA_STK_FAIL', {
         error: error.response?.data || error.message,
-        payload
+        reference,
+        amount,
+        shortCode: process.env.MPESA_SHORTCODE ? '***' : undefined,
       });
       throw new Error('MPESA_REQUEST_FAILED');
     }

@@ -278,15 +278,32 @@ exports.completeProfile = async (req, res) => {
 };
 
 // Profile update endpoint
+// Fields a user may change about their own profile. Deliberately excludes
+// role, roles, password, status, isActive, mfa*, biometric*, email, phone,
+// account/verification/identity fields — allowing those via req.body enabled
+// privilege escalation and (because findByIdAndUpdate skips the hashing hook)
+// plaintext password overwrite (assessment C6). Email/phone changes must go
+// through their dedicated verified flows.
+const ALLOWED_PROFILE_FIELDS = [
+  'firstName', 'lastName', 'subcounty', 'county', 'city', 'address',
+  'notificationPreferences', 'avatar', 'profilePicture', 'bio',
+  'occupation', 'dateOfBirth', 'gender', 'language', 'emergencyContact',
+];
+
 exports.updateProfile = async (req, res) => {
   try {
-    const updates = req.body;
     const userId = req.user._id;
+
+    // Whitelist: never trust req.body wholesale.
+    const updates = {};
+    for (const key of ALLOWED_PROFILE_FIELDS) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
 
     // Find and update user profile
     const user = await User.findByIdAndUpdate(
       userId,
-      { $set: updates }, // Use $set to update only provided fields
+      { $set: updates },
       { new: true, runValidators: true }
     );
 
