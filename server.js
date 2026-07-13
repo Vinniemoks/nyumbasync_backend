@@ -421,45 +421,35 @@ const messageRoutes = allRoutes.message || null;
 const vendorRoutes = allRoutes.vendor || null;
 const analyticsRoutes = allRoutes.analytics || null;
 
-// JWT Authentication middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+// Authentication is consolidated onto the canonical middleware (assessment
+// H3/H20). The old inline check only verified the JWT signature; the canonical
+// `requireAuth` also loads the user from the DB and enforces the token
+// blacklist, account-active status, and the tokenValidAfter revocation cutoff
+// (so a logout or password change actually invalidates the session on these
+// routes). req.user becomes the DB user document, which is what controllers
+// already read via _id/id/role.
+const UserModel = require('./models/user.model');
+const { isBlacklisted: _isBlacklisted } = require('./services/token-blacklist.service');
+const authenticateToken = require('./middlewares/auth.middleware').authenticateToken;
 
-  if (!token) {
-    return res.status(401).json({
-      error: 'Access token required',
-      timestamp: res.locals.currentTime
-    });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
-    if (err) {
-      return res.status(403).json({
-        error: 'Invalid or expired token',
-        timestamp: res.locals.currentTime
-      });
-    }
-    req.user = user;
-    next();
-  });
-};
-
-// Optional authentication middleware (for routes that work with or without auth)
-const optionalAuth = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return next();
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
-    if (!err) {
+// Optional authentication for public-or-private routes: attaches the DB user
+// when a valid, non-revoked token is present, and continues anonymously
+// otherwise (never 401s on a stale token, unlike the strict middleware).
+const optionalAuth = async (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) return next();
+  try {
+    if (await _isBlacklisted(token)) return next(); // revoked → anonymous
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    const user = await UserModel.findById(decoded.userId).select('-password -mfaSecret').lean();
+    const revoked = user && user.tokenValidAfter && decoded.iat &&
+      decoded.iat * 1000 < new Date(user.tokenValidAfter).getTime();
+    if (user && user.isActive !== false && !revoked) {
+      user.id = user.id || String(user._id);
       req.user = user;
     }
-    next();
-  });
+  } catch (_) { /* invalid/expired token → continue anonymously */ }
+  next();
 };
 
 // Role-based authorization middleware
