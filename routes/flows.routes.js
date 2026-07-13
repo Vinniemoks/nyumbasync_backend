@@ -6,6 +6,11 @@ const express = require('express');
 const router = express.Router();
 const { flowEngine } = require('../flows');
 const logger = require('../utils/logger');
+const { authenticate } = require('../middlewares/auth.middleware');
+
+// Automation-flow management is admin-only. Previously this router had NO
+// authentication, exposing flow CRUD to anonymous callers (assessment C3).
+router.use(authenticate(['admin', 'super_admin']));
 
 /**
  * GET /api/flows

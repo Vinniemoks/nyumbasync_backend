@@ -6,6 +6,11 @@
 const express = require('express');
 const router = express.Router();
 const transactionController = require('../controllers/transaction-v2.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
+
+// Staff-only transaction pipeline. Previously unauthenticated (assessment C3).
+const STAFF_ROLES = ['landlord', 'manager', 'agent', 'admin', 'super_admin'];
+router.use(authenticate(STAFF_ROLES));
 
 // Special routes (must come before :id routes)
 router.get('/by-stage/:stage', transactionController.getTransactionsByStage);

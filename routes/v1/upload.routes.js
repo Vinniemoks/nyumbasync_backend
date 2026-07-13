@@ -3,8 +3,42 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const { createLogger } = require('winston');
-const sharp = require('sharp'); 
+const sharp = require('sharp');
+const { authenticate } = require('../../middlewares/auth.middleware');
 const router = express.Router();
+
+// Require a valid token for every upload route. This router is also reachable
+// via the unversioned /api/upload alias which is NOT wrapped by the server-level
+// auth guard, so auth must live here (assessment C4). authenticate('any') would
+// allow anonymous, so an explicit role list is used.
+const UPLOAD_ROLES = ['tenant', 'landlord', 'manager', 'agent', 'vendor', 'admin', 'super_admin'];
+router.use(authenticate(UPLOAD_ROLES));
+
+// Allowed upload categories. req.params.type is used to build a directory path,
+// so it must be whitelisted to prevent path traversal (assessment H22).
+const ALLOWED_TYPES = new Set(['images', 'documents', 'general', 'all']);
+const validateType = (req, res, next) => {
+  const type = req.params.type;
+  if (type && !ALLOWED_TYPES.has(type)) {
+    return res.status(400).json({ error: 'Invalid upload type' });
+  }
+  next();
+};
+
+// Reduce a user-supplied path segment (filename / userId) to a single safe
+// component — strips any directory traversal (assessment H23).
+const safeSegment = (value) => {
+  if (typeof value !== 'string') return '';
+  const base = path.basename(value);
+  return base.includes('..') || base.includes('/') || base.includes('\\') ? '' : base;
+};
+
+// Verify a resolved path stays inside the uploads root (defense in depth).
+const isUnderUploadsRoot = (resolvedPath) => {
+  const root = path.resolve(UPLOADS_ROOT);
+  const target = path.resolve(resolvedPath);
+  return target === root || target.startsWith(root + path.sep);
+};
 
 // Logger (you can import from your main logger configuration)
 const logger = createLogger({
@@ -27,8 +61,13 @@ const publicFileUrl = (req, filePath) => {
 // File storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(UPLOADS_ROOT, req.params.type || 'general');
-    // Create directory if it doesn't exist
+    // Whitelist the type and confirm the resolved dir stays under the uploads
+    // root before writing (assessment H22).
+    const type = ALLOWED_TYPES.has(req.params.type) ? req.params.type : 'general';
+    const uploadDir = path.join(UPLOADS_ROOT, type);
+    if (!isUnderUploadsRoot(uploadDir)) {
+      return cb(new Error('Invalid upload path'));
+    }
     fs.mkdir(uploadDir, { recursive: true })
       .then(() => cb(null, uploadDir))
       .catch(err => cb(err));
@@ -133,7 +172,7 @@ const processImage = async (req, res, next) => {
 // Routes
 
 // Upload single file by type (images, documents, etc.)
-router.post('/:type', ensureUploadDir, upload.single('file'), processImage, async (req, res) => {
+router.post('/:type', validateType, ensureUploadDir, upload.single('file'), processImage, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -175,7 +214,7 @@ router.post('/:type', ensureUploadDir, upload.single('file'), processImage, asyn
 });
 
 // Upload multiple files by type
-router.post('/:type/multiple', ensureUploadDir, upload.array('files', 10), processImage, async (req, res) => {
+router.post('/:type/multiple', validateType, ensureUploadDir, upload.array('files', 10), processImage, async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -334,8 +373,11 @@ router.get('/user/:userId', async (req, res) => {
 // Delete a file
 router.delete('/:filename', async (req, res) => {
   try {
-    const filename = req.params.filename;
+    const filename = safeSegment(req.params.filename); // strip traversal (H23)
     const userId = req.user.id;
+    if (!filename) {
+      return res.status(400).json({ error: 'Invalid filename', timestamp: res.locals.currentTime });
+    }
 
     // Security check: ensure user can only delete their own files
     if (!filename.startsWith(userId) && req.user.role !== 'admin') {
@@ -416,8 +458,11 @@ router.delete('/:filename', async (req, res) => {
 // Get file metadata
 router.get('/info/:filename', async (req, res) => {
   try {
-    const filename = req.params.filename;
+    const filename = safeSegment(req.params.filename); // strip traversal (H23)
     const userId = req.user.id;
+    if (!filename) {
+      return res.status(400).json({ error: 'Invalid filename', timestamp: res.locals.currentTime });
+    }
 
     // Security check: ensure user can only access their own files
     if (!filename.startsWith(userId) && req.user.role !== 'admin') {

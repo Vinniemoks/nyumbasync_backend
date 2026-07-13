@@ -5,6 +5,11 @@
 const express = require('express');
 const router = express.Router();
 const tenantJourneyController = require('../controllers/tenant-journey.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
+
+// Staff-only pipeline. Previously unauthenticated (assessment C3).
+const STAFF_ROLES = ['landlord', 'manager', 'agent', 'admin', 'super_admin'];
+router.use(authenticate(STAFF_ROLES));
 
 // Dashboard and stats
 router.get('/dashboard', tenantJourneyController.getDashboard);

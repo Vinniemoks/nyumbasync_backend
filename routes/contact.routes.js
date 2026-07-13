@@ -5,6 +5,13 @@
 const express = require('express');
 const router = express.Router();
 const contactController = require('../controllers/contact.controller');
+const { authenticate } = require('../middlewares/auth.middleware');
+
+// CRM contacts are staff-only. Previously this router had NO authentication,
+// exposing full CRUD to anonymous callers (assessment C3). Gate every route to
+// authenticated staff roles (super_admin passes automatically).
+const STAFF_ROLES = ['landlord', 'manager', 'agent', 'admin', 'super_admin'];
+router.use(authenticate(STAFF_ROLES));
 
 // Special routes (must come before :id routes)
 router.get('/hot-leads', contactController.getHotLeads);
