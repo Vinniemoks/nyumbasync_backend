@@ -20,13 +20,14 @@ const WEAK = new Set([
 
 function validateSecrets() {
   const isProd = process.env.NODE_ENV === 'production';
-  const problems = [];
+  const fatal = [];   // missing or known-weak — refuse to boot in production
+  const warn = [];    // weaker-than-ideal — surface but don't brick prod
 
   for (const name of REQUIRED) {
     const val = process.env[name];
     if (!val) {
       if (isProd) {
-        problems.push(`${name} is not set`);
+        fatal.push(`${name} is not set`);
       } else if (name !== 'MONGODB_URI') {
         // Dev convenience: generate an ephemeral secret so nothing uses a known
         // literal. Tokens signed this boot won't survive a restart — fine for dev.
@@ -37,18 +38,25 @@ function validateSecrets() {
       continue;
     }
     if (name.endsWith('SECRET')) {
-      if (WEAK.has(val)) problems.push(`${name} uses a known weak value`);
-      else if (val.length < MIN_SECRET_LEN) problems.push(`${name} must be at least ${MIN_SECRET_LEN} characters`);
+      // A known weak literal is always fatal in production. A short-but-custom
+      // secret only warns — we must never take prod down over a length rule
+      // when the operator has explicitly set a value.
+      if (WEAK.has(val)) fatal.push(`${name} uses a known weak value`);
+      else if (val.length < MIN_SECRET_LEN) warn.push(`${name} is shorter than the recommended ${MIN_SECRET_LEN} characters`);
     }
   }
 
-  if (problems.length && isProd) {
+  if (warn.length) {
     // eslint-disable-next-line no-console
-    console.error('FATAL: insecure secret configuration:\n  - ' + problems.join('\n  - '));
+    console.warn('[secrets] warnings:\n  - ' + warn.join('\n  - '));
+  }
+  if (fatal.length && isProd) {
+    // eslint-disable-next-line no-console
+    console.error('FATAL: insecure secret configuration:\n  - ' + fatal.join('\n  - '));
     process.exit(1);
-  } else if (problems.length) {
+  } else if (fatal.length) {
     // eslint-disable-next-line no-console
-    console.warn('[secrets] warnings (non-fatal in dev):\n  - ' + problems.join('\n  - '));
+    console.warn('[secrets] non-fatal in dev:\n  - ' + fatal.join('\n  - '));
   }
 }
 
