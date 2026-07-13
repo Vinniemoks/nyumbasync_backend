@@ -76,9 +76,16 @@ const authenticate = (roles = 'any') => {
       // Check if user is active
       if (!user.isActive) {
         logAuthAttempt(user._id, 'ACCOUNT_INACTIVE');
-        return res.status(403).json({ 
-          error: 'Account is inactive. Please contact support.' 
+        return res.status(403).json({
+          error: 'Account is inactive. Please contact support.'
         });
+      }
+
+      // Reject tokens issued before a password change/reset (assessment C7/H11).
+      if (user.tokenValidAfter && decoded.iat &&
+          decoded.iat * 1000 < new Date(user.tokenValidAfter).getTime()) {
+        logAuthAttempt(user._id, 'TOKEN_REVOKED');
+        return res.status(401).json({ error: 'Session expired. Please log in again.' });
       }
 
       req.user = user;

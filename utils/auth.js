@@ -20,6 +20,32 @@ const generateToken = ({ id, role, phone }) => { // Destructure the object
   );
 };
 
+// Refresh-token generation (assessment C7). Distinct from access tokens: a
+// dedicated `type` claim, signed with JWT_REFRESH_SECRET so a refresh token can
+// never be used as an access token, and a longer lifetime.
+const generateRefreshToken = (id) => {
+  const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+  return jwt.sign(
+    { userId: id, type: 'refresh', iss: 'NyumbaSync API', aud: 'nyumbasync.co.ke' },
+    secret,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d', algorithm: 'HS256' }
+  );
+};
+
+const verifyRefreshToken = (token) => {
+  try {
+    const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      issuer: 'NyumbaSync API',
+      audience: 'nyumbasync.co.ke',
+    });
+    return decoded.type === 'refresh' ? decoded : null;
+  } catch (error) {
+    return null;
+  }
+};
+
 // JWT Verification
 const verifyToken = (token) => {
   try {
@@ -67,6 +93,8 @@ const generateVerificationCode = () => secureNumericCode(6);
 
 module.exports = {
   generateToken,
+  generateRefreshToken,
+  verifyRefreshToken,
   verifyToken,
   validateKenyanPhone, 
   formatToStrictKenyan, 

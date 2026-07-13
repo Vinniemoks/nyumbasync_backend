@@ -143,6 +143,9 @@ const UserSchema = new mongoose.Schema({
     maxlength: 128
   },
   passwordChangedAt: Date,
+  // Tokens issued before this instant are treated as revoked (assessment C7):
+  // set on password change/reset to invalidate every existing session.
+  tokenValidAfter: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
 

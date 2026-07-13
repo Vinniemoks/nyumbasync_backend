@@ -2,7 +2,7 @@ const User = require('../models/user.model');
 const crypto = require('crypto');
 const { secureNumericCode } = require('../utils/secure-random');
 const { initiateSTKPush } = require('../services/mpesa.service');
-const { generateToken } = require('../utils/auth'); // Corrected import name
+const { generateToken, generateRefreshToken, verifyRefreshToken } = require('../utils/auth');
 const { validatePhone } = require('../utils/kenyanValidators');
 const { formatKenyanPhone } = require('../utils/formatters');
 const logger = require('../utils/logger'); // Import shared logger
@@ -666,10 +666,7 @@ exports.login = async (req, res) => {
       role: user.role
     });
 
-    const refreshToken = generateToken({
-      id: user._id,
-      type: 'refresh'
-    }, '7d');
+    const refreshToken = generateRefreshToken(user._id);
 
     // Update last login
     user.lastLogin = Date.now();
@@ -779,10 +776,7 @@ exports.verifyIp = async (req, res) => {
       role: user.role
     });
 
-    const refreshToken = generateToken({
-      id: user._id,
-      type: 'refresh'
-    }, '7d');
+    const refreshToken = generateRefreshToken(user._id);
 
     logger.info(`Admin user ${user._id} verified IP ${userIp} and logged in successfully`);
 
@@ -910,10 +904,7 @@ exports.signup = async (req, res) => {
       role: user.role
     });
 
-    const refreshToken = generateToken({
-      id: user._id,
-      type: 'refresh'
-    }, '7d');
+    const refreshToken = generateRefreshToken(user._id);
 
     res.status(201).json({
       success: true,
@@ -997,10 +988,15 @@ exports.logout = async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (token) {
-      // Blacklist the token (expires in 1 hour by default)
-      const expiresIn = 3600; // 1 hour in seconds
-      await blacklistToken(token, expiresIn);
+      // Blacklist the access token (expires in 1 hour by default)
+      await blacklistToken(token, 3600);
       logger.info(`Token blacklisted for user: ${req.user._id || req.user.id}`);
+    }
+
+    // Also revoke the refresh token so it cannot mint new access tokens (C7).
+    const refreshToken = req.body?.refreshToken;
+    if (refreshToken) {
+      await blacklistToken(refreshToken, 7 * 24 * 3600);
     }
 
     res.json({
@@ -1022,37 +1018,44 @@ exports.refreshToken = async (req, res) => {
       return res.status(400).json({ error: 'Refresh token required' });
     }
 
-    // Verify the refresh token
-    const jwt = require('jsonwebtoken');
-    let decoded;
-    try {
-      decoded = jwt.verify(refreshToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    } catch (err) {
+    // Reject refresh tokens that were explicitly revoked on a prior logout (C7).
+    const { isBlacklisted } = require('../services/token-blacklist.service');
+    if (await isBlacklisted(refreshToken)) {
+      return res.status(401).json({ error: 'Refresh token has been revoked. Please log in again.' });
+    }
+
+    // Verify the refresh token (dedicated secret + type claim).
+    const decoded = verifyRefreshToken(refreshToken);
+    if (!decoded) {
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
-    if (decoded.type !== 'refresh') {
-      return res.status(401).json({ error: 'Invalid token type' });
+    const userId = decoded.userId || decoded.id;
+    const user = await User.findById(userId).select('_id email phone role status tokenValidAfter isActive');
+    if (!user || user.status === 'suspended' || user.status === 'inactive' || user.isActive === false) {
+      return res.status(401).json({ error: 'User account not found or inactive' });
     }
 
-    // Check user still exists
-    const user = await User.findById(decoded.id).select('_id email phone role status');
-    if (!user || user.status === 'suspended') {
-      return res.status(401).json({ error: 'User account not found or suspended' });
+    // Reject tokens issued before the account's revocation cutoff — a password
+    // change/reset bumps tokenValidAfter and invalidates every prior session (C7/H11).
+    if (user.tokenValidAfter && decoded.iat && decoded.iat * 1000 < new Date(user.tokenValidAfter).getTime()) {
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
     }
 
-    // Generate new access token
+    // Rotate: revoke the presented refresh token so it cannot be reused, then
+    // issue a fresh pair (C7 — refresh-token rotation).
+    try {
+      const ttl = decoded.exp ? Math.max(1, decoded.exp - Math.floor(Date.now() / 1000)) : 7 * 24 * 3600;
+      await blacklistToken(refreshToken, ttl);
+    } catch (_) { /* rotation best-effort */ }
+
     const token = generateToken({
       id: user._id,
       email: user.email,
       phone: user.phone,
       role: user.role
     });
-
-    const newRefreshToken = generateToken(
-      { id: user._id, type: 'refresh' },
-      '7d'
-    );
+    const newRefreshToken = generateRefreshToken(user._id);
 
     res.json({
       token,
@@ -1228,6 +1231,9 @@ exports.resetPassword = async (req, res) => {
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
+    // Revoke every existing session — a reset means the account may have been
+    // compromised (assessment C7/H11).
+    user.tokenValidAfter = new Date();
     await user.save();
 
     logger.info(`Password reset successfully for user ${user._id}`);
@@ -1306,7 +1312,15 @@ exports.changePassword = async (req, res) => {
 
     // Update to new password (model hook hashes it on save)
     user.password = newPassword;
+    // Revoke all existing sessions on password change (assessment C7/H11).
+    user.tokenValidAfter = new Date();
     await user.save();
+
+    // Blacklist the access token used for this request so it can't be reused.
+    try {
+      const currentToken = req.header('Authorization')?.replace('Bearer ', '');
+      if (currentToken) await blacklistToken(currentToken, 3600);
+    } catch (_) { /* best-effort */ }
 
     logger.info(`Password changed successfully for user ${user._id}`);
 
@@ -1406,10 +1420,7 @@ exports.googleAuth = async (req, res) => {
       role: user.role,
     });
 
-    const refreshToken = generateToken(
-      { id: user._id, type: 'refresh' },
-      '7d'
-    );
+    const refreshToken = generateRefreshToken(user._id);
 
     user.lastLogin = Date.now();
     await user.save();
@@ -1536,10 +1547,7 @@ exports.appleAuth = async (req, res) => {
       role: existingUser.role,
     });
 
-    const refreshToken = generateToken(
-      { id: existingUser._id, type: 'refresh' },
-      '7d'
-    );
+    const refreshToken = generateRefreshToken(existingUser._id);
 
     existingUser.lastLogin = Date.now();
     await existingUser.save();
