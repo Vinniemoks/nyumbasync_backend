@@ -7,6 +7,17 @@ const { Property, Contact, User, PropertyInterest } = require('../models');
 const logger = require('../utils/logger');
 const propertyNotificationService = require('../services/property-notification.service');
 
+// Property-mutation authorization (assessment H7). Managers/admins/super_admins
+// may act on any property; a landlord/agent may only act on their own.
+const PROPERTY_PRIVILEGED_ROLES = ['manager', 'admin', 'super_admin'];
+function canManageProperty(user, property) {
+  if (!user || !property) return false;
+  if (PROPERTY_PRIVILEGED_ROLES.includes(user.role)) return true;
+  const ownerId = property.landlord && (property.landlord._id || property.landlord);
+  const userId = user._id || user.id;
+  return !!ownerId && !!userId && String(ownerId) === String(userId);
+}
+
 /**
  * Sanitize incoming utilities array.
  */
@@ -218,6 +229,15 @@ exports.createProperty = async (req, res) => {
  */
 exports.updateProperty = async (req, res) => {
   try {
+    // Ownership check first — a landlord may only edit their own property (H7).
+    const existing = await Property.findById(req.params.id).select('landlord');
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Property not found' });
+    }
+    if (!canManageProperty(req.user, existing)) {
+      return res.status(403).json({ success: false, error: 'You do not have permission to modify this property' });
+    }
+
     const payload = { ...req.body };
 
     // Only managers/admins may reassign a property to another landlord
@@ -277,7 +297,7 @@ exports.updateProperty = async (req, res) => {
  */
 exports.deleteProperty = async (req, res) => {
   try {
-    const property = await Property.findByIdAndDelete(req.params.id);
+    const property = await Property.findById(req.params.id).select('landlord');
 
     if (!property) {
       return res.status(404).json({
@@ -285,6 +305,13 @@ exports.deleteProperty = async (req, res) => {
         error: 'Property not found'
       });
     }
+
+    // Ownership check — a landlord may only delete their own property (H7).
+    if (!canManageProperty(req.user, property)) {
+      return res.status(403).json({ success: false, error: 'You do not have permission to delete this property' });
+    }
+
+    await Property.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,

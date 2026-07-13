@@ -1,6 +1,44 @@
+const path = require('path');
 const Lease = require('../models/lease.model');
 const { generateLeasePDF } = require('../services/document.service');
 const logger = require('../utils/logger');
+
+// --- Lease access control (assessment H4, H5, H24, H19) --------------------
+const LEASE_PRIVILEGED_ROLES = ['manager', 'admin', 'super_admin'];
+const UPLOADS_ROOT = process.env.UPLOAD_DIR || 'uploads';
+// Hosts we will redirect document downloads to (our own storage/domains).
+const TRUSTED_DOC_HOSTS = ['nyumbasync.co.ke', 'www.nyumbasync.co.ke', 'nyumbasync-api.fly.dev'];
+
+// A user may access a lease if they are staff, or the lease's landlord/tenant.
+function canAccessLease(user, lease) {
+  if (!user || !lease) return false;
+  if (LEASE_PRIVILEGED_ROLES.includes(user.role)) return true;
+  const uid = String(user._id || user.id || '');
+  const landlordId = lease.landlord ? String(lease.landlord._id || lease.landlord) : '';
+  const tenantId = lease.tenant ? String(lease.tenant._id || lease.tenant) : '';
+  return uid !== '' && (uid === landlordId || uid === tenantId);
+}
+
+// Local document path must resolve inside the uploads root (no ../ escape / no
+// arbitrary server file read via a crafted doc.url).
+function isLocalPathUnderUploads(p) {
+  if (typeof p !== 'string' || !p) return false;
+  const root = path.resolve(UPLOADS_ROOT);
+  const target = path.resolve(p);
+  return target === root || target.startsWith(root + path.sep);
+}
+
+// A remote document URL is only followed if it is https on a trusted host
+// (prevents open redirect via attacker-set doc.url).
+function isTrustedDocUrl(u) {
+  try {
+    const url = new URL(u);
+    if (url.protocol !== 'https:') return false;
+    return TRUSTED_DOC_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith('.' + h));
+  } catch (_) {
+    return false;
+  }
+}
 
 // Create Kenyan-compliant lease
 exports.createLease = async (req, res) => {
@@ -121,7 +159,14 @@ exports.signLease = async (req, res) => {
 
 exports.getAllLeases = async (req, res) => {
   try {
-    const leases = await Lease.find().populate('property tenant landlord').sort({ createdAt: -1 });
+    // Staff see everything; a landlord/tenant only sees leases they are party to
+    // (H4 — this previously returned every lease to any authenticated user).
+    let filter = {};
+    if (!LEASE_PRIVILEGED_ROLES.includes(req.user?.role)) {
+      const uid = req.user?.id;
+      filter = { $or: [{ landlord: uid }, { tenant: uid }] };
+    }
+    const leases = await Lease.find(filter).populate('property tenant landlord').sort({ createdAt: -1 });
     res.json(leases);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch leases' });
@@ -132,6 +177,7 @@ exports.getLeaseById = async (req, res) => {
   try {
     const lease = await Lease.findById(req.params.id).populate('property tenant landlord');
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
     res.json(lease);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch lease' });
@@ -140,8 +186,17 @@ exports.getLeaseById = async (req, res) => {
 
 exports.getLeasesByTenant = async (req, res) => {
   try {
+    // Only the tenant themselves or staff may list a tenant's leases (H5).
+    const isStaff = LEASE_PRIVILEGED_ROLES.includes(req.user?.role) || req.user?.role === 'landlord';
+    if (!isStaff && String(req.user?.id) !== String(req.params.tenantId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const leases = await Lease.find({ tenant: req.params.tenantId }).populate('property landlord').sort({ createdAt: -1 });
-    res.json(leases);
+    // A landlord may only see leases where they are the landlord.
+    const filtered = req.user?.role === 'landlord'
+      ? leases.filter((l) => String(l.landlord?._id || l.landlord) === String(req.user.id))
+      : leases;
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch tenant leases' });
   }
@@ -150,7 +205,13 @@ exports.getLeasesByTenant = async (req, res) => {
 exports.getLeasesByProperty = async (req, res) => {
   try {
     const leases = await Lease.find({ property: req.params.propertyId }).populate('tenant landlord').sort({ createdAt: -1 });
-    res.json(leases);
+    // Staff see all; a landlord sees only their own; others denied (H5).
+    if (LEASE_PRIVILEGED_ROLES.includes(req.user?.role)) return res.json(leases);
+    if (req.user?.role === 'landlord') {
+      return res.json(leases.filter((l) => String(l.landlord?._id || l.landlord) === String(req.user.id)));
+    }
+    const uid = String(req.user?.id);
+    return res.json(leases.filter((l) => String(l.tenant?._id || l.tenant) === uid));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch property leases' });
   }
@@ -158,6 +219,11 @@ exports.getLeasesByProperty = async (req, res) => {
 
 exports.getLeasesByLandlord = async (req, res) => {
   try {
+    // Only that landlord or staff may list a landlord's leases (H5).
+    const isStaff = LEASE_PRIVILEGED_ROLES.includes(req.user?.role);
+    if (!isStaff && String(req.user?.id) !== String(req.params.landlordId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const leases = await Lease.find({ landlord: req.params.landlordId }).populate('property tenant').sort({ createdAt: -1 });
     res.json(leases);
   } catch (err) {
@@ -169,7 +235,16 @@ exports.updateLease = async (req, res) => {
   try {
     const lease = await Lease.findById(req.params.id);
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
-    Object.assign(lease, req.body);
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
+    // Never let the request body reassign the parties or move money fields via
+    // mass assignment; only staff may change those.
+    const body = { ...req.body };
+    if (!LEASE_PRIVILEGED_ROLES.includes(req.user?.role)) {
+      delete body.landlord;
+      delete body.tenant;
+      delete body.property;
+    }
+    Object.assign(lease, body);
     await lease.save();
     res.json(lease);
   } catch (err) {
@@ -179,8 +254,10 @@ exports.updateLease = async (req, res) => {
 
 exports.deleteLease = async (req, res) => {
   try {
-    const lease = await Lease.findByIdAndDelete(req.params.id);
+    const lease = await Lease.findById(req.params.id).select('landlord tenant');
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
+    await Lease.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: 'Lease deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete lease' });
@@ -251,6 +328,7 @@ exports.terminateLease = async (req, res) => {
     const { reason, effectiveDate, terminationDate, penaltyAmount } = req.body;
     const lease = await Lease.findById(req.params.leaseId);
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
 
     const effective = effectiveDate || terminationDate;
     lease.termination = {
@@ -273,8 +351,9 @@ exports.terminateLease = async (req, res) => {
 
 exports.getLeaseDocuments = async (req, res) => {
   try {
-    const lease = await Lease.findById(req.params.leaseId).select('documents');
+    const lease = await Lease.findById(req.params.leaseId).select('documents landlord tenant');
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
     res.json(lease.documents || []);
   } catch (err) {
     logger.error('Failed to fetch lease documents:', err);
@@ -284,12 +363,18 @@ exports.getLeaseDocuments = async (req, res) => {
 
 exports.uploadLeaseDocument = async (req, res) => {
   try {
-    const lease = await Lease.findById(req.params.leaseId);
+    const lease = await Lease.findById(req.params.leaseId).select('documents landlord tenant');
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
 
     const file = req.file;
     const url = file ? file.path : req.body.url;
     if (!url) return res.status(400).json({ error: 'A file or document url is required' });
+    // A client-supplied url must be a trusted https URL — never a local path,
+    // which would later be read off disk by downloadLeaseDocument (H24).
+    if (!file && !isTrustedDocUrl(url)) {
+      return res.status(400).json({ error: 'Document url must be an https URL on a trusted host' });
+    }
 
     const doc = {
       name: req.body.name || (file && file.originalname) || 'Lease document',
@@ -308,8 +393,9 @@ exports.uploadLeaseDocument = async (req, res) => {
 
 exports.getLeaseDocument = async (req, res) => {
   try {
-    const lease = await Lease.findById(req.params.leaseId).select('documents');
+    const lease = await Lease.findById(req.params.leaseId).select('documents landlord tenant');
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
     const doc = lease.documents.id(req.params.documentId);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
     res.json(doc);
@@ -321,14 +407,21 @@ exports.getLeaseDocument = async (req, res) => {
 
 exports.downloadLeaseDocument = async (req, res) => {
   try {
-    const lease = await Lease.findById(req.params.leaseId).select('documents');
+    const lease = await Lease.findById(req.params.leaseId).select('documents landlord tenant');
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
     const doc = lease.documents.id(req.params.documentId);
     if (!doc) return res.status(404).json({ error: 'Document not found' });
 
-    // Remote URL → redirect; local path → stream the file.
+    // Remote URL → redirect only to trusted hosts (no open redirect, H19).
     if (/^https?:\/\//.test(doc.url)) {
+      if (!isTrustedDocUrl(doc.url)) return res.status(403).json({ error: 'Untrusted document location' });
       return res.redirect(doc.url);
+    }
+    // Local path → stream only if it resolves inside the uploads root (no
+    // arbitrary server file read, H24).
+    if (!isLocalPathUnderUploads(doc.url)) {
+      return res.status(403).json({ error: 'Invalid document path' });
     }
     return res.download(doc.url, doc.name, (err) => {
       if (err && !res.headersSent) res.status(404).json({ error: 'File unavailable' });

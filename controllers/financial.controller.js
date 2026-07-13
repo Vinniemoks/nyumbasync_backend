@@ -28,6 +28,24 @@ const financialController = {
         });
       }
 
+      if (!propertyId) {
+        return res.status(400).json({ error: 'propertyId is required' });
+      }
+
+      // Ownership: a landlord may only run reports on their own property; staff
+      // (manager/admin/super_admin) may report on any (assessment H6).
+      const FIN_STAFF_ROLES = ['admin', 'super_admin', 'manager'];
+      if (!FIN_STAFF_ROLES.includes(req.user?.role)) {
+        const Property = require('../models/property.model');
+        const property = await Property.findById(propertyId).select('landlord');
+        if (!property) {
+          return res.status(404).json({ error: 'Property not found' });
+        }
+        if (String(property.landlord) !== String(req.user?.id)) {
+          return res.status(403).json({ error: 'You do not have access to this property\'s financials' });
+        }
+      }
+
       // Gather financial data
       const [payments, expenses, leases] = await Promise.all([
         PaymentModel.find({

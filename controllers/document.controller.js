@@ -1,6 +1,24 @@
 const Document = require('../models/document.model');
 const logger = require('../utils/logger');
 
+// Access control for document enumeration (assessment H5). Staff see everything;
+// everyone else only sees documents they are a party to, so passing another
+// entity's id returns nothing instead of exposing their documents.
+const DOC_STAFF_ROLES = ['admin', 'super_admin', 'manager'];
+function scopeDocQuery(req, baseFilter) {
+  if (DOC_STAFF_ROLES.includes(req.user?.role)) return baseFilter;
+  const uid = req.user?.id;
+  return {
+    ...baseFilter,
+    $or: [
+      { uploadedBy: uid },
+      { tenant: uid },
+      { landlord: uid },
+      { 'sharedWith.user': uid },
+    ],
+  };
+}
+
 // Get all documents
 exports.getAllDocuments = async (req, res) => {
   try {
@@ -63,7 +81,7 @@ exports.getDocumentById = async (req, res) => {
 exports.getDocumentsByTenant = async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const documents = await Document.find({ tenant: tenantId, isArchived: false })
+    const documents = await Document.find(scopeDocQuery(req, { tenant: tenantId, isArchived: false }))
       .populate('uploadedBy', 'firstName lastName email')
       .populate('property', 'address unitNumber')
       .sort('-createdAt');
@@ -78,7 +96,7 @@ exports.getDocumentsByTenant = async (req, res) => {
 exports.getDocumentsByLandlord = async (req, res) => {
   try {
     const { landlordId } = req.params;
-    const documents = await Document.find({ landlord: landlordId, isArchived: false })
+    const documents = await Document.find(scopeDocQuery(req, { landlord: landlordId, isArchived: false }))
       .populate('uploadedBy', 'firstName lastName email')
       .populate('property', 'address unitNumber')
       .sort('-createdAt');
@@ -93,7 +111,7 @@ exports.getDocumentsByLandlord = async (req, res) => {
 exports.getDocumentsByProperty = async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const documents = await Document.find({ property: propertyId, isArchived: false })
+    const documents = await Document.find(scopeDocQuery(req, { property: propertyId, isArchived: false }))
       .populate('uploadedBy', 'firstName lastName email')
       .populate('tenant', 'firstName lastName')
       .sort('-createdAt');
@@ -108,7 +126,7 @@ exports.getDocumentsByProperty = async (req, res) => {
 exports.getDocumentsByLease = async (req, res) => {
   try {
     const { leaseId } = req.params;
-    const documents = await Document.find({ lease: leaseId, isArchived: false })
+    const documents = await Document.find(scopeDocQuery(req, { lease: leaseId, isArchived: false }))
       .populate('uploadedBy', 'firstName lastName email')
       .sort('-createdAt');
     res.json(documents);
