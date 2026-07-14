@@ -34,17 +34,32 @@ const normalizeUtilities = (utilities = []) => {
 };
 
 /**
- * Sanitize incoming houses/units array.
+ * Sanitize incoming houses/units array. Tenant and lastPayment are carried
+ * through so a full-array replace (the edit form round-trips houses) does not
+ * wipe existing tenant assignments; a unit set back to 'available' is treated
+ * as vacated and its tenant cleared.
  */
+const UNIT_TYPES = ['studio', 'bedsitter', '1br', '2br', '3br', '4br', 'other'];
 const normalizeHouses = (houses = []) => {
   return houses
     .filter(h => h.houseNumber && String(h.houseNumber).trim())
-    .map(h => ({
-      houseNumber: String(h.houseNumber).trim(),
-      floor: h.floor ? parseInt(h.floor) : undefined,
-      number: h.number ? String(h.number).trim() : String(h.houseNumber).trim(),
-      status: ['available', 'occupied', 'maintenance'].includes(h.status) ? h.status : 'available'
-    }));
+    .map(h => {
+      const status = ['available', 'occupied', 'maintenance'].includes(h.status) ? h.status : 'available';
+      const floor = (h.floor === '' || h.floor == null) ? undefined : parseInt(h.floor);
+      const rent = (h.rent === '' || h.rent == null || isNaN(parseFloat(h.rent)))
+        ? undefined
+        : Math.round(parseFloat(h.rent));
+      return {
+        houseNumber: String(h.houseNumber).trim(),
+        floor: Number.isNaN(floor) ? undefined : floor,
+        number: h.number ? String(h.number).trim() : String(h.houseNumber).trim(),
+        unitType: UNIT_TYPES.includes(h.unitType) ? h.unitType : undefined,
+        rent,
+        tenant: status !== 'available' && h.tenant ? (h.tenant._id || h.tenant) : undefined,
+        lastPayment: h.lastPayment || undefined,
+        status
+      };
+    });
 };
 
 /**

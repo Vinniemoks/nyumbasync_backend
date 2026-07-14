@@ -239,6 +239,14 @@ const propertySchema = new Schema({
     houseNumber: { type: String, required: true, trim: true },
     floor: { type: Number, min: 0, max: 100 },
     number: { type: String, trim: true },   // kept for backward compatibility
+    // Unit size/type within a mixed property (a block can hold studios
+    // alongside 1-3 bedroom units). Optional for older documents.
+    unitType: {
+      type: String,
+      enum: ['studio', 'bedsitter', '1br', '2br', '3br', '4br', 'other']
+    },
+    // Per-unit monthly rent; falls back to the property-level rent when unset.
+    rent: { type: Number, min: 0, set: v => (v == null ? v : Math.round(v)) },
     lastPayment: { type: Date },
     tenant: { type: Schema.Types.ObjectId, ref: 'User' },
     status: { type: String, enum: ['occupied', 'available', 'maintenance'], default: 'available' }
