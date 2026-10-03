@@ -283,13 +283,18 @@ const verifyEmailConfirmed = (req, res, next) => {
 // public-or-private routes), so it can't back the names that mean "you must be
 // authenticated" — without a token those would fall through to the controller
 // with no req.user and 500. This guard rejects the no-token case up front.
-const requireAuth = (req, res, next) => {
+const makeRequireAuth = (options) => (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies?.accessToken;
   if (!token) {
     return res.status(401).json({ error: 'Authentication required. No token provided.' });
   }
-  return authenticate()(req, res, next);
+  return authenticate('any', options)(req, res, next);
 };
+const requireAuth = makeRequireAuth({});
+
+// Like requireAuth, but also accepts the listed step-token purposes (e.g. the
+// first-login 'password-change' token on the change-password route).
+const requireAuthAllowing = (...purposes) => makeRequireAuth({ allowPurposes: purposes });
 
 module.exports = {
   authenticate,          // Primary authentication middleware
@@ -309,6 +314,7 @@ module.exports = {
   // Compatibility aliases — several route modules import these names.
   // authMiddleware authenticates any logged-in user; roleMiddleware
   // restricts to the given roles.
+  requireAuthAllowing,
   authMiddleware: requireAuth,
   roleMiddleware: (roles) => authenticate(roles),
   protect: requireAuth,

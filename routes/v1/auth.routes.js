@@ -1,7 +1,7 @@
 // auth.routes.js
 const asyncHandler = require('express-async-handler');
 const authController = require('../../controllers/auth.controller');
-const { authenticate } = require('../../middlewares/auth.middleware');
+const { authenticate, requireAuthAllowing } = require('../../middlewares/auth.middleware');
 
 module.exports = [
   // Login
@@ -112,7 +112,9 @@ module.exports = [
   {
     method: 'POST',
     path: '/change-password',
-    handler: [authenticate(), asyncHandler(authController.changePassword)],
+    // Also accepts the short-lived first-login token (purpose 'password-change'),
+    // which is valid for nothing else.
+    handler: [requireAuthAllowing('password-change'), asyncHandler(authController.changePassword)],
     config: { source: 'auth.routes' }
   },
   
@@ -180,6 +182,13 @@ module.exports = [
     method: 'POST',
     path: '/activate',
     handler: asyncHandler(authController.activateAccount),
+    config: { source: 'auth.routes' }
+  },
+  // Ask for a fresh activation link (answer never reveals whether the email exists)
+  {
+    method: 'POST',
+    path: '/resend-activation',
+    handler: asyncHandler(authController.resendActivation),
     config: { source: 'auth.routes' }
   }
 ];

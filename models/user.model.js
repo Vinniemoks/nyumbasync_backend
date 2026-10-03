@@ -277,7 +277,15 @@ const UserSchema = new mongoose.Schema({
     type: String,
     select: false
   },
-  ipVerificationCodeExpiry: Date
+  ipVerificationCodeExpiry: Date,
+  // Wrong guesses against the current code; the code is burned after 5.
+  ipVerificationAttempts: {
+    type: Number,
+    default: 0,
+    select: false
+  },
+  // When the last activation email went out (resend cool-down).
+  activationSentAt: Date
 }, {
   timestamps: {
     createdAt: 'joinedAt',
