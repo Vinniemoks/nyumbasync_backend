@@ -91,7 +91,7 @@ const sendLoginOtp = async (user) => {
 
   // WhatsApp delivery uses the pre-approved login-code template when possible,
   // falling back to a best-effort text message if the template is unavailable.
-  const whatsappPromise = user.phone
+  const whatsappPromise = user.phone && whatsappService.isConfigured()
     ? (async () => {
         try {
           const result = await whatsappService.sendTemplatedMessage({

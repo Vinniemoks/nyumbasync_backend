@@ -104,6 +104,7 @@ async function sendWhatsappCode(user, code) {
   if (!user.phone) return false;
   try {
     const whatsappService = require('../src/services/whatsappService');
+    if (!whatsappService.isConfigured()) return false;
     try {
       const r = await whatsappService.sendTemplatedMessage({
         templateName: 'nyumbasync_login_code',
