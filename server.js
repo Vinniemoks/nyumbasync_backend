@@ -35,6 +35,15 @@ const WorkerHealth = require('./utils/worker-health');
 const WorkerRateLimiter = require('./utils/worker-rate-limiter');
 
 const app = express();
+
+// Behind Fly's proxy every request arrives from the proxy's internal address.
+// Trust exactly one hop so req.ip is the real client: the new-network check,
+// rate limits and audit logs all depend on it. (Fly sets FLY_APP_NAME; override
+// with TRUST_PROXY=<hops>. Left off elsewhere so a client cannot spoof it.)
+const trustProxyHops = process.env.TRUST_PROXY !== undefined
+  ? Number(process.env.TRUST_PROXY)
+  : (process.env.FLY_APP_NAME ? 1 : 0);
+if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
 const PORT = process.env.PORT || 10000;
 
 // Initialize worker monitoring if in cluster mode
