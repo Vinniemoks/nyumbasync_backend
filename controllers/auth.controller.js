@@ -533,11 +533,9 @@ exports.login = async (req, res) => {
         }
       }
 
-      // 3) No factor configured yet: allow password-only login with a warning,
-      // and prompt the frontend to set up MFA on first login.
-      logger.warn(`Admin ${user._id} logged in without any MFA configured`);
+      // The authenticator app is opt-in (Profile > Two-factor authentication);
+      // admins without one are still protected by the emailed new-network code.
       audit({ success: true, reason: 'admin_login_no_mfa', user: user._id, email: user.email, role: user.role });
-      req._requireMfaSetup = true;
     }
 
     // Check if MFA is enabled (authenticator app) for non-admin accounts
@@ -599,7 +597,7 @@ exports.login = async (req, res) => {
       token,
       refreshToken,
       expiresIn: 3600,
-      requireMfaSetup: req._requireMfaSetup || false,
+      requireMfaSetup: false, // authenticator setup is optional, never forced
       user: {
         id: user._id,
         email: user.email,
