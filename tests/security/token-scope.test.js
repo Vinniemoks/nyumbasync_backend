@@ -141,3 +141,12 @@ describe('locked accounts', () => {
     expect(r.res.code).toBe(401);
   });
 });
+
+describe('suspended accounts that also have isActive cleared', () => {
+  test('are reported as suspended, not inactive (an admin suspend sets both)', () => {
+    const { accountBlockReason } = require('../../utils/token-scope');
+    expect(accountBlockReason({ status: 'suspended', isActive: false })).toBe('suspended');
+    expect(accountBlockReason({ status: 'inactive', isActive: false })).toBe('inactive');
+    expect(accountBlockReason({ status: 'active', isActive: false })).toBe('inactive');
+  });
+});

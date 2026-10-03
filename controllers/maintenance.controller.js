@@ -15,6 +15,11 @@ const toMaintenanceDTO = (req) => ({
   status: req.status,
   propertyId: req.property?._id || req.property,
   tenantId: req.reportedBy?._id || req.reportedBy,
+  // Populated on the list endpoints so clients can show who/where without more calls.
+  property: req.property?.title || req.property?.name || undefined,
+  tenantName: [req.reportedBy?.firstName, req.reportedBy?.lastName].filter(Boolean).join(' ') || undefined,
+  tenantPhone: req.reportedBy?.phone || undefined,
+  assignedVendor: req.assignedVendor?._id || req.assignedVendor || undefined,
   createdAt: req.createdAt
 });
 
