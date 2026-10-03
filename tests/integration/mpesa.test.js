@@ -18,6 +18,16 @@ process.env.MPESA_CONSUMER_SECRET = 'mock_secret';
 
 nock.disableNetConnect();
 
+// Jest runs every suite in one process (--runInBand) and nock's net-connect
+// switch is process-wide, so without this every suite that runs after this one
+// can't reach its own localhost server (supertest) and fails with
+// "Nock: Disallowed net connect". Which suites ran after it depended on Jest's
+// cached timings, so the failures came and went between runs.
+afterAll(() => {
+  nock.cleanAll();
+  nock.enableNetConnect();
+});
+
 describe('M-Pesa API Integration', () => {
   beforeEach(() => {
     // Clear mocks before each test
