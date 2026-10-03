@@ -100,6 +100,32 @@ function recordLoginIp(user, ip) {
  * { type, body } where `body` is the JSON to send (HTTP 200) so the client can
  * collect what's missing and try again.
  */
+async function sendWhatsappCode(user, code) {
+  if (!user.phone) return false;
+  try {
+    const whatsappService = require('../src/services/whatsappService');
+    try {
+      const r = await whatsappService.sendTemplatedMessage({
+        templateName: 'nyumbasync_login_code',
+        to: user.phone,
+        language: 'en',
+        variables: [user.firstName || 'User', code, '5'],
+        tags: ['login_ip_code'],
+        priority: 'high',
+      });
+      if (r && r.success === true) return true;
+    } catch (_) { /* fall back to plain text */ }
+    const r = await whatsappService.sendAutoReply(
+      user.phone,
+      `Your NyumbaSync sign-in code is ${code}. It expires in 5 minutes. If this wasn't you, change your password immediately.`
+    );
+    return !!(r && r.success === true);
+  } catch (err) {
+    logger.warn(`WhatsApp new-network code not sent: ${err.message}`);
+    return false;
+  }
+}
+
 async function evaluateGates(user, req) {
   if (user.requirePasswordChange) {
     const token = jwt.sign(
@@ -138,6 +164,9 @@ async function evaluateGates(user, req) {
       logger.error('Failed to send IP verification email:', err);
     }
 
+    // Also send it to the registered number on WhatsApp (best effort).
+    const whatsappSent = await sendWhatsappCode(user, code);
+
     const ipSessionToken = jwt.sign(
       { userId: user._id, expectedIp: ip, purpose: PURPOSES.IP_VERIFICATION },
       process.env.JWT_SECRET,
@@ -151,7 +180,12 @@ async function evaluateGates(user, req) {
         requireIpVerification: true,
         ipSessionToken,
         emailSent,
-        message: 'A verification code has been sent to your email',
+        whatsappSent,
+        message: whatsappSent && emailSent
+          ? 'A verification code has been sent to your email and WhatsApp'
+          : whatsappSent
+            ? 'A verification code has been sent to your WhatsApp'
+            : 'A verification code has been sent to your email',
       },
     };
   }

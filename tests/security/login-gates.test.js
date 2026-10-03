@@ -60,6 +60,21 @@ beforeEach(async () => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('new-IP verification for admins', () => {
+
+  test('the new-network code also goes to WhatsApp, and authenticator setup is never forced', async () => {
+    const wa = require('../../src/services/whatsappService');
+    const sent = [];
+    jest.spyOn(wa, 'sendTemplatedMessage').mockImplementation(async (m) => { sent.push(m); return { success: true }; });
+    const admin = await makeUser('super_admin');
+    const res = await login(admin).expect(200);
+    expect(res.body.whatsappSent).toBe(true);
+    expect(sent[0].to).toBe(admin.phone);
+    expect(sent[0].variables[1]).toBe(codeFromMail());
+    const done = await request(app).post('/api/v1/auth/verify-ip').send({ ipSessionToken: res.body.ipSessionToken, code: codeFromMail() }).expect(200);
+    expect(done.body.token).toBeTruthy();
+    const again = await login(admin).expect(200);
+    expect(again.body.requireMfaSetup).toBe(false);
+  });
   test('a password login from an unknown IP is held back and a code is emailed', async () => {
     const admin = await makeUser('super_admin');
     const res = await login(admin).expect(200);
