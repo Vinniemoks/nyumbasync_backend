@@ -28,17 +28,6 @@ const validateLeaseId = [
   validate
 ];
 
-// User management validation
-const validateUserManagement = [
-  body('action')
-    .isIn(['activate', 'deactivate', 'promote', 'demote'])
-    .withMessage('Invalid management action'),
-  body('userId')
-    .isMongoId()
-    .withMessage('Invalid user ID'),
-  validate
-];
-
 module.exports = [
   // Dashboard routes
   {
@@ -85,6 +74,25 @@ module.exports = [
       asyncHandler(adminController.createUser)
     ],
     config: { source: 'admin.routes', description: 'Create a user with initial credentials' }
+  },
+  {
+    // Suspend / unsuspend / activate / deactivate many accounts at once.
+    method: 'POST',
+    path: '/users/bulk-status',
+    handler: [
+      authenticate(['admin', 'super_admin']),
+      asyncHandler(adminController.bulkUpdateStatus)
+    ],
+    config: { source: 'admin.routes', description: 'Bulk status change for users' }
+  },
+  {
+    method: 'POST',
+    path: '/users/:userId/resend-activation',
+    handler: [
+      authenticate(['admin', 'super_admin']),
+      asyncHandler(adminController.resendUserActivation)
+    ],
+    config: { source: 'admin.routes', description: 'Email a new activation link to an unactivated account' }
   },
   {
     method: 'PATCH',
@@ -203,21 +211,6 @@ module.exports = [
     config: { 
       source: 'admin.routes',
       description: 'Renew existing lease'
-    }
-  },
-
-  // User management routes
-  {
-    method: 'POST',
-    path: '/users/manage',
-    handler: [
-      authenticate(adminRoles),
-      validateUserManagement,
-      asyncHandler(adminController.manageUsers)
-    ],
-    config: { 
-      source: 'admin.routes',
-      description: 'Manage user accounts'
     }
   },
 

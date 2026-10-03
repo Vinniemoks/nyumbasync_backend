@@ -149,10 +149,16 @@ describe('Integration: Complete User Journey', () => {
 
       expect(loginResponse.body).toHaveProperty('token');
 
-      // Step 11: Tenant logs out
+      // Changing a password ends every earlier session, so the old token is dead...
+      await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .expect(401);
+
+      // Step 11: ...and the tenant logs out of the new session
       const logoutResponse = await request(app)
         .post('/api/v1/auth/logout')
-        .set('Authorization', `Bearer ${tenantToken}`)
+        .set('Authorization', `Bearer ${loginResponse.body.token}`)
         .expect(200);
 
       expect(logoutResponse.body.success).toBe(true);

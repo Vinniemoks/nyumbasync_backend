@@ -180,14 +180,26 @@ describe('Document Controller Tests', () => {
       const testFilePath = path.join(__dirname, 'test-upload.txt');
       fs.writeFileSync(testFilePath, 'Test content');
 
-      const response = await request(app)
-        .post('/api/v1/documents/upload')
-        .attach('file', testFilePath)
-        .expect(401);
-
-      expect(response.body).toHaveProperty('error');
-
-      fs.unlinkSync(testFilePath);
+      try {
+        // The server answers 401 without reading the upload, so now and then the
+        // client's write hits a closed socket (EPIPE) before the response is read.
+        // That is the rejection happening early, not a failure: try again.
+        let response;
+        for (let attempt = 0; attempt < 5 && !response; attempt++) {
+          try {
+            response = await request(app)
+              .post('/api/v1/documents/upload')
+              .attach('file', testFilePath);
+          } catch (err) {
+            if (err.code !== 'EPIPE' && err.code !== 'ECONNRESET') throw err;
+          }
+        }
+        expect(response).toBeDefined();
+        expect(response.status).toBe(401);
+        expect(response.body).toHaveProperty('error');
+      } finally {
+        fs.unlinkSync(testFilePath);
+      }
     });
   });
 

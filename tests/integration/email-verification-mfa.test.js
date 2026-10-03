@@ -2,10 +2,14 @@ const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 // Capture outbound email instead of hitting SendGrid.
-jest.mock('../../services/emailService', () => ({
-  sendEmail: jest.fn(async () => true),
-  sendPaymentConfirmation: jest.fn(async () => true)
-}));
+// The real service stays in place (verification.service builds its HTML with
+// getEmailVerificationTemplate); only the sending methods are replaced.
+jest.mock('../../services/emailService', () => {
+  const real = jest.requireActual('../../services/emailService');
+  real.sendEmail = jest.fn(async () => true);
+  real.sendPaymentConfirmation = jest.fn(async () => true);
+  return real;
+});
 
 const emailService = require('../../services/emailService');
 const User = require('../../models/user.model');

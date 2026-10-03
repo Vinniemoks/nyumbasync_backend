@@ -16,6 +16,8 @@ const loginAuditSchema = new mongoose.Schema(
     // e.g. 'ok', 'ok_mfa_pending', 'wrong_password', 'unknown_identifier',
     //      'account_locked', 'invalid_input'
     reason: { type: String, required: true },
+    // How the second step / identity was proven: 'totp', 'email', 'google', 'apple'.
+    method: String,
     ip: String,
     userAgent: String,
   },

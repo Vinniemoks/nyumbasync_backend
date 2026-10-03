@@ -2,6 +2,15 @@
 const jwt = require('jsonwebtoken');
 const logger = require('./logger');
 
+// Token issue time with millisecond precision. JWT `iat` is normally whole
+// seconds, but revocation (tokenValidAfter, set on password change/reset or
+// suspension) is a millisecond cutoff: with whole-second `iat`, a token issued
+// right after a password change fell in the same second as the cutoff and was
+// rejected as "revoked" (about half of immediate re-logins). A fractional `iat`
+// is valid per the JWT spec (NumericDate) and makes "issued after the cutoff"
+// exact.
+const issuedNow = () => Date.now() / 1000;
+
 // JWT Token Generation
 const generateToken = ({ id, role, phone }) => { // Destructure the object
   return jwt.sign(
@@ -9,6 +18,7 @@ const generateToken = ({ id, role, phone }) => { // Destructure the object
       userId: id, // Map id to userId
       role,
       phone,
+      iat: issuedNow(),
       iss: 'NyumbaSync API',
       aud: 'nyumbasync.co.ke'
     },
@@ -26,7 +36,7 @@ const generateToken = ({ id, role, phone }) => { // Destructure the object
 const generateRefreshToken = (id) => {
   const secret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
   return jwt.sign(
-    { userId: id, type: 'refresh', iss: 'NyumbaSync API', aud: 'nyumbasync.co.ke' },
+    { userId: id, type: 'refresh', iat: issuedNow(), iss: 'NyumbaSync API', aud: 'nyumbasync.co.ke' },
     secret,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d', algorithm: 'HS256' }
   );

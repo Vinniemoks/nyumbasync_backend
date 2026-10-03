@@ -8,6 +8,7 @@ const { formatKenyanPhone } = require('../utils/formatters');
 const logger = require('../utils/logger'); // Import shared logger
 const { blacklistToken } = require('../services/token-blacklist.service');
 const emailService = require('../services/emailService');
+const loginFlow = require('../services/login-flow.service');
 
 // Enhanced Kenyan phone registration with M-Pesa verification
 exports.registerWithPhone = async (req, res) => {
@@ -467,6 +468,14 @@ exports.login = async (req, res) => {
     // Reset failed attempts on successful password verification
     await accountLockoutService.resetAttempts(identifier);
 
+    // Suspended / inactive accounts cannot sign in. Checked only after the
+    // password is proven so the account's state isn't revealed to guessers.
+    const blocked = loginFlow.blockedResponse(user);
+    if (blocked) {
+      audit({ success: false, reason: `account_${blocked.reason}`, user: user._id, email: user.email, role: user.role });
+      return res.status(403).json(blocked.body);
+    }
+
     // --- Admin 2FA ---------------------------------------------------------
     // Admins must complete a second factor. Preferred order:
     //   1. TOTP authenticator app (Google Authenticator, Authy, etc.)
@@ -571,106 +580,16 @@ exports.login = async (req, res) => {
       });
     }
 
-    // --- First-login password change check ---
-    if (user.requirePasswordChange) {
-      const jwt = require('jsonwebtoken');
-      const tempToken = jwt.sign(
-        { userId: user._id, purpose: 'password-change' },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m', algorithm: 'HS256' }
-      );
-
-      logger.info(`Password change required for user ${user._id}`);
-      audit({ success: true, reason: 'require_password_change', user: user._id, email: user.email, role: user.role });
-
-      return res.status(200).json({
-        requirePasswordChange: true,
-        message: 'You must change your password before continuing',
-        token: tempToken
-      });
+    // --- Post-authentication gates (forced password change, new-IP code) ---
+    // Shared with the MFA and OAuth paths: see services/login-flow.service.js.
+    const gate = await loginFlow.evaluateGates(user, req);
+    if (gate) {
+      return res.status(200).json(gate.body);
     }
 
-    // --- New IP verification for high-ranked admins ---
-    const userIp = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    const isAdminRole = ['admin', 'super_admin'].includes(user.role);
-    const isKnownIp = user.knownIps && user.knownIps.some(entry => entry.ip === userIp);
-
-    if (isAdminRole && !isKnownIp) {
-      // Generate 6-digit verification code
-      const verificationCode = secureNumericCode(6);
-      const hashedCode = crypto
-        .createHash('sha256')
-        .update(verificationCode)
-        .digest('hex');
-
-      user.ipVerificationCode = hashedCode;
-      user.ipVerificationCodeExpiry = Date.now() + 5 * 60 * 1000; // 5 minutes
-      await user.save();
-
-      // Email the code
-      let emailSent = false;
-      try {
-        emailSent = await emailService.sendEmail({
-          to: user.email,
-          subject: 'NyumbaSync - New Login Verification Code',
-          html: `<p>Hello ${user.firstName},</p><p>A login was attempted from a new IP address: <strong>${userIp}</strong>.</p><p>Your verification code is: <strong>${verificationCode}</strong></p><p>This code will expire in 5 minutes.</p><p>If you did not attempt this login, please contact support immediately.</p>`
-        });
-      } catch (emailErr) {
-        logger.error('Failed to send IP verification email:', emailErr);
-      }
-
-      // Generate ipSessionToken
-      const jwt = require('jsonwebtoken');
-      const ipSessionToken = jwt.sign(
-        { userId: user._id, expectedIp: userIp, purpose: 'ip-verification' },
-        process.env.JWT_SECRET,
-        { expiresIn: '5m', algorithm: 'HS256' }
-      );
-
-      logger.info(`IP verification required for admin user ${user._id} from ${userIp}`);
-      audit({ success: true, reason: 'require_ip_verification', user: user._id, email: user.email, role: user.role });
-
-      return res.status(200).json({
-        requireIpVerification: true,
-        ipSessionToken,
-        emailSent,
-        message: 'A verification code has been sent to your email'
-      });
-    }
-
-    // --- IP tracking on successful login ---
-    // Update knownIps (up to 20 entries, update lastSeen if IP already exists)
-    if (!user.knownIps) user.knownIps = [];
-    const knownIpIndex = user.knownIps.findIndex(entry => entry.ip === userIp);
-    if (knownIpIndex !== -1) {
-      user.knownIps[knownIpIndex].lastSeen = new Date();
-    } else {
-      user.knownIps.push({ ip: userIp, firstSeen: new Date(), lastSeen: new Date() });
-      if (user.knownIps.length > 20) {
-        user.knownIps = user.knownIps.slice(-20);
-      }
-    }
-
-    // Append to loginIps (keep last 10)
-    if (!user.loginIps) user.loginIps = [];
-    user.loginIps.push(userIp);
-    if (user.loginIps.length > 10) {
-      user.loginIps = user.loginIps.slice(-10);
-    }
-
-    // Generate tokens (no MFA required)
-    const token = generateToken({
-      id: user._id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role
-    });
-
-    const refreshToken = generateRefreshToken(user._id);
-
-    // Update last login
-    user.lastLogin = Date.now();
-    await user.save();
+    // Record the IP (known IPs + last 10 sign-ins) and issue the session.
+    const userIp = loginFlow.clientIp(req);
+    const { token, refreshToken } = await loginFlow.completeLogin(user, userIp);
 
     logger.info(`User ${user._id} logged in successfully from ${userIp}`);
     audit({ success: true, reason: 'ok', user: user._id, email: user.email, role: user.role });
@@ -723,60 +642,30 @@ exports.verifyIp = async (req, res) => {
       return res.status(401).json({ error: 'Invalid token purpose' });
     }
 
-    // Find user and include the hidden verification code field
-    const user = await User.findById(decoded.userId).select('+ipVerificationCode');
+    // Find user and include the hidden verification fields
+    const user = await User.findById(decoded.userId).select('+ipVerificationCode +ipVerificationAttempts');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if code is expired
-    if (!user.ipVerificationCodeExpiry || user.ipVerificationCodeExpiry < Date.now()) {
-      return res.status(400).json({ error: 'Verification code expired' });
+    // The account may have been suspended since the password step.
+    const blocked = loginFlow.blockedResponse(user);
+    if (blocked) {
+      loginFlow.audit(req, loginFlow.auditFields(user, `account_${blocked.reason}`, false));
+      return res.status(403).json(blocked.body);
     }
 
-    // Verify code
-    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
-    if (user.ipVerificationCode !== hashedCode) {
-      return res.status(400).json({ error: 'Invalid verification code' });
+    // Check the emailed code (attempt-limited, constant-time).
+    const check = await loginFlow.checkIpCode(user, code);
+    if (!check.ok) {
+      loginFlow.audit(req, loginFlow.auditFields(user, 'ip_code_failed', false));
+      return res.status(check.status).json({ error: check.error });
     }
 
-    // Clear verification code
-    user.ipVerificationCode = undefined;
-    user.ipVerificationCodeExpiry = undefined;
-
-    // Record the IP as known
-    const userIp = decoded.expectedIp || req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    if (!user.knownIps) user.knownIps = [];
-    const knownIpIndex = user.knownIps.findIndex(entry => entry.ip === userIp);
-    if (knownIpIndex !== -1) {
-      user.knownIps[knownIpIndex].lastSeen = new Date();
-    } else {
-      user.knownIps.push({ ip: userIp, firstSeen: new Date(), lastSeen: new Date() });
-      if (user.knownIps.length > 20) {
-        user.knownIps = user.knownIps.slice(-20);
-      }
-    }
-
-    // Append to loginIps (keep last 10)
-    if (!user.loginIps) user.loginIps = [];
-    user.loginIps.push(userIp);
-    if (user.loginIps.length > 10) {
-      user.loginIps = user.loginIps.slice(-10);
-    }
-
-    // Update last login
-    user.lastLogin = Date.now();
-    await user.save();
-
-    // Generate tokens (same as normal login)
-    const token = generateToken({
-      id: user._id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role
-    });
-
-    const refreshToken = generateRefreshToken(user._id);
+    // Record the IP as known, then issue the session.
+    const userIp = decoded.expectedIp || loginFlow.clientIp(req);
+    const { token, refreshToken } = await loginFlow.completeLogin(user, userIp);
+    loginFlow.audit(req, loginFlow.auditFields(user, 'ok_ip_verified'));
 
     logger.info(`Admin user ${user._id} verified IP ${userIp} and logged in successfully`);
 
@@ -1312,6 +1201,9 @@ exports.changePassword = async (req, res) => {
 
     // Update to new password (model hook hashes it on save)
     user.password = newPassword;
+    // The forced first-login change is done (without this, an admin-provisioned
+    // account was sent back to "change your password" on every login).
+    user.requirePasswordChange = false;
     // Revoke all existing sessions on password change (assessment C7/H11).
     user.tokenValidAfter = new Date();
     await user.save();
@@ -1327,6 +1219,9 @@ exports.changePassword = async (req, res) => {
     res.json({
       success: true,
       message: 'Password changed successfully',
+      // Every earlier token (including the first-login one used here) is now
+      // dead, so the client signs in again with the new password.
+      requireLogin: true,
       passwordAge: passwordHistoryService.getPasswordAge(user.passwordChangedAt)
     });
   } catch (error) {
@@ -1339,6 +1234,20 @@ exports.changePassword = async (req, res) => {
 // OAuth Authentication (Google & Apple)
 // ───────────────────────────────────────────
 
+// Billable roles (everyone except tenant) start on the Free tier — same as
+// /auth/signup, so an OAuth-created landlord/agent/vendor isn't left without one.
+async function createFreeSubscriptionIfBillable(user) {
+  try {
+    const { BILLABLE_ROLES } = require('../config/pricingPlans');
+    if (BILLABLE_ROLES.includes(user.role)) {
+      const Subscription = require('../models/subscription.model');
+      await Subscription.create({ user: user._id, role: user.role, tier: 'free', status: 'active' });
+    }
+  } catch (err) {
+    logger.error('Failed to create free subscription for OAuth user:', err);
+  }
+}
+
 /**
  * Google OAuth — POST /api/v1/auth/google
  * Accepts a Google ID token from the frontend and returns a NyumbaSync JWT.
@@ -1348,7 +1257,7 @@ exports.googleAuth = async (req, res) => {
   try {
     const { OAuth2Client } = require('google-auth-library');
     const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-    const { idToken } = req.body;
+    const { idToken, role: requestedRole, roles: requestedRoles } = req.body;
 
     if (!idToken) {
       return res.status(400).json({ error: 'Google ID token is required' });
@@ -1379,6 +1288,8 @@ exports.googleAuth = async (req, res) => {
     if (!user && email) {
       const byEmail = await User.findOne({ email: email.toLowerCase() });
       if (byEmail) {
+        // Never link (or sign in to) a staff account through Google.
+        if (loginFlow.isAdminLevel(byEmail)) return res.status(403).json(loginFlow.STAFF_OAUTH_BODY);
         if (email_verified !== true) {
           return res.status(403).json({
             error: 'This email is already registered. Google did not confirm the email is verified, so it cannot be linked automatically. Please sign in with your password.',
@@ -1395,6 +1306,7 @@ exports.googleAuth = async (req, res) => {
       // Create new OAuth user with a random password placeholder
       const crypto = require('crypto');
       const randomPassword = crypto.randomBytes(32).toString('hex');
+      const newRoles = loginFlow.oauthSignupRoles(requestedRoles && requestedRoles.length ? requestedRoles : requestedRole);
 
       user = new User({
         firstName: firstName || 'Google',
@@ -1403,27 +1315,27 @@ exports.googleAuth = async (req, res) => {
         phone: `google_${googleId}`,
         password: randomPassword,
         googleId,
-        role: 'tenant',
-        roles: ['tenant'],
+        role: newRoles[0],
+        roles: newRoles,
         emailVerified: email_verified === true,
         status: 'active',
       });
 
       await user.save();
+      await createFreeSubscriptionIfBillable(user);
+    }
+
+    // A returning (already linked) staff account, or a locked one, may not use OAuth.
+    if (loginFlow.isAdminLevel(user)) return res.status(403).json(loginFlow.STAFF_OAUTH_BODY);
+    const blocked = loginFlow.blockedResponse(user);
+    if (blocked) {
+      loginFlow.audit(req, loginFlow.auditFields(user, `account_${blocked.reason}`, false, { method: 'google' }));
+      return res.status(403).json(blocked.body);
     }
 
     // Generate JWT and refresh token (same response as normal login)
-    const token = generateToken({
-      id: user._id,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-    });
-
-    const refreshToken = generateRefreshToken(user._id);
-
-    user.lastLogin = Date.now();
-    await user.save();
+    const { token, refreshToken } = await loginFlow.completeLogin(user, loginFlow.clientIp(req));
+    loginFlow.audit(req, loginFlow.auditFields(user, 'ok_google', true, { method: 'google' }));
 
     logger.info(`Google OAuth login: user ${user._id}`);
 
@@ -1463,7 +1375,7 @@ exports.appleAuth = async (req, res) => {
     const { createPublicKey } = require('crypto');
     const axios = require('axios');
 
-    const { identityToken, user } = req.body;
+    const { identityToken, user, role: requestedRole, roles: requestedRoles } = req.body;
 
     if (!identityToken) {
       return res.status(400).json({ error: 'Apple identity token is required' });
@@ -1506,6 +1418,8 @@ exports.appleAuth = async (req, res) => {
     if (!existingUser && email) {
       const byEmail = await User.findOne({ email: email.toLowerCase() });
       if (byEmail) {
+        // Never link (or sign in to) a staff account through Apple.
+        if (loginFlow.isAdminLevel(byEmail)) return res.status(403).json(loginFlow.STAFF_OAUTH_BODY);
         if (!emailVerified) {
           return res.status(403).json({
             error: 'This email is already registered. Apple did not confirm the email is verified, so it cannot be linked automatically. Please sign in with your password.',
@@ -1522,6 +1436,7 @@ exports.appleAuth = async (req, res) => {
       // Create new OAuth user with a random password placeholder
       const crypto = require('crypto');
       const randomPassword = crypto.randomBytes(32).toString('hex');
+      const newRoles = loginFlow.oauthSignupRoles(requestedRoles && requestedRoles.length ? requestedRoles : requestedRole);
 
       existingUser = new User({
         firstName: user?.firstName || 'Apple',
@@ -1530,27 +1445,27 @@ exports.appleAuth = async (req, res) => {
         phone: `apple_${appleId}`,
         password: randomPassword,
         appleId,
-        role: 'tenant',
-        roles: ['tenant'],
+        role: newRoles[0],
+        roles: newRoles,
         emailVerified: emailVerified,
         status: 'active',
       });
 
       await existingUser.save();
+      await createFreeSubscriptionIfBillable(existingUser);
+    }
+
+    // A returning (already linked) staff account, or a locked one, may not use OAuth.
+    if (loginFlow.isAdminLevel(existingUser)) return res.status(403).json(loginFlow.STAFF_OAUTH_BODY);
+    const blocked = loginFlow.blockedResponse(existingUser);
+    if (blocked) {
+      loginFlow.audit(req, loginFlow.auditFields(existingUser, `account_${blocked.reason}`, false, { method: 'apple' }));
+      return res.status(403).json(blocked.body);
     }
 
     // Generate JWT and refresh token (same response as normal login)
-    const token = generateToken({
-      id: existingUser._id,
-      email: existingUser.email,
-      phone: existingUser.phone,
-      role: existingUser.role,
-    });
-
-    const refreshToken = generateRefreshToken(existingUser._id);
-
-    existingUser.lastLogin = Date.now();
-    await existingUser.save();
+    const { token, refreshToken } = await loginFlow.completeLogin(existingUser, loginFlow.clientIp(req));
+    loginFlow.audit(req, loginFlow.auditFields(existingUser, 'ok_apple', true, { method: 'apple' }));
 
     logger.info(`Apple OAuth login: user ${existingUser._id}`);
 
@@ -1576,6 +1491,35 @@ exports.appleAuth = async (req, res) => {
   } catch (error) {
     logger.error('Apple auth error:', error);
     res.status(500).json({ error: 'Apple authentication failed', details: error.message });
+  }
+};
+
+// Re-send the activation link to an admin-provisioned account that hasn't
+// activated yet. Public (the person may have lost the email), so the answer is
+// the same whether or not the address belongs to a pending account — it must
+// not reveal which emails have accounts.
+exports.resendActivation = async (req, res) => {
+  const generic = {
+    success: true,
+    message: 'If that address belongs to an account waiting for activation, a new link has been sent.',
+  };
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'A valid email address is required' });
+    }
+
+    const activation = require('../services/activation.service');
+    const user = await User.findOne({ email }).select('+activationToken');
+    if (user && activation.isPending(user) && activation.cooldownSeconds(user) === 0
+        && !loginFlow.blockedResponse(user)) {
+      await activation.issueAndSend(user);
+      logger.info(`Activation link re-sent for user ${user._id}`);
+    }
+    return res.json(generic);
+  } catch (error) {
+    logger.error('Resend activation error:', error);
+    return res.json(generic); // never hint at what went wrong
   }
 };
 

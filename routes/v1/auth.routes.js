@@ -1,7 +1,9 @@
 // auth.routes.js
 const asyncHandler = require('express-async-handler');
 const authController = require('../../controllers/auth.controller');
-const { authenticate } = require('../../middlewares/auth.middleware');
+// authMiddleware = "must be logged in": answers 401 without a token (authenticate()
+// lets a token-less request through, so these routes used to fail with a 500).
+const { authMiddleware, requireAuthAllowing } = require('../../middlewares/auth.middleware');
 
 module.exports = [
   // Login
@@ -48,7 +50,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/logout',
-    handler: [authenticate(), asyncHandler(authController.logout)],
+    handler: [authMiddleware, asyncHandler(authController.logout)],
     config: { source: 'auth.routes' }
   },
   
@@ -64,7 +66,7 @@ module.exports = [
   {
     method: 'GET',
     path: '/me',
-    handler: [authenticate(), asyncHandler(authController.getCurrentUser)],
+    handler: [authMiddleware, asyncHandler(authController.getCurrentUser)],
     config: { source: 'auth.routes' }
   },
   
@@ -72,7 +74,7 @@ module.exports = [
   {
     method: 'GET',
     path: '/profile',
-    handler: [authenticate(), asyncHandler(authController.getProfile)],
+    handler: [authMiddleware, asyncHandler(authController.getProfile)],
     config: { source: 'auth.routes' }
   },
   
@@ -80,7 +82,7 @@ module.exports = [
   {
     method: 'PUT',
     path: '/profile/complete',
-    handler: [authenticate(), asyncHandler(authController.completeProfile)],
+    handler: [authMiddleware, asyncHandler(authController.completeProfile)],
     config: { source: 'auth.routes' }
   },
   
@@ -88,7 +90,7 @@ module.exports = [
   {
     method: 'PUT',
     path: '/profile',
-    handler: [authenticate(), asyncHandler(authController.updateProfile)],
+    handler: [authMiddleware, asyncHandler(authController.updateProfile)],
     config: { source: 'auth.routes' }
   },
   
@@ -112,7 +114,9 @@ module.exports = [
   {
     method: 'POST',
     path: '/change-password',
-    handler: [authenticate(), asyncHandler(authController.changePassword)],
+    // Also accepts the short-lived first-login token (purpose 'password-change'),
+    // which is valid for nothing else.
+    handler: [requireAuthAllowing('password-change'), asyncHandler(authController.changePassword)],
     config: { source: 'auth.routes' }
   },
   
@@ -152,7 +156,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/mfa/email',
-    handler: [authenticate(), asyncHandler(require('../../controllers/mfa.controller').setEmailMfa)],
+    handler: [authMiddleware, asyncHandler(require('../../controllers/mfa.controller').setEmailMfa)],
     config: { source: 'auth.routes' }
   },
 
@@ -172,7 +176,7 @@ module.exports = [
   {
     method: 'POST',
     path: '/resend-verification',
-    handler: [authenticate(), asyncHandler(authController.resendVerification)],
+    handler: [authMiddleware, asyncHandler(authController.resendVerification)],
     config: { source: 'auth.routes' }
   },
   // Activate account via admin-provisioned activation token
@@ -180,6 +184,13 @@ module.exports = [
     method: 'POST',
     path: '/activate',
     handler: asyncHandler(authController.activateAccount),
+    config: { source: 'auth.routes' }
+  },
+  // Ask for a fresh activation link (answer never reveals whether the email exists)
+  {
+    method: 'POST',
+    path: '/resend-activation',
+    handler: asyncHandler(authController.resendActivation),
     config: { source: 'auth.routes' }
   }
 ];

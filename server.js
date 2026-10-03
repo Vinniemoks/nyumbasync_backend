@@ -441,10 +441,12 @@ const optionalAuth = async (req, res, next) => {
   try {
     if (await _isBlacklisted(token)) return next(); // revoked → anonymous
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    // Step / refresh tokens are not access tokens (see utils/token-scope.js).
+    if (decoded.purpose || decoded.type) return next();
     const user = await UserModel.findById(decoded.userId).select('-password -mfaSecret').lean();
     const revoked = user && user.tokenValidAfter && decoded.iat &&
       decoded.iat * 1000 < new Date(user.tokenValidAfter).getTime();
-    if (user && user.isActive !== false && !revoked) {
+    if (user && user.isActive !== false && user.status !== 'suspended' && user.status !== 'inactive' && !revoked) {
       user.id = user.id || String(user._id);
       req.user = user;
     }

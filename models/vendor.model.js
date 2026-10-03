@@ -54,7 +54,8 @@ const VendorSchema = new mongoose.Schema({
     enum: [
       'plumbing', 'electrical',
       'carpentry', 'cleaning',
-      'security'
+      'security', 'hvac',
+      'landscaping', 'painting'
     ]
   }],
 

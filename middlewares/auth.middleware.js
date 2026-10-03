@@ -4,6 +4,7 @@ const User = require('../models/user.model');
 const Lease = require('../models/lease.model');
 const logger = require('../utils/logger');
 const { isBlacklisted } = require('../services/token-blacklist.service');
+const { scopeOf, accountBlockReason, BLOCK_MESSAGES } = require('../utils/token-scope');
 
 // Helper function for logging auth attempts
 const logAuthAttempt = (identifier, event, details = '') => {
@@ -23,8 +24,14 @@ const rateLimiter = new RateLimiterMemory({
 /**
  * Enhanced JWT authentication middleware with rate limiting
  * @param {string|array} roles - Optional role(s) to authorize
+ * @param {object} [options]
+ * @param {string[]} [options.allowPurposes] - step-token purposes this route
+ *   accepts in addition to normal access tokens (e.g. 'password-change' on the
+ *   change-password route). Such a token is only valid on routes with no role
+ *   requirement, and is never a general access token.
  */
-const authenticate = (roles = 'any') => {
+const authenticate = (roles = 'any', options = {}) => {
+  const allowPurposes = options.allowPurposes || [];
   return async (req, res, next) => {
     try {
       // Rate limiting check (skip in test environment)
@@ -61,7 +68,21 @@ const authenticate = (roles = 'any') => {
       }
 
       // Token verification
-      const decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: false });
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'], ignoreExpiration: false });
+
+      // Step tokens (password-change / new-IP / MFA) and refresh tokens are not
+      // access tokens: they are only accepted where a route opts in explicitly.
+      const scope = scopeOf(decoded);
+      if (scope && !(decoded.purpose && allowPurposes.includes(decoded.purpose))) {
+        logAuthAttempt(req.ip, 'SCOPED_TOKEN_REJECTED', scope);
+        return res.status(401).json({ error: 'Invalid authentication token.' });
+      }
+      if (scope && roles !== 'any') {
+        logAuthAttempt(req.ip, 'SCOPED_TOKEN_ON_ROLE_ROUTE', scope);
+        return res.status(403).json({ error: 'This token cannot be used here.' });
+      }
+      req.tokenPurpose = scope || undefined;
+
       const user = await User.findById(decoded.userId)
         .select('-password -resetToken -resetTokenExpiry')
         .lean();
@@ -73,11 +94,13 @@ const authenticate = (roles = 'any') => {
         });
       }
 
-      // Check if user is active
-      if (!user.isActive) {
-        logAuthAttempt(user._id, 'ACCOUNT_INACTIVE');
+      // Check if user is active. `suspended` / `inactive` status lock the
+      // account the same way `isActive:false` does (admins set `status`).
+      const blocked = !user.isActive ? 'inactive' : accountBlockReason(user);
+      if (blocked) {
+        logAuthAttempt(user._id, 'ACCOUNT_' + blocked.toUpperCase());
         return res.status(403).json({
-          error: 'Account is inactive. Please contact support.'
+          error: BLOCK_MESSAGES[blocked] || BLOCK_MESSAGES.inactive
         });
       }
 
@@ -260,13 +283,18 @@ const verifyEmailConfirmed = (req, res, next) => {
 // public-or-private routes), so it can't back the names that mean "you must be
 // authenticated" — without a token those would fall through to the controller
 // with no req.user and 500. This guard rejects the no-token case up front.
-const requireAuth = (req, res, next) => {
+const makeRequireAuth = (options) => (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '') || req.cookies?.accessToken;
   if (!token) {
     return res.status(401).json({ error: 'Authentication required. No token provided.' });
   }
-  return authenticate()(req, res, next);
+  return authenticate('any', options)(req, res, next);
 };
+const requireAuth = makeRequireAuth({});
+
+// Like requireAuth, but also accepts the listed step-token purposes (e.g. the
+// first-login 'password-change' token on the change-password route).
+const requireAuthAllowing = (...purposes) => makeRequireAuth({ allowPurposes: purposes });
 
 module.exports = {
   authenticate,          // Primary authentication middleware
@@ -286,6 +314,7 @@ module.exports = {
   // Compatibility aliases — several route modules import these names.
   // authMiddleware authenticates any logged-in user; roleMiddleware
   // restricts to the given roles.
+  requireAuthAllowing,
   authMiddleware: requireAuth,
   roleMiddleware: (roles) => authenticate(roles),
   protect: requireAuth,

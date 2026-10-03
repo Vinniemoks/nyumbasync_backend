@@ -49,129 +49,95 @@ describe('Password History Security Tests', () => {
   });
 
   describe('Password Change with History', () => {
-    it('should change password successfully', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'InitialPassword123!',
-          newPassword: 'NewPassword123!'
-        })
-        .expect(200);
+    // Changing a password ends every earlier session (tokenValidAfter), so each
+    // step signs in again with whatever the password is now rather than reusing
+    // one token across changes.
+    let currentPassword = 'InitialPassword123!';
 
+    const session = async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ identifier: 'password@test.com', password: currentPassword })
+        .expect(200);
+      return res.body.token;
+    };
+
+    const attempt = async (body) => {
+      const token = await session();
+      return request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+    };
+
+    // Change the password for real and remember it.
+    const change = async (newPassword) => {
+      const res = await attempt({ currentPassword, newPassword });
+      if (res.status === 200) currentPassword = newPassword;
+      return res;
+    };
+
+    it('should change password successfully', async () => {
+      const res = await change('NewPassword123!');
+      expect(res.status).to.equal(200);
       expect(res.body).to.have.property('success', true);
       expect(res.body.message).to.include('successfully');
     });
 
-    it('should reject same password as current', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'NewPassword123!',
-          newPassword: 'NewPassword123!'
-        })
-        .expect(400);
+    it('ends the old session when the password changes', async () => {
+      const oldToken = await session();
+      await change('Password1b!');
+      await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${oldToken}`).expect(401);
+      // ...while signing in again with the new password works at once
+      const fresh = await session();
+      await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${fresh}`).expect(200);
+    });
 
+    it('should reject same password as current', async () => {
+      const res = await attempt({ currentPassword, newPassword: currentPassword });
+      expect(res.status).to.equal(400);
       expect(res.body.error).to.include('different');
     });
 
     it('should prevent reusing recent password', async () => {
-      // Change password multiple times
-      await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'NewPassword123!',
-          newPassword: 'Password2!'
-        });
+      await change('Password2!');
 
-      // Try to reuse first password
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'Password2!',
-          newPassword: 'InitialPassword123!'
-        })
-        .expect(400);
-
+      // Try to reuse the first password
+      const res = await attempt({ currentPassword, newPassword: 'InitialPassword123!' });
+      expect(res.status).to.equal(400);
       expect(res.body.error).to.include('recently');
       expect(res.body.error).to.include('last 5');
     });
 
     it('should allow password after 5 changes', async () => {
-      // Change password 5 times
-      const passwords = [
-        'Password3!',
-        'Password4!',
-        'Password5!',
-        'Password6!',
-        'Password7!'
-      ];
-
-      let currentPassword = 'Password2!';
-      for (const newPassword of passwords) {
-        await request(app)
-          .post('/api/v1/auth/change-password')
-          .set('Authorization', `Bearer ${authToken}`)
-          .send({
-            currentPassword,
-            newPassword
-          });
-        currentPassword = newPassword;
+      // Change password 5 more times
+      for (const next of ['Password3!', 'Password4!', 'Password5!', 'Password6!', 'Password7!']) {
+        expect((await change(next)).status).to.equal(200);
       }
 
-      // Now should be able to reuse InitialPassword123!
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'Password7!',
-          newPassword: 'InitialPassword123!'
-        })
-        .expect(200);
-
+      // The first password is now outside the history window
+      const res = await change('InitialPassword123!');
+      expect(res.status).to.equal(200);
       expect(res.body).to.have.property('success', true);
-      // 6 password changes = ~12 bcrypt hashes; under full parallel suite
-      // load this exceeds the 10s global timeout, so it gets its own.
-    }, 30000);
+      // each change = a sign-in + a change = several bcrypt hashes; under full
+      // parallel suite load this exceeds the 10s global timeout, so it gets its own.
+    }, 60000);
 
     it('should require minimum password length', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'InitialPassword123!',
-          newPassword: 'Short1!'
-        })
-        .expect(400);
-
+      const res = await attempt({ currentPassword, newPassword: 'Short1!' });
+      expect(res.status).to.equal(400);
       expect(res.body.error).to.include('8 characters');
     });
 
     it('should require current password', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          newPassword: 'NewPassword123!'
-        })
-        .expect(400);
-
+      const res = await attempt({ newPassword: 'NewPassword123!' });
+      expect(res.status).to.equal(400);
       expect(res.body.error).to.include('required');
     });
 
     it('should verify current password is correct', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/change-password')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({
-          currentPassword: 'WrongPassword!',
-          newPassword: 'NewPassword123!'
-        })
-        .expect(400);
-
+      const res = await attempt({ currentPassword: 'WrongPassword!', newPassword: 'NewPassword123!' });
+      expect(res.status).to.equal(400);
       expect(res.body.error).to.include('incorrect');
     });
   });

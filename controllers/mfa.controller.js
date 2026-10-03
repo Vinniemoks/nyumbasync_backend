@@ -6,6 +6,7 @@
 const User = require('../models/user.model');
 const mfaService = require('../services/mfa.service');
 const { sanitizeLog } = require('../utils/log-sanitizer');
+const loginFlow = require('../services/login-flow.service');
 
 /**
  * Enable MFA for user
@@ -399,28 +400,33 @@ exports.verifyMFALogin = async (req, res) => {
     }
 
     if (!isValid) {
+      loginFlow.audit(req, loginFlow.auditFields(user, 'mfa_failed', false));
       return res.status(401).json({
         success: false,
         error: 'Invalid or expired code. Please try again or request a new code.'
       });
     }
 
-    // Generate JWT token (complete login). Use the shared generator so the
-    // claims (userId, iss, aud) match what the auth middleware verifies —
-    // a manually signed token without them is rejected on the next request.
-    const jwt = require('jsonwebtoken');
-    const { generateToken } = require('../utils/auth');
-    const accessToken = generateToken({ id: user._id, role: user.role });
+    // The account may have been suspended since the password step.
+    const blocked = loginFlow.blockedResponse(user);
+    if (blocked) {
+      loginFlow.audit(req, loginFlow.auditFields(user, `account_${blocked.reason}`, false));
+      return res.status(403).json({ success: false, ...blocked.body });
+    }
 
-    const refreshToken = jwt.sign(
-      { id: user._id },
-      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
-    );
+    // The second factor is proven. Finishing through MFA must not skip the
+    // gates the password-only path applies (forced password change, new-IP code).
+    const gate = await loginFlow.evaluateGates(user, req);
+    if (gate) {
+      return res.status(200).json({ success: true, ...gate.body });
+    }
 
-    // Update last login
-    user.lastLogin = Date.now();
-    await user.save();
+    // Complete the login. The shared helper issues access + refresh tokens with
+    // the claims the auth middleware / refresh endpoint verify (userId, iss, aud,
+    // type) and records the IP; a hand-signed refresh token without `type` was
+    // rejected by /auth/refresh.
+    const { token: accessToken, refreshToken } = await loginFlow.completeLogin(user, loginFlow.clientIp(req));
+    loginFlow.audit(req, loginFlow.auditFields(user, 'ok_mfa', true, { method: emailOtp ? 'email' : token ? 'totp' : 'backup_code' }));
 
     console.log(sanitizeLog('MFA login successful', {
       userId: user._id,
