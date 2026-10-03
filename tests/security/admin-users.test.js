@@ -9,6 +9,7 @@ const app = require('../../server').app;
 const User = require('../../models/user.model');
 const { generateToken } = require('../../utils/auth');
 const templatedEmail = require('../../services/email.service');
+const Vendor = require('../../models/vendor.model');
 
 const PASSWORD = 'Correct-Horse-9!';
 let mongoServer;
@@ -41,6 +42,7 @@ beforeEach(async () => {
     return true;
   });
   await User.deleteMany({});
+  await Vendor.deleteMany({});
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -338,5 +340,82 @@ describe('bulk status', () => {
     await request(app).post('/api/v1/admin/users/bulk-status').set(as(root)).send({ action: 'suspend', userIds: [] }).expect(400);
     await request(app).post('/api/v1/admin/users/bulk-status').set(as(root)).send({ action: 'suspend', userIds: ['nope'] }).expect(400);
     await request(app).post('/api/v1/admin/users/bulk-status').set(as(root)).send({ action: 'suspend', userIds: Array(101).fill(String(root._id)) }).expect(400);
+  });
+});
+
+describe('vendor services', () => {
+  const vendorBody = (over = {}) => newStaff({ role: 'vendor', ...over });
+
+  test('creating a vendor saves their services on a linked vendor profile', async () => {
+    const admin = await makeUser('super_admin');
+    const res = await request(app).post('/api/v1/admin/users').set(as(admin)).send(vendorBody({ serviceTypes: ['plumbing', 'hvac', 'painting'] })).expect(201);
+    expect(res.body.vendorProfile).toBe(true);
+    const profile = await Vendor.findOne({ user: res.body.user.id });
+    expect(profile.services.sort()).toEqual(['hvac', 'painting', 'plumbing']);
+    expect(profile.company).toContain('Neo');
+    expect(profile.contact).toMatch(/^254[17]\d{8}$/);
+  });
+
+  test('an unknown service is a 400 and nothing is created', async () => {
+    const admin = await makeUser('super_admin');
+    const body = vendorBody({ serviceTypes: ['plumbing', 'time-travel'] });
+    const res = await request(app).post('/api/v1/admin/users').set(as(admin)).send(body).expect(400);
+    expect(res.body.error).toMatch(/time-travel/);
+    expect(res.body.allowed).toContain('plumbing');
+    expect(await User.countDocuments({ email: body.email })).toBe(0);
+    expect(await Vendor.countDocuments()).toBe(0);
+  });
+
+  test('a vendor with no services still gets a profile; non-vendors never do', async () => {
+    const admin = await makeUser('super_admin');
+    const v = await request(app).post('/api/v1/admin/users').set(as(admin)).send(vendorBody()).expect(201);
+    expect((await Vendor.findOne({ user: v.body.user.id })).services).toEqual([]);
+
+    const t = await request(app).post('/api/v1/admin/users').set(as(admin)).send(newStaff({ role: 'tenant', serviceTypes: ['plumbing'] })).expect(201);
+    expect(t.body.vendorProfile).toBeUndefined();
+    expect(await Vendor.countDocuments({ user: t.body.user.id })).toBe(0);
+  });
+
+  test('the user list returns a vendor\'s services so the edit form can show them', async () => {
+    const admin = await makeUser('super_admin');
+    const v = await request(app).post('/api/v1/admin/users').set(as(admin)).send(vendorBody({ serviceTypes: ['carpentry'] })).expect(201);
+    await makeUser('tenant');
+    const list = (await request(app).get('/api/v1/admin/users').set(as(admin)).expect(200)).body.users;
+    expect(list.find((u) => u.id === v.body.user.id).serviceTypes).toEqual(['carpentry']);
+    expect(list.filter((u) => u.role === 'tenant').every((u) => u.serviceTypes === undefined)).toBe(true);
+  });
+
+  test('editing updates the services; leaving them out keeps what was there', async () => {
+    const admin = await makeUser('super_admin');
+    const v = await request(app).post('/api/v1/admin/users').set(as(admin)).send(vendorBody({ serviceTypes: ['plumbing'] })).expect(201);
+    const id = v.body.user.id;
+
+    await request(app).patch(`/api/v1/admin/users/${id}`).set(as(admin)).send({ serviceTypes: ['electrical', 'security'] }).expect(200);
+    expect((await Vendor.findOne({ user: id })).services.sort()).toEqual(['electrical', 'security']);
+
+    await request(app).patch(`/api/v1/admin/users/${id}`).set(as(admin)).send({ firstName: 'Renamed' }).expect(200);
+    expect((await Vendor.findOne({ user: id })).services.sort()).toEqual(['electrical', 'security']);
+
+    await request(app).patch(`/api/v1/admin/users/${id}`).set(as(admin)).send({ serviceTypes: ['nope'] }).expect(400);
+    expect((await Vendor.findOne({ user: id })).services.sort()).toEqual(['electrical', 'security']);
+    // still only one profile
+    expect(await Vendor.countDocuments({ user: id })).toBe(1);
+  });
+
+  test('services sent for a non-vendor account are ignored', async () => {
+    const admin = await makeUser('super_admin');
+    const t = await makeUser('tenant');
+    await request(app).patch(`/api/v1/admin/users/${t._id}`).set(as(admin)).send({ serviceTypes: ['plumbing'] }).expect(200);
+    expect(await Vendor.countDocuments({ user: t._id })).toBe(0);
+  });
+});
+
+describe('retired endpoint', () => {
+  test('POST /admin/users/manage is gone (use PATCH /admin/users/:id or bulk-status)', async () => {
+    const admin = await makeUser('super_admin');
+    const t = await makeUser('tenant');
+    const r = await request(app).post('/api/v1/admin/users/manage').set(as(admin)).send({ action: 'update-status', userId: String(t._id), status: 'suspended' });
+    expect(r.status).toBe(404);
+    expect((await User.findById(t._id)).status).toBe('active');
   });
 });

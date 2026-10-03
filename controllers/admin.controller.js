@@ -389,67 +389,6 @@ exports.renewLease = async (req, res) => {
 };
 
 /**
- * User Management
- */
-exports.manageUsers = async (req, res) => {
-  try {
-    const { action, userId, role, status } = req.body;
-    
-    const validActions = ['change-role', 'update-status'];
-    if (!validActions.includes(action)) {
-      return res.status(400).json({ error: 'Invalid action' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Kenyan admin validation
-    if (user.phone.startsWith('254') && !req.user.isSuperAdmin) {
-      return res.status(403).json({ 
-        error: 'Elevated privileges required for Kenyan user modifications' 
-      });
-    }
-
-    let update = {};
-    if (action === 'change-role') {
-      if (!['tenant', 'landlord', 'vendor', 'manager'].includes(role)) {
-        return res.status(400).json({ error: 'Invalid role' });
-      }
-      update.role = role;
-    } else {
-      if (!['active', 'suspended', 'inactive'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status' });
-      }
-      update.status = status;
-    }
-
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      update,
-      { new: true }
-    ).select('-password');
-
-    // Log admin action
-    logAdminActivity(
-      req.user._id, 
-      action.toUpperCase(), 
-      { targetUser: userId, changes: update }
-    );
-
-    res.json({
-      message: 'User updated successfully',
-      user: updatedUser
-    });
-
-  } catch (error) {
-    logAdminActivity(req.user._id, 'USER_MANAGEMENT_FAILED', error.message);
-    res.status(500).json({ error: 'User management action failed' });
-  }
-};
-
-/**
  * Property Compliance Checks
  */
 exports.checkCompliance = async (req, res) => {
@@ -653,6 +592,8 @@ const isSuper = (reqUser) => {
   return roles.includes('super_admin');
 };
 
+const vendorProfiles = require('../services/vendor-profile.service');
+
 const STATUSES = ['active', 'inactive', 'suspended'];
 
 // What the admin lists show. Never includes password, MFA secrets, or the
@@ -738,7 +679,16 @@ exports.listUsers = async (req, res) => {
       User.countDocuments(filter),
     ]);
 
-    res.json({ users: users.map(presentUser), total, page, pages: Math.ceil(total / limit) });
+    // Vendors' services live on their vendor profile; the edit form needs them.
+    const vendorIds = users.filter((u) => rolesOfUser(u).includes('vendor')).map((u) => u._id);
+    const services = await vendorProfiles.servicesByUser(vendorIds);
+    res.json({
+      users: users.map((u) => ({
+        ...presentUser(u),
+        ...(rolesOfUser(u).includes('vendor') ? { serviceTypes: services.get(String(u._id)) || [] } : {}),
+      })),
+      total, page, pages: Math.ceil(total / limit),
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to list users' });
   }
@@ -765,6 +715,15 @@ exports.createUser = async (req, res) => {
     const normalizedPhone = formatKenyanPhone(phone);
     if (!normalizedPhone) {
       return res.status(400).json({ error: 'Invalid Kenyan phone (must start with 2547 or 2541)' });
+    }
+
+    // A vendor's services are stored on their vendor profile; check them before
+    // anything is created.
+    const isVendor = requestedRoles.includes('vendor');
+    const serviceTypes = isVendor ? vendorProfiles.parseServices(req.body.serviceTypes) : null;
+    const badServices = vendorProfiles.unknownServices(serviceTypes);
+    if (badServices.length) {
+      return res.status(400).json({ error: `Unknown service type(s): ${badServices.join(', ')}`, allowed: vendorProfiles.SERVICES });
     }
 
     const exists = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone: normalizedPhone }] });
@@ -802,11 +761,24 @@ exports.createUser = async (req, res) => {
     // configured, provider down) the admin can resend from the user's card.
     const activationEmailSent = await activation.sendActivationEmail(user, rawActivationToken);
 
+    let vendorProfile;
+    if (isVendor) {
+      try {
+        await vendorProfiles.saveVendorServices(user, serviceTypes || []);
+        vendorProfile = true;
+      } catch (err) {
+        // The account exists either way; the admin can set services from Edit.
+        logger.error('Failed to create vendor profile:', err);
+        vendorProfile = false;
+      }
+    }
+
     logAdminActivity(req.user._id, 'USER_CREATED', { targetUser: user._id, roles: requestedRoles });
 
     res.status(201).json({
       message: 'User created',
       activationEmailSent,
+      ...(vendorProfile === undefined ? {} : { vendorProfile }),
       user: {
         id: user._id, email: user.email, phone: user.phone,
         firstName: user.firstName, lastName: user.lastName,
@@ -864,6 +836,11 @@ exports.updateUserAdmin = async (req, res) => {
     if (status && !STATUSES.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
+    const serviceTypes = vendorProfiles.parseServices(req.body.serviceTypes);
+    const badServices = vendorProfiles.unknownServices(serviceTypes);
+    if (badServices.length) {
+      return res.status(400).json({ error: `Unknown service type(s): ${badServices.join(', ')}`, allowed: vendorProfiles.SERVICES });
+    }
 
     // Nobody locks themselves out or demotes themselves by accident. (Only a
     // super admin can edit a super admin, and never themselves, so the acting
@@ -909,6 +886,10 @@ exports.updateUserAdmin = async (req, res) => {
     }
 
     await target.save();
+    // Services belong to the vendor profile; only touched when sent and the account is a vendor.
+    if (serviceTypes && rolesOfUser(target).includes('vendor')) {
+      await vendorProfiles.saveVendorServices(target, serviceTypes);
+    }
     logAdminActivity(req.user._id, 'USER_UPDATED', { targetUser: target._id, fields: Object.keys(req.body).filter((k) => k !== 'password') });
 
     res.json({

@@ -28,17 +28,6 @@ const validateLeaseId = [
   validate
 ];
 
-// User management validation
-const validateUserManagement = [
-  body('action')
-    .isIn(['activate', 'deactivate', 'promote', 'demote'])
-    .withMessage('Invalid management action'),
-  body('userId')
-    .isMongoId()
-    .withMessage('Invalid user ID'),
-  validate
-];
-
 module.exports = [
   // Dashboard routes
   {
@@ -222,21 +211,6 @@ module.exports = [
     config: { 
       source: 'admin.routes',
       description: 'Renew existing lease'
-    }
-  },
-
-  // User management routes
-  {
-    method: 'POST',
-    path: '/users/manage',
-    handler: [
-      authenticate(adminRoles),
-      validateUserManagement,
-      asyncHandler(adminController.manageUsers)
-    ],
-    config: { 
-      source: 'admin.routes',
-      description: 'Manage user accounts'
     }
   },
 
