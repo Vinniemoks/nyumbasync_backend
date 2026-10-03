@@ -258,6 +258,21 @@ describe('forced first-login password change', () => {
   });
 });
 
+describe('routes that need a login', () => {
+  test.each([
+    ['get', '/api/v1/auth/me'],
+    ['get', '/api/v1/auth/profile'],
+    ['put', '/api/v1/auth/profile'],
+    ['put', '/api/v1/auth/profile/complete'],
+    ['post', '/api/v1/auth/logout'],
+    ['post', '/api/v1/auth/resend-verification'],
+    ['post', '/api/v1/auth/mfa/email'],
+    ['post', '/api/v1/auth/change-password'],
+  ])('%s %s answers 401 without a token (some used to be a 500)', async (method, path) => {
+    await request(app)[method](path).send({}).expect(401);
+  });
+});
+
 describe('suspended and inactive accounts', () => {
   test.each([['suspended'], ['inactive']])('%s accounts cannot sign in, and the reply does not leak state to a wrong password', async (status) => {
     const user = await makeUser('tenant', { status });
