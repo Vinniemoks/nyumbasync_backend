@@ -72,6 +72,11 @@ function initializeWebSocket(server) {
             // Access tokens carry the `userId` claim (utils/auth.js); tolerate `id`
             // for any legacy tokens still in flight.
             const userId = decoded.userId || decoded.id;
+            // Step tokens (password-change / new-IP / MFA) and refresh tokens
+            // are not access tokens.
+            if (decoded.purpose || decoded.type) {
+                return next(new Error('Authentication error: Invalid token'));
+            }
             if (!userId) {
                 return next(new Error('Authentication error: Invalid token'));
             }
