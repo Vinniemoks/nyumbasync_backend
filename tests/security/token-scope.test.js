@@ -90,6 +90,30 @@ describe('routes that opt in to a step token', () => {
   });
 });
 
+describe('revocation is exact to the millisecond', () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  test('a token issued after the cutoff works even in the same second; one issued before does not', async () => {
+    const before = generateToken({ id: 'u1', role: 'super_admin', phone: '254700000000' });
+    await sleep(15);
+    const cutoff = new Date(); // e.g. a password change
+    await sleep(15);
+    const after = generateToken({ id: 'u1', role: 'super_admin', phone: '254700000000' });
+    const user = { ...baseUser, tokenValidAfter: cutoff };
+
+    expect((await run(after, { user })).nextCalled).toBe(true);
+    const old = await run(before, { user });
+    expect(old.nextCalled).toBe(false);
+    expect(old.res.code).toBe(401);
+  });
+
+  test('the refresh token carries the same precision', () => {
+    const decoded = jwt.decode(generateRefreshToken('u1'));
+    expect(decoded.type).toBe('refresh');
+    expect(Number.isInteger(decoded.iat)).toBe(false);
+  });
+});
+
 describe('locked accounts', () => {
   const token = () => generateToken({ id: 'u1', role: 'super_admin', phone: '254700000000' });
 
