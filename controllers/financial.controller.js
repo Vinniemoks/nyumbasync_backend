@@ -1,6 +1,7 @@
 const PaymentModel = require('../models/payment.model');
 const TransactionModel = require('../models/transaction.model');
 const LeaseModel = require('../models/lease.model');
+const ExpenseModel = require('../models/expense.model');
 const { generateReport } = require('../services/report.service');
 const { sendEmail } = require('../services/email.service');
 const { sendSMS } = require('../services/sms.service');
