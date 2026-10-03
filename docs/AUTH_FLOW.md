@@ -118,8 +118,6 @@ npx jest tests/security/login-gates.test.js    # login, MFA, new-IP, password ch
 npx jest tests/security/admin-users.test.js    # list/create/activate/resend/status/bulk
 ```
 
-Known, unrelated failures at the time of writing: `tests/security/mfa.test.js` (1),
-`tests/security/password-history.test.js` (6, they reuse one token across several
-password changes, which session revocation correctly ends), `tests/unit/payment.test.js`
-(1), `tests/vendor.test.js`, `tests/integration/user-journey.test.js` and
-`tests/integration/email-verification-mfa.test.js`.
+The whole suite passes (`npx jest --runInBand`). Tokens carry a millisecond-precision
+`iat` so that a token issued just after a revoke (password change, suspension) is
+never mistaken for an older one.
