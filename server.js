@@ -44,6 +44,7 @@ const trustProxyHops = process.env.TRUST_PROXY !== undefined
   ? Number(process.env.TRUST_PROXY)
   : (process.env.FLY_APP_NAME ? 1 : 0);
 if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
+app.use(require('./utils/client-ip').applyFlyClientIp);
 const PORT = process.env.PORT || 10000;
 
 // Initialize worker monitoring if in cluster mode
