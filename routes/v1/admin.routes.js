@@ -87,6 +87,25 @@ module.exports = [
     config: { source: 'admin.routes', description: 'Create a user with initial credentials' }
   },
   {
+    // Suspend / unsuspend / activate / deactivate many accounts at once.
+    method: 'POST',
+    path: '/users/bulk-status',
+    handler: [
+      authenticate(['admin', 'super_admin']),
+      asyncHandler(adminController.bulkUpdateStatus)
+    ],
+    config: { source: 'admin.routes', description: 'Bulk status change for users' }
+  },
+  {
+    method: 'POST',
+    path: '/users/:userId/resend-activation',
+    handler: [
+      authenticate(['admin', 'super_admin']),
+      asyncHandler(adminController.resendUserActivation)
+    ],
+    config: { source: 'admin.routes', description: 'Email a new activation link to an unactivated account' }
+  },
+  {
     method: 'PATCH',
     path: '/users/:userId',
     handler: [

@@ -653,39 +653,92 @@ const isSuper = (reqUser) => {
   return roles.includes('super_admin');
 };
 
-// GET /admin/users?search=&role=&page=&limit=
+const STATUSES = ['active', 'inactive', 'suspended'];
+
+// What the admin lists show. Never includes password, MFA secrets, or the
+// (hashed) activation / IP-verification codes.
+const LIST_FIELDS = [
+  'email', 'phone', 'accountNumber', 'firstName', 'lastName', 'role', 'roles',
+  'status', 'isActive', 'emailVerified', 'isAdminProvisioned', 'requirePasswordChange',
+  'mfaEnabled', 'mfaEmailEnabled', 'lastLogin', 'joinedAt', 'createdBy',
+  'knownIps', 'loginIps', 'ipVerificationCodeExpiry', 'activationExpires',
+].join(' ');
+
+// Shape a user document for the admin UI: real field names plus the derived
+// values the pages show (last IP, whether a new-IP code is pending, ...).
+const presentUser = (u) => {
+  const ips = Array.isArray(u.loginIps) ? u.loginIps : [];
+  const known = Array.isArray(u.knownIps) ? u.knownIps : [];
+  const roles = Array.isArray(u.roles) && u.roles.length ? u.roles : [u.role];
+  return {
+    id: String(u._id),
+    _id: u._id,
+    email: u.email,
+    phone: u.phone,
+    accountNumber: u.accountNumber,
+    firstName: u.firstName,
+    lastName: u.lastName,
+    role: u.role,
+    roles,
+    status: u.status || 'active',
+    isActive: u.isActive !== false,
+    emailVerified: !!u.emailVerified,
+    isAdminProvisioned: !!u.isAdminProvisioned,
+    requirePasswordChange: !!u.requirePasswordChange,
+    mfaEnabled: !!(u.mfaEnabled || u.mfaEmailEnabled),
+    lastLogin: u.lastLogin,
+    createdAt: u.joinedAt,
+    createdBy: u.createdBy,
+    // IP tracking (admin accounts): where they last signed in from, which
+    // addresses are trusted, and whether a new-IP code is waiting to be entered.
+    lastLoginIp: ips.length ? ips[ips.length - 1] : null,
+    knownIps: known.slice(-10).map((k) => ({ ip: k.ip, firstSeen: k.firstSeen, lastSeen: k.lastSeen })),
+    knownIpCount: known.length,
+    ipVerificationPending: !!(u.ipVerificationCodeExpiry && new Date(u.ipVerificationCodeExpiry) > new Date()),
+    // Admin-provisioned account that hasn't confirmed its email yet.
+    activationPending: !!(u.isAdminProvisioned && !u.emailVerified),
+  };
+};
+
+// GET /admin/users?search=&role=&status=&page=&limit=
 exports.listUsers = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
-    const filter = {};
+    const and = [];
     if (req.query.role) {
       const roleList = String(req.query.role).split(',').map((r) => r.trim()).filter(Boolean);
       if (roleList.length === 1) {
-        filter.$or = [{ role: roleList[0] }, { roles: roleList[0] }];
+        and.push({ $or: [{ role: roleList[0] }, { roles: roleList[0] }] });
       } else if (roleList.length > 1) {
-        filter.$or = [
-          { role: { $in: roleList } },
-          { roles: { $in: roleList } }
-        ];
+        and.push({ $or: [{ role: { $in: roleList } }, { roles: { $in: roleList } }] });
       }
+    }
+    if (req.query.status) {
+      const status = String(req.query.status);
+      if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+      // Older accounts have no status field: they are active.
+      and.push(status === 'active'
+        ? { $or: [{ status: 'active' }, { status: { $exists: false } }] }
+        : { status });
     }
     if (req.query.search) {
       const rx = new RegExp(String(req.query.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$and = [{ $or: [{ email: rx }, { firstName: rx }, { lastName: rx }, { phone: rx }] }];
+      and.push({ $or: [{ email: rx }, { firstName: rx }, { lastName: rx }, { phone: rx }] });
     }
+    const filter = and.length ? { $and: and } : {};
 
     const [users, total] = await Promise.all([
       User.find(filter)
-        .select('email phone accountNumber firstName lastName role roles status isEmailVerified mfaEnabled lastLogin createdAt')
-        .sort({ createdAt: -1 })
+        .select(LIST_FIELDS)
+        .sort({ joinedAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
       User.countDocuments(filter),
     ]);
 
-    res.json({ users, total, page, pages: Math.ceil(total / limit) });
+    res.json({ users: users.map(presentUser), total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     res.status(500).json({ error: 'Failed to list users' });
   }
@@ -727,10 +780,8 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
     }
 
-    const activationToken = crypto.randomBytes(32).toString('hex');
-    const hashedActivationToken = crypto.createHash('sha256').update(activationToken).digest('hex');
-
-    const user = await User.create({
+    const activation = require('../services/activation.service');
+    const user = new User({
       email: email.toLowerCase(),
       phone: normalizedPhone,
       firstName,
@@ -738,38 +789,24 @@ exports.createUser = async (req, res) => {
       password: initialPassword,
       role: requestedRoles[0],
       roles: requestedRoles,
-      isEmailVerified: false,
+      emailVerified: false,
       isAdminProvisioned: true,
+      // The person must pick their own password on first sign-in.
       requirePasswordChange: true,
       createdBy: req.user._id,
-      activationToken: hashedActivationToken,
-      activationExpires: Date.now() + 24 * 60 * 60 * 1000,
     });
+    const rawActivationToken = activation.stampActivation(user);
+    await user.save();
 
-    // Send activation email
-    const emailService = require('../services/email.service');
-    const activationUrl = `${process.env.FRONTEND_URL || 'https://nyumbasync.co.ke'}/activate?token=${activationToken}`;
-
-    try {
-      await emailService.sendEmail(
-        user.email,
-        'Activate Your NyumbaSync Account - NyumbaSync',
-        'account-activation',
-        {
-          name: user.firstName || 'User',
-          activationUrl,
-          appUrl: process.env.FRONTEND_URL || 'https://nyumbasync.co.ke',
-          year: new Date().getFullYear()
-        }
-      );
-    } catch (emailError) {
-      logger.error('Failed to send activation email:', emailError);
-    }
+    // Whether the email actually went out matters: if it didn't (email not
+    // configured, provider down) the admin can resend from the user's card.
+    const activationEmailSent = await activation.sendActivationEmail(user, rawActivationToken);
 
     logAdminActivity(req.user._id, 'USER_CREATED', { targetUser: user._id, roles: requestedRoles });
 
     res.status(201).json({
       message: 'User created',
+      activationEmailSent,
       user: {
         id: user._id, email: user.email, phone: user.phone,
         firstName: user.firstName, lastName: user.lastName,
@@ -783,68 +820,194 @@ exports.createUser = async (req, res) => {
   }
 };
 
+const rolesOfUser = (u) => (Array.isArray(u.roles) && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+const isAdminLevelUser = (u) => rolesOfUser(u).some((r) => ADMIN_LEVEL_ROLES.includes(r));
+const requesterId = (reqUser) => String(reqUser._id || reqUser.id);
+
+// Make a status change real: `isActive` mirrors it (the auth middleware and
+// login read both), and anything but "active" revokes the account's sessions
+// immediately — otherwise a suspended person keeps working until their token
+// expires.
+const applyStatus = (target, status) => {
+  target.status = status;
+  target.isActive = status === 'active';
+  if (status !== 'active') target.tokenValidAfter = new Date();
+};
+
 // PATCH /admin/users/:userId — edit profile, roles, status, or reset password.
 exports.updateUserAdmin = async (req, res) => {
   try {
     const target = await User.findById(req.params.userId).select('+password');
     if (!target) return res.status(404).json({ error: 'User not found' });
 
-    const targetRoles = Array.isArray(target.roles) && target.roles.length ? target.roles : [target.role];
+    const targetRoles = rolesOfUser(target);
     const requesterSuper = isSuper(req.user);
+    const isSelf = String(target._id) === requesterId(req.user);
 
     // Editing an admin-level account (or granting admin-level roles) is
     // super_admin-only; nobody can edit a super_admin except a super_admin.
-    if (targetRoles.some((r) => ADMIN_LEVEL_ROLES.includes(r)) && !requesterSuper) {
+    if (isAdminLevelUser(target) && !requesterSuper) {
       return res.status(403).json({ error: 'Only a super admin can modify admin accounts' });
     }
 
     const { firstName, lastName, email, phone, role, roles, status, password } = req.body;
 
+    let newRoles = null;
     if (roles || role) {
-      const newRoles = [...new Set((Array.isArray(roles) && roles.length ? roles : [role]).filter(Boolean))];
+      newRoles = [...new Set((Array.isArray(roles) && roles.length ? roles : [role]).filter(Boolean))];
       const invalid = newRoles.filter((r) => !ASSIGNABLE_ROLES.includes(r));
       if (invalid.length) return res.status(400).json({ error: `Invalid role(s): ${invalid.join(', ')}` });
       if (newRoles.some((r) => ADMIN_LEVEL_ROLES.includes(r)) && !requesterSuper) {
         return res.status(403).json({ error: 'Only a super admin can grant admin roles' });
       }
+    }
+    if (status && !STATUSES.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    // Nobody locks themselves out or demotes themselves by accident. (Only a
+    // super admin can edit a super admin, and never themselves, so the acting
+    // super admin always remains: the platform can't be left without one.)
+    const changesRoles = newRoles && [...newRoles].sort().join() !== [...targetRoles].sort().join();
+    const deactivates = status && status !== 'active';
+    if (isSelf && (changesRoles || deactivates)) {
+      return res.status(403).json({ error: 'You cannot change your own role or deactivate your own account' });
+    }
+    if (newRoles) {
       target.roles = newRoles;
       target.role = newRoles[0];
     }
-
     if (firstName) target.firstName = firstName;
     if (lastName) target.lastName = lastName;
-    if (email) target.email = String(email).toLowerCase();
+    if (email) {
+      const normalizedEmail = String(email).toLowerCase();
+      if (normalizedEmail !== target.email) {
+        if (await User.exists({ email: normalizedEmail, _id: { $ne: target._id } })) {
+          return res.status(409).json({ error: 'Another account already uses that email' });
+        }
+        target.email = normalizedEmail;
+      }
+    }
     if (phone) {
       const normalized = formatKenyanPhone(phone);
       if (!normalized) return res.status(400).json({ error: 'Invalid Kenyan phone' });
+      if (normalized !== target.phone && await User.exists({ phone: normalized, _id: { $ne: target._id } })) {
+        return res.status(409).json({ error: 'Another account already uses that phone number' });
+      }
       target.phone = normalized;
     }
-    if (status) {
-      if (!['active', 'inactive', 'suspended'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status' });
-      }
-      target.status = status;
-    }
+    if (status) applyStatus(target, status);
     if (password) {
       if (String(password).length < 8) {
         return res.status(400).json({ error: 'Password must be at least 8 characters long' });
       }
       target.password = password; // hashed by the pre-save hook
+      // A password an admin chose is known to the admin: the person must pick
+      // their own at next sign-in, and every existing session ends.
+      target.requirePasswordChange = true;
+      target.tokenValidAfter = new Date();
     }
 
     await target.save();
-    logAdminActivity(req.user._id, 'USER_UPDATED', { targetUser: target._id, fields: Object.keys(req.body) });
+    logAdminActivity(req.user._id, 'USER_UPDATED', { targetUser: target._id, fields: Object.keys(req.body).filter((k) => k !== 'password') });
 
     res.json({
       message: 'User updated',
       user: {
         id: target._id, email: target.email, phone: target.phone,
         firstName: target.firstName, lastName: target.lastName,
-        role: target.role, roles: target.roles, status: target.status,
+        role: target.role, roles: target.roles, status: target.status, isActive: target.isActive,
       },
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update user', details: error.message });
+  }
+};
+
+const BULK_ACTIONS = { suspend: 'suspended', unsuspend: 'active', activate: 'active', deactivate: 'inactive' };
+
+// POST /admin/users/bulk-status  { userIds: [...], action: suspend|unsuspend|activate|deactivate }
+// Applies the same checks as a single edit to each account and reports what it
+// skipped and why, instead of failing the whole batch.
+exports.bulkUpdateStatus = async (req, res) => {
+  try {
+    const { userIds, action } = req.body;
+    const status = BULK_ACTIONS[action];
+    if (!status) return res.status(400).json({ error: 'Invalid action' });
+    if (!Array.isArray(userIds) || userIds.length === 0 || userIds.length > 100) {
+      return res.status(400).json({ error: 'userIds must be a list of 1 to 100 ids' });
+    }
+    const mongoose = require('mongoose');
+    const ids = [...new Set(userIds.map(String))];
+    if (ids.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+      return res.status(400).json({ error: 'Invalid user id in list' });
+    }
+
+    const requesterSuper = isSuper(req.user);
+    const me = requesterId(req.user);
+    const targets = await User.find({ _id: { $in: ids } }).select('role roles status isActive');
+    const found = new Set(targets.map((t) => String(t._id)));
+    const skipped = ids.filter((id) => !found.has(id)).map((id) => ({ id, reason: 'not_found' }));
+
+    const apply = [];
+    for (const t of targets) {
+      const id = String(t._id);
+      const current = t.status || 'active';
+      if (id === me) { skipped.push({ id, reason: 'self' }); continue; }
+      if (isAdminLevelUser(t) && !requesterSuper) { skipped.push({ id, reason: 'admin_account' }); continue; }
+      const alreadyThere = current === status && (t.isActive !== false) === (status === 'active');
+      if (alreadyThere) { skipped.push({ id, reason: `already_${status}` }); continue; }
+      apply.push(t._id);
+    }
+
+    if (apply.length) {
+      await User.updateMany(
+        { _id: { $in: apply } },
+        {
+          $set: {
+            status,
+            isActive: status === 'active',
+            ...(status !== 'active' ? { tokenValidAfter: new Date() } : {}),
+          },
+        }
+      );
+      logAdminActivity(req.user._id, 'USERS_BULK_STATUS', { action, status, count: apply.length, targets: apply.map(String) });
+    }
+
+    res.json({ success: true, action, status, updated: apply.length, skipped });
+  } catch (error) {
+    res.status(500).json({ error: 'Bulk update failed', details: error.message });
+  }
+};
+
+// POST /admin/users/:userId/resend-activation
+exports.resendUserActivation = async (req, res) => {
+  try {
+    const activation = require('../services/activation.service');
+    const target = await User.findById(req.params.userId).select('+activationToken');
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    if (isAdminLevelUser(target) && !isSuper(req.user)) {
+      return res.status(403).json({ error: 'Only a super admin can modify admin accounts' });
+    }
+    if (!activation.isPending(target)) {
+      return res.status(409).json({ error: 'This account has already been activated' });
+    }
+    const wait = activation.cooldownSeconds(target);
+    if (wait > 0) {
+      return res.status(429).json({ error: `A link was just sent. Try again in ${wait}s.`, retryAfterSeconds: wait });
+    }
+
+    const { sent } = await activation.issueAndSend(target);
+    logAdminActivity(req.user._id, 'ACTIVATION_RESENT', { targetUser: target._id, emailSent: sent });
+    res.json({
+      success: true,
+      emailSent: sent,
+      message: sent
+        ? 'A new activation link has been emailed.'
+        : 'A new link was created but the email could not be sent. Check the email settings, then try again.',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to resend activation', details: error.message });
   }
 };
 
