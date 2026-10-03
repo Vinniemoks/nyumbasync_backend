@@ -152,14 +152,29 @@ describe('Vendor Controller Tests', () => {
     });
 
     it('should update vendor as landlord', async () => {
+      const before = (await Vendor.findById(vendorId)).rating;
       const response = await request(app)
         .put(`/api/v1/vendors/${vendorId}`)
         .set('Authorization', `Bearer ${landlordToken}`)
-        .send({ company: 'Updated Vendor Name', rating: 4.5 })
+        .send({ company: 'Updated Vendor Name' })
         .expect(200);
 
       expect(response.body).toHaveProperty('company', 'Updated Vendor Name');
-      expect(response.body.rating).toBe(4.5);
+      expect(response.body.rating).toBe(before);
+    });
+
+    it('does not let an update change the rating (it comes from reviews) or the owning user', async () => {
+      const before = await Vendor.findById(vendorId);
+      const response = await request(app)
+        .put(`/api/v1/vendors/${vendorId}`)
+        .set('Authorization', `Bearer ${landlordToken}`)
+        .send({ company: 'Still Allowed', rating: 5, user: '64b7f0c2a1b2c3d4e5f60718' })
+        .expect(200);
+
+      expect(response.body.company).toBe('Still Allowed');
+      const after = await Vendor.findById(vendorId);
+      expect(after.rating).toBe(before.rating);
+      expect(String(after.user)).toBe(String(before.user));
     });
 
     it('should reject update by tenant', async () => {

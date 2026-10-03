@@ -237,7 +237,14 @@ describe('MFA Security Tests', () => {
     });
 
     it('should reject expired MFA session token', async () => {
-      const expiredToken = Buffer.from(`${mfaUser._id}:token:${Date.now() - 10 * 60 * 1000}`).toString('base64');
+      // A properly signed session token whose 5 minutes have passed.
+      const jwt = require('jsonwebtoken');
+      const secret = process.env.JWT_MFA_SECRET || process.env.JWT_SECRET;
+      const expiredToken = jwt.sign(
+        { userId: String(mfaUser._id), purpose: 'mfa-step-up' },
+        secret,
+        { algorithm: 'HS256', expiresIn: -600 }
+      );
 
       const res = await request(app)
         .post('/api/v1/auth/mfa/verify-login')
@@ -248,6 +255,18 @@ describe('MFA Security Tests', () => {
         .expect(401);
 
       expect(res.body.error).to.include('expired');
+    });
+
+    it('should reject the old unsigned (base64) session token format', async () => {
+      // userId:token:timestamp was forgeable, so it is no longer accepted at all.
+      const legacy = Buffer.from(`${mfaUser._id}:token:${Date.now()}`).toString('base64');
+
+      const res = await request(app)
+        .post('/api/v1/auth/mfa/verify-login')
+        .send({ mfaSessionToken: legacy, token: '123456' })
+        .expect(401);
+
+      expect(res.body.error).to.include('Invalid');
     });
   });
 

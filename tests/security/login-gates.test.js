@@ -246,6 +246,18 @@ describe('forced first-login password change', () => {
       .expect(401);
   });
 
+  test('signing in again right after a change works every time (the new session is never mistaken for an old one)', async () => {
+    for (let i = 0; i < 3; i++) {
+      const user = await makeUser('tenant');
+      const old = (await login(user).expect(200)).body.token;
+      await request(app).post('/api/v1/auth/change-password').set('Authorization', `Bearer ${old}`)
+        .send({ currentPassword: PASSWORD, newPassword: 'Brand-New-Pass-7!' }).expect(200);
+      const fresh = (await login(user, 'Brand-New-Pass-7!').expect(200)).body.token;
+      await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${fresh}`).expect(200);
+      await request(app).get('/api/v1/auth/me').set('Authorization', `Bearer ${old}`).expect(401);
+    }
+  });
+
   test('a normal logged-in user can still change their password with their access token', async () => {
     const user = await makeUser('tenant');
     const { token } = (await login(user).expect(200)).body;
