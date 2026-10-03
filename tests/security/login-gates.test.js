@@ -61,9 +61,21 @@ afterEach(() => jest.restoreAllMocks());
 
 describe('new-IP verification for admins', () => {
 
+  test('without a WhatsApp provider the code is emailed only, and the response does not claim WhatsApp', async () => {
+    const wa = require('../../src/services/whatsappService');
+    const spy = jest.spyOn(wa, 'sendTemplatedMessage');
+    const admin = await makeUser('super_admin');
+    const res = await login(admin).expect(200);
+    expect(res.body.whatsappSent).toBe(false);
+    expect(res.body.message).not.toMatch(/whatsapp/i);
+    expect(spy).not.toHaveBeenCalled();
+    expect(codeFromMail()).toMatch(/^\d{6}$/);
+  });
+
   test('the new-network code also goes to WhatsApp, and authenticator setup is never forced', async () => {
     const wa = require('../../src/services/whatsappService');
     const sent = [];
+    jest.spyOn(wa, 'isConfigured').mockReturnValue(true);
     jest.spyOn(wa, 'sendTemplatedMessage').mockImplementation(async (m) => { sent.push(m); return { success: true }; });
     const admin = await makeUser('super_admin');
     const res = await login(admin).expect(200);

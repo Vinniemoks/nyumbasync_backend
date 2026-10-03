@@ -451,6 +451,21 @@ const mockSendText = async (phone, text) => {
 // ============================================================
 
 class WhatsAppService {
+  /**
+   * True only when a real provider's credentials are set. Until the real
+   * send calls replace mockSendTemplate/mockSendText, callers that must not
+   * claim delivery (login codes) should treat this as the gate.
+   */
+  isConfigured() {
+    if (process.env.WHATSAPP_ENABLE_MOCK_SEND === 'true') return true; // dev/tests only
+    const c = CONFIG;
+    return !!(
+      (c.meta.phoneNumberId && c.meta.accessToken) ||
+      c.dialog360.apiKey ||
+      (c.twilio.accountSid && c.twilio.authToken && c.twilio.phoneNumber)
+    );
+  }
+
   constructor() {
     this.provider = CONFIG.provider;
     this.templateRegistry = TEMPLATE_REGISTRY;
