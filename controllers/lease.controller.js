@@ -1,5 +1,7 @@
 const path = require('path');
 const Lease = require('../models/lease.model');
+const Property = require('../models/property.model');
+const { releaseUnit } = require('../services/lease-units.service');
 const { generateLeasePDF } = require('../services/document.service');
 const logger = require('../utils/logger');
 
@@ -43,11 +45,17 @@ function isTrustedDocUrl(u) {
 // Create Kenyan-compliant lease
 exports.createLease = async (req, res) => {
   try {
-    const { propertyId, tenantId, startDate, endDate, monthlyRent, securityDeposit } = req.body;
+    const { propertyId, tenantId, startDate, endDate, monthlyRent, securityDeposit, unit } = req.body;
     let { terms } = req.body;
 
     if (!propertyId || !tenantId) {
       return res.status(400).json({ error: 'propertyId and tenantId are required' });
+    }
+
+    // A landlord may only open leases on their own properties.
+    if (req.user.role === 'landlord') {
+      const owned = await Property.exists({ _id: propertyId, landlord: req.user._id || req.user.id });
+      if (!owned) return res.status(404).json({ error: 'Property not found' });
     }
 
     // Accept either a structured `terms` object or the flat shape some clients
@@ -83,6 +91,7 @@ exports.createLease = async (req, res) => {
     const lease = await Lease.create({
       property: propertyId,
       tenant: tenantId,
+      ...(unit ? { unit } : {}),
       terms,
       // startDate is required and drives the endDate derivation — it was being
       // dropped from the request body, so every create failed validation.
@@ -286,6 +295,7 @@ exports.renewLease = async (req, res) => {
     const { rentAmount, durationMonths, startDate, endDate } = req.body;
     const lease = await Lease.findById(req.params.leaseId);
     if (!lease) return res.status(404).json({ error: 'Lease not found' });
+    if (!canAccessLease(req.user, lease)) return res.status(403).json({ error: 'Access denied' });
 
     const newStart = startDate ? new Date(startDate) : new Date(lease.endDate || Date.now());
     // Honor an explicit endDate (some clients send only that); otherwise extend
@@ -340,6 +350,8 @@ exports.terminateLease = async (req, res) => {
     };
     lease.status = 'terminated';
     await lease.save();
+    // The unit can be let again.
+    await releaseUnit(lease);
     res.json(lease);
   } catch (err) {
     logger.error('Lease termination failed:', err);
