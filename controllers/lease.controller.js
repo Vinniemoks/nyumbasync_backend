@@ -313,7 +313,8 @@ exports.renewLease = async (req, res) => {
     // Apply the new terms and extend the lease.
     if (rentAmount) lease.terms.rentAmount = rentAmount;
     lease.terms.durationMonths = months;
-    lease.startDate = newStart;
+    // The move-in date does not change on renewal; the new term starts at newStart
+    // (recorded in renewal.newTerms below) and runs to the new end date.
     lease.endDate = newEnd;
     lease.status = 'active';
     lease.renewal = {

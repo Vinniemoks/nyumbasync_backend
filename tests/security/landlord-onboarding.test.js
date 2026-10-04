@@ -163,6 +163,23 @@ describe('POST /landlord/tenants', () => {
     await request(app).post('/api/v1/landlord/tenants').send(valid(property)).expect(401);
   });
 
+  test('a start date of today in Nairobi opens an active lease even just after Nairobi midnight', async () => {
+    const landlord = await makeUser('landlord');
+    const property = await makeProperty(landlord);
+    const token = await tokenFor(landlord);
+    // 00:08 on 5 Oct in Nairobi is still 21:08 on 4 Oct in UTC. Only Date is faked.
+    jest.useFakeTimers({
+      now: new Date('2026-10-04T21:08:00Z'),
+      doNotFake: ['nextTick', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'queueMicrotask', 'hrtime', 'performance'],
+    });
+    try {
+      const res = await add(token, valid(property, { startDate: '2026-10-05' })).expect(201);
+      expect(res.body.lease.status).toBe('active');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('a future start date opens a pending lease', async () => {
     const landlord = await makeUser('landlord');
     const property = await makeProperty(landlord);
@@ -204,8 +221,14 @@ describe('ending and renewing a lease', () => {
     const property = await makeProperty(landlord);
     const token = await tokenFor(landlord);
     const made = await add(token, valid(property)).expect(201);
+    const before = await Lease.findById(made.body.lease.id);
     const res = await request(app).post(`/api/v1/leases/${made.body.lease.id}/renew`).set('Authorization', `Bearer ${token}`).send({ durationMonths: 6, rentAmount: 33000 }).expect(200);
     expect(res.body.terms.rentAmount).toBe(33000);
     expect(res.body.status).toBe('active');
+    // The move-in date is kept; the lease now runs six months past its old end.
+    expect(new Date(res.body.startDate).getTime()).toBe(before.startDate.getTime());
+    const expectedEnd = new Date(before.endDate);
+    expectedEnd.setMonth(expectedEnd.getMonth() + 6);
+    expect(new Date(res.body.endDate).getTime()).toBe(expectedEnd.getTime());
   });
 });

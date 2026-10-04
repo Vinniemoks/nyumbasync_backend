@@ -13,6 +13,14 @@ const bad = (res, error, status = 400) => res.status(status).json({ error });
 const money = (v) => (v === undefined || v === null || v === '' ? NaN : Number(v));
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// A date typed without a time ("2026-10-05") means that day in Kenya (UTC+3),
+// not midnight UTC — otherwise "today" would still be in the future for the
+// first three hours of the Nairobi day and the lease would open as pending.
+const parseDay = (v) => {
+  const s = String(v).trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00+03:00`) : new Date(s);
+};
+
 /**
  * POST /api/v1/landlord/tenants
  * body: { propertyId, houseNumber?, firstName, lastName, email, phone,
@@ -68,9 +76,9 @@ exports.onboardTenant = async (req, res) => {
     const depositAmount = Number.isFinite(depositRaw) ? depositRaw : Number(property.deposit ?? rentAmount);
     if (!Number.isFinite(depositAmount) || depositAmount < 0) return bad(res, 'Deposit must be zero or more');
 
-    const startDate = b.startDate ? new Date(b.startDate) : new Date();
+    const startDate = b.startDate ? parseDay(b.startDate) : new Date();
     if (Number.isNaN(startDate.getTime())) return bad(res, 'Invalid start date');
-    let endDate = b.endDate ? new Date(b.endDate) : null;
+    let endDate = b.endDate ? parseDay(b.endDate) : null;
     if (endDate && Number.isNaN(endDate.getTime())) return bad(res, 'Invalid end date');
     if (endDate && endDate <= startDate) return bad(res, 'The lease must end after it starts');
     let durationMonths = b.durationMonths ? Number(b.durationMonths) : 12;
