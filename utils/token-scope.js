@@ -28,9 +28,9 @@ const isAccessToken = (decoded) => scopeOf(decoded) === null;
  */
 const accountBlockReason = (user) => {
   if (!user) return 'not_found';
-  if (user.isActive === false) return 'inactive';
+  // Status first: suspending also clears isActive, and must not read as "inactive".
   if (user.status === 'suspended') return 'suspended';
-  if (user.status === 'inactive') return 'inactive';
+  if (user.status === 'inactive' || user.isActive === false) return 'inactive';
   return null;
 };
 
