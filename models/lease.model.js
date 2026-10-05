@@ -16,6 +16,9 @@ const LeaseSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // The unit (house number) within the property this lease covers, when the
+  // property is split into units.
+  unit: { type: String, trim: true },
   
   // Enhanced lease dates
   startDate: {

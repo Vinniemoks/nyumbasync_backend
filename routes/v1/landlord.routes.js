@@ -8,6 +8,9 @@ router.use(authenticate());
 
 // === AUTHENTICATION & ONBOARDING ===
 router.post('/accounts', landlordController.createLandlordAccount);
+
+// Add a tenant to one of my units and open their lease.
+router.post('/tenants', authenticate('landlord'), require('../../controllers/landlord-tenants.controller').onboardTenant);
 router.post('/2fa/setup', landlordController.setup2FA);
 router.post('/2fa/verify', landlordController.verify2FA);
 router.post('/agreement', landlordController.acceptServiceAgreement);
