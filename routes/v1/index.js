@@ -65,6 +65,9 @@ router.use('/leases', asRouter(leaseRoutes, 'lease.routes'));
 router.use('/documents', asRouter(documentRoutes, 'document.routes'));
 router.use('/messages', asRouter(messageRoutes, 'message.routes'));
 router.use('/mfa', asRouter(mfaRoutes, 'mfa.routes'));
+// The web client calls these as /auth/mfa/* (enable, verify, step-up, step-up/send-otp).
+// Mounted after /auth so the public login routes in auth.routes still match first.
+router.use('/auth/mfa', asRouter(mfaRoutes, 'mfa.routes (auth alias)'));
 router.use('/audit', asRouter(auditRoutes, 'audit.routes'));
 router.use('/enhanced-admin', asRouter(enhancedAdminRoutes, 'enhanced-admin.routes'));
 
