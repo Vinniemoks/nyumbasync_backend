@@ -141,7 +141,9 @@ const propertySchema = new Schema({
     validate: {
       validator: async function(id) {
         const user = await mongoose.model('User').findById(id);
-        return user && ['landlord', 'agent', 'manager'].includes(user.role);
+        // Accept the active role or any role the account holds (multi-role users).
+        const held = [user && user.role, ...((user && user.roles) || [])];
+        return !!user && held.some(r => ['landlord', 'agent', 'manager'].includes(r));
       },
       message: 'Referenced user must be a landlord, agent, or property manager'
     },

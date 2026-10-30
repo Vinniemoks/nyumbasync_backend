@@ -211,6 +211,13 @@ exports.createProperty = async (req, res) => {
     // Enforce the authenticated landlord when not provided by an admin/manager
     if (!payload.landlord && req.user) {
       payload.landlord = req.user._id;
+      const held = [req.user.role, ...(req.user.roles || [])];
+      if (!held.some(r => ['landlord', 'agent', 'manager'].includes(r))) {
+        return res.status(400).json({
+          success: false,
+          error: 'Properties must be owned by a landlord, agent or property manager. Sign in with one of those accounts (or add that role to this account) to create a property.'
+        });
+      }
     }
 
     // Normalize financial and unit fields
