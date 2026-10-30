@@ -39,6 +39,22 @@ const normalizeUtilities = (utilities = []) => {
  * wipe existing tenant assignments; a unit set back to 'available' is treated
  * as vacated and its tenant cleared.
  */
+/**
+ * Validate the storey count against the units. Returns an error string or null.
+ * Unit floors are 0-based (0 = ground), so they must be < floors.
+ */
+const validateFloors = (floors, houses = []) => {
+  const n = Number(floors);
+  if (!Number.isInteger(n) || n < 1 || n > 100) {
+    return 'Number of floors is required (a whole number from 1 to 100)';
+  }
+  const bad = houses.find(h => h.floor != null && h.floor >= n);
+  if (bad) {
+    return `Unit ${bad.houseNumber} is on floor ${bad.floor}, but the building only has ${n} floor(s)`;
+  }
+  return null;
+};
+
 const UNIT_TYPES = ['studio', 'bedsitter', '1br', '2br', '3br', '4br', 'other'];
 const normalizeHouses = (houses = []) => {
   return houses
@@ -211,6 +227,12 @@ exports.createProperty = async (req, res) => {
       });
     }
 
+    const floorsError = validateFloors(payload.floors, payload.houses);
+    if (floorsError) {
+      return res.status(400).json({ success: false, error: floorsError });
+    }
+    payload.floors = Number(payload.floors);
+
     // Derive availability from units
     const hasAvailableUnit = payload.houses.some(h => h.status === 'available');
     payload.status = hasAvailableUnit ? 'available' : 'occupied';
@@ -278,6 +300,17 @@ exports.updateProperty = async (req, res) => {
       const hasAvailableUnit = payload.houses.some(h => h.status === 'available');
       payload.status = hasAvailableUnit ? 'available' : 'occupied';
       payload.isAvailable = hasAvailableUnit;
+    }
+    if (payload.floors !== undefined || payload.houses) {
+      const floors = payload.floors !== undefined ? payload.floors : (await Property.findById(req.params.id).select('floors').lean())?.floors;
+      // Older properties have no floors yet: only insist once the caller supplies it.
+      if (payload.floors !== undefined || floors !== undefined) {
+        const floorsError = validateFloors(floors, payload.houses || []);
+        if (floorsError) {
+          return res.status(400).json({ success: false, error: floorsError });
+        }
+        payload.floors = Number(floors);
+      }
     }
 
     const property = await Property.findByIdAndUpdate(

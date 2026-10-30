@@ -234,6 +234,11 @@ const propertySchema = new Schema({
     performedBy: { type: Schema.Types.ObjectId, ref: 'User' }
   }],
 
+  // Number of storeys (ground floor counts as 1). Required for new properties
+  // (enforced in the controller so older documents still validate); drives the
+  // building sketch. Unit `floor` is 0-based: 0 = ground.
+  floors: { type: Number, min: 1, max: 100 },
+
   // Houses / Units
   houses: [{
     houseNumber: { type: String, required: true, trim: true },
