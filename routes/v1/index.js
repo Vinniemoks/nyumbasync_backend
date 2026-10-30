@@ -44,6 +44,8 @@ const reportsRoutes = require('./reports.routes');
 router.use('/admin', asRouter(adminRoutes, 'admin.routes'));
 router.use('/auth', asRouter(authRoutes, 'auth.routes'));
 router.use('/landlord', asRouter(landlordRoutes, 'landlord.routes'));
+// Invite a client to a unit; the client reviews, signs and registers from the emailed link.
+router.use('/onboarding', asRouter(require('./onboarding.routes'), 'onboarding.routes'));
 router.use('/maintenance', asRouter(maintenanceRoutes, 'maintenance.routes'));
 router.use('/mpesa', asRouter(mpesaRoutes, 'mpesa.routes'));
 router.use('/payments', asRouter(paymentRoutes, 'payment.routes'));

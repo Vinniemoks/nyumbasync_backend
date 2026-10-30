@@ -99,6 +99,13 @@ const LeaseSchema = new mongoose.Schema({
     }
   },
 
+  // The agreement text and house rules the tenant accepted when signing.
+  agreement: {
+    sections: [{ _id: false, title: String, body: String }],
+    rules: [String],
+    acceptedAt: Date
+  },
+
   // Lease documents
   documents: [{
     name: {

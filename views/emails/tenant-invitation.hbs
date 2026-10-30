@@ -1,0 +1,28 @@
+<div class="greeting">Hello {{firstName}},</div>
+
+<div class="message">
+  <p><strong>{{landlordName}}</strong> has invited you to rent <strong>{{unitLabel}}</strong> at <strong>{{propertyTitle}}</strong> through NyumbaSync.</p>
+  <p>Use the button below to review your lease and the house rules, agree to them, sign, and finish setting up your account. This link expires on {{expiresOn}}.</p>
+</div>
+
+<div class="info-box">
+  <h3>Your tenancy</h3>
+  <div class="info-row"><span class="info-label">Unit:</span><span class="info-value">{{unitLabel}}</span></div>
+  <div class="info-row"><span class="info-label">Monthly rent:</span><span class="info-value">KES {{rent}}</span></div>
+  <div class="info-row"><span class="info-label">Deposit:</span><span class="info-value">KES {{deposit}}</span></div>
+  <div class="info-row"><span class="info-label">Lease starts:</span><span class="info-value">{{startsOn}}</span></div>
+</div>
+
+<div style="text-align: center;">
+  <a href="{{inviteUrl}}" class="button" style="background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);">Review lease &amp; get started</a>
+</div>
+
+<div class="message">
+  <p>If the button does not work, copy and paste this link into your browser:</p>
+  <p><a href="{{inviteUrl}}">{{inviteUrl}}</a></p>
+</div>
+
+<div class="message">
+  <p>If you were not expecting this invitation, you can ignore this email. Nothing happens until you sign.</p>
+  <p>From NyumbaSync team</p>
+</div>
